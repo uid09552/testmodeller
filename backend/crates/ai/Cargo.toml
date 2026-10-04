@@ -1,0 +1,10 @@
+[package]
+name = "tm-ai"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tm-domain = { path = "../domain" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

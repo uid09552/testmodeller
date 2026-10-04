@@ -1,0 +1,46 @@
+---
+title: Requirements
+type: specification
+status: draft
+tags: [requirements, functional, non-functional]
+related: [00-overview.md, 05-api.md, 06-ui.md, 07-ai-integration.md]
+---
+
+# Requirements
+
+## Functional
+
+### Organization
+- FR-001 Create, rename, delete components within a project.
+- FR-002 Create, rename, move features between components.
+- FR-003 Create scenarios under a feature; link a scenario to additional features.
+- FR-004 Browse and filter by component, feature, tag, status.
+
+### Scenario modelling
+- FR-010 Graphical editor to add/move/delete states and transitions.
+- FR-011 Set event, guard, action and expected result on transitions.
+- FR-012 Validate model live (single initial state, reachability, dead ends) and show issues.
+- FR-013 Undo/redo in the editor.
+- FR-014 Version history of scenarios with restore.
+
+### Test generation
+- FR-020 Generate test cases for a scenario by selecting a coverage criterion.
+- FR-021 Generation is deterministic for given model, criterion, seed.
+- FR-022 Show coverage achieved per scenario, feature and component.
+- FR-023 Regenerate and diff against existing test cases.
+- FR-024 Export test cases as JSON, CSV, Gherkin.
+
+### AI proposals
+- FR-030 Propose scenarios from a textual description or requirement.
+- FR-031 Propose missing states/transitions for an existing scenario.
+- FR-032 Propose additional test cases (edge/negative) for a scenario.
+- FR-033 Review UI: accept, edit, reject each proposal; accepted ones become entities.
+- FR-034 Proposals show rationale and are labelled as AI-origin.
+
+## Non-functional
+- NFR-001 Generate tests for a 200-state scenario in under 2 s.
+- NFR-002 API p95 latency under 200 ms excluding AI calls.
+- NFR-003 LLM provider configurable; no data sent without configuration.
+- NFR-004 WCAG 2.1 AA for UI (editor offers keyboard alternative).
+- NFR-005 All API input validated; secrets never logged.
+- NFR-006 Optimistic concurrency via `version` on updates.

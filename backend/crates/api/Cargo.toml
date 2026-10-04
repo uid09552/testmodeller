@@ -1,0 +1,11 @@
+[package]
+name = "tm-api"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tm-domain = { path = "../domain" }
+tm-generation = { path = "../generation" }
+tm-storage = { path = "../storage" }
+tm-ai = { path = "../ai" }
+tokio.workspace = true

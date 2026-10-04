@@ -1,0 +1,8 @@
+/backend/target/
+node_modules/
+/frontend/dist/
+/frontend/.angular/
+*.db
+*.sqlite
+.env
+.DS_Store

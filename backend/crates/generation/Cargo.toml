@@ -1,0 +1,8 @@
+[package]
+name = "tm-generation"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tm-domain = { path = "../domain" }
+thiserror.workspace = true
