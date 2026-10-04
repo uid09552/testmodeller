@@ -1,0 +1,81 @@
+# nginx config for the TestModeller Angular app.
+#
+# Two jobs: serve the SPA (every unknown path falls back to index.html so the
+# Angular router can handle it), and proxy /api to the backend so the browser
+# talks to a single origin — which also means no CORS configuration is needed.
+#
+# Processed by the nginx image's envsubst entrypoint; ${BACKEND_ORIGIN} and
+# ${NGINX_LOCAL_RESOLVERS} are substituted at container start. nginx's own
+# runtime variables ($host, $request_uri, ...) are not environment variables
+# and are left untouched.
+#
+# Deliberately NO `upstream` block: nginx resolves upstream hostnames once at
+# startup and refuses to boot if they do not resolve, so a backend that is down
+# would take the whole frontend with it. Using a resolver plus a variable in
+# proxy_pass defers DNS to request time, so nginx serves the app regardless and
+# returns 502 only for /api until the backend is reachable.
+
+server {
+    listen      80;
+    server_name _;
+
+    root  /usr/share/nginx/html;
+    index index.html;
+
+    # Docker's embedded DNS (exported by the image's 15-local-resolvers step).
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+    # Compress text responses. Bundles are also pre-compressed by the builder.
+    gzip              on;
+    gzip_vary         on;
+    gzip_min_length   512;
+    gzip_proxied      any;
+    gzip_types        text/plain text/css application/javascript
+                      application/json image/svg+xml application/wasm;
+
+    # ── API ───────────────────────────────────────────────────────────────────
+    location /api/ {
+        # The variable is what makes this resolve per request. $request_uri
+        # forwards the original path and query string unchanged.
+        proxy_pass         ${BACKEND_ORIGIN}$request_uri;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # AI generation can take a while; don't cut it off at the default 60s.
+        proxy_connect_timeout 10s;
+        proxy_read_timeout    300s;
+        proxy_send_timeout    300s;
+
+        proxy_buffering off;   # let streamed responses through as they arrive
+    }
+
+    # ── Static assets ─────────────────────────────────────────────────────────
+    # Hashed filenames, so these are safe to cache indefinitely.
+    location ~* \.(?:js|css|woff2?|ttf|eot|otf|svg|png|jpe?g|gif|webp|avif|ico|wasm|map)$ {
+        expires    1y;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+        try_files  $uri =404;
+    }
+
+    # ── SPA fallback ──────────────────────────────────────────────────────────
+    # index.html must never be cached, or clients keep loading a stale build
+    # that references hashed bundles which no longer exist.
+    location / {
+        try_files $uri $uri/ /index.html;
+
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options        "SAMEORIGIN" always;
+        add_header Referrer-Policy        "strict-origin-when-cross-origin" always;
+    }
+
+    # Don't serve source maps in production images.
+    location ~* \.map$ {
+        return 404;
+    }
+}

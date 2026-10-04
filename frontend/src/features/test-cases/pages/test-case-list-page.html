@@ -1,0 +1,221 @@
+<section class="page">
+  <header class="page__head">
+    <div>
+      <h1 class="page__title">Test Cases</h1>
+      <p class="page__sub">
+        Every test case across your models — double-click a row to edit its Gherkin
+      </p>
+    </div>
+    <button class="btn btn--primary" [disabled]="rows().length === 0" (click)="exportGherkin()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Export Gherkin
+    </button>
+  </header>
+
+  <!-- ── Project selector (main filter) ──────────────────────────────────── -->
+  <div class="filters">
+    <div class="proj-select">
+      <button class="proj-select__btn" (click)="projectMenuOpen.set(!projectMenuOpen())"
+              [attr.aria-expanded]="projectMenuOpen()" aria-haspopup="listbox">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span class="proj-select__label">{{ selectedProjectName() }}</span>
+        <svg class="proj-select__chev" [class.proj-select__chev--open]="projectMenuOpen()"
+             width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      @if (projectMenuOpen()) {
+        <ul class="proj-select__menu" role="listbox">
+          <li>
+            <button class="proj-select__opt" [class.proj-select__opt--on]="projectFilter() === 'all'"
+                    role="option" [attr.aria-selected]="projectFilter() === 'all'"
+                    (click)="setProject('all')">
+              All projects
+              <span class="proj-select__count">{{ allRows().length }}</span>
+            </button>
+          </li>
+          @for (p of projects(); track p.id) {
+            <li>
+              <button class="proj-select__opt" [class.proj-select__opt--on]="projectFilter() === p.id"
+                      role="option" [attr.aria-selected]="projectFilter() === p.id"
+                      (click)="setProject(p.id)">
+                {{ p.name }}
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+
+    <div class="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input class="search__input" placeholder="Search id, scenario, model…"
+             [value]="search()" (input)="search.set($any($event.target).value)" />
+    </div>
+
+    <div class="chips">
+      @for (c of categoryFilters; track c) {
+        <button class="chip" [class.chip--active]="categoryFilter() === c"
+                (click)="categoryFilter.set(c)">{{ c }}</button>
+      }
+    </div>
+
+    <div class="chips">
+      @for (p of polarityFilters; track p) {
+        <button class="chip" [class.chip--active]="polarityFilter() === p"
+                (click)="polarityFilter.set(p)">{{ p }}</button>
+      }
+    </div>
+  </div>
+
+  <!-- ── Summary ─────────────────────────────────────────────────────────── -->
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat__label">Test cases</div>
+      <div class="stat__value">{{ rows().length }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat__label">Positive</div>
+      <div class="stat__value" style="color:#16a34a">{{ positiveCount() }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat__label">Negative</div>
+      <div class="stat__value" style="color:var(--clr-danger)">{{ negativeCount() }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat__label">Models covered</div>
+      <div class="stat__value">{{ modelCount() }}</div>
+    </div>
+  </div>
+
+  <!-- ── Table ───────────────────────────────────────────────────────────── -->
+  @if (rows().length === 0) {
+    <div class="empty">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4"/>
+      </svg>
+      @if (allRows().length === 0) {
+        <p>No test cases yet.</p>
+        <p style="font-size:var(--text-xs);margin-top:4px">
+          Open a model from the Explorer, right-click a state and choose <strong>Add Test Case</strong>.
+        </p>
+      } @else {
+        <p>No test cases match these filters.</p>
+      }
+    </div>
+  } @else {
+    <div class="table-wrap">
+      <table class="table tc-table">
+        <thead>
+          <tr>
+            <th style="width:118px">ID</th>
+            <th style="width:130px">Component</th>
+            <th style="width:130px">Scenario</th>
+            <th style="width:130px">Model</th>
+            <th>Test Case</th>
+            <th style="width:100px">Category</th>
+            <th style="width:78px">Type</th>
+            <th style="width:62px">Links</th>
+            <th style="width:54px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rows(); track row.test.id) {
+            <tr (dblclick)="editRow(row)" title="Double-click to edit Gherkin">
+              <td><code class="tc-ref">{{ row.ref }}</code></td>
+              <td class="tc-dim">{{ row.componentName }}</td>
+              <td class="tc-dim">{{ row.featureName }}</td>
+              <td>
+                <span class="tc-model">{{ row.modelName }}</span>
+                <span class="tc-state">{{ row.stateLabel }}</span>
+              </td>
+              <td>
+                <div class="tc-name">{{ row.test.name }}</div>
+                <div class="tc-steps">{{ summary(row.test) }}</div>
+              </td>
+              <td>
+                <span class="cat-pill cat-pill--{{ row.test.category }}">
+                  <span class="cat-pill__dot"></span>{{ row.test.category }}
+                </span>
+              </td>
+              <td>
+                <span class="pol-pill pol-pill--{{ row.test.polarity }}">
+                  {{ row.test.polarity === 'positive' ? 'Positive' : 'Negative' }}
+                </span>
+              </td>
+              <td>
+                <div class="tc-links">
+                  @if (implHref(row.test); as href) {
+                    <a class="tc-link" [href]="href" target="_blank" rel="noopener noreferrer"
+                       (click)="$event.stopPropagation()" title="Implementation">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                      </svg>
+                    </a>
+                  }
+                  @if (backlogHref(row.test); as href) {
+                    <a class="tc-link tc-link--backlog" [href]="href" target="_blank"
+                       rel="noopener noreferrer" (click)="$event.stopPropagation()"
+                       title="Backlog item">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 7h18M3 12h18M3 17h10"/>
+                      </svg>
+                    </a>
+                  }
+                  @if (!implHref(row.test) && !backlogHref(row.test)) {
+                    <span class="tc-links__none" title="No links set">—</span>
+                  }
+                </div>
+              </td>
+              <td>
+                <div class="tc-actions">
+                  <button class="icon-btn" title="Edit Gherkin"
+                          (click)="$event.stopPropagation(); editRow(row)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                  <button class="icon-btn icon-btn--danger" title="Remove"
+                          (click)="$event.stopPropagation(); removeRow(row)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
+
+<!-- ── Gherkin overlay editor ─────────────────────────────────────────────── -->
+@if (editing(); as ed) {
+  <tm-test-case-dialog
+    [test]="ed.test"
+    [ref]="ed.ref"
+    [stateName]="ed.stateName"
+    (save)="saveTest($event)"
+    (cancel)="closeEditor()" />
+}

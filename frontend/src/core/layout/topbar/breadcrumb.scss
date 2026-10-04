@@ -1,0 +1,34 @@
+@use 'styles/tokens' as *;
+
+.breadcrumb ol {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.breadcrumb li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-sm);
+  color: var(--clr-text-400);
+
+  a {
+    color: var(--clr-text-600);
+    transition: color var(--transition-fast);
+
+    &:hover {
+      color: var(--clr-brand-500);
+    }
+  }
+
+  &.breadcrumb__current span {
+    color: var(--clr-text-900);
+    font-weight: 500;
+  }
+}
+
+.breadcrumb__sep {
+  color: var(--clr-text-400);
+}

@@ -1,0 +1,585 @@
+@use 'styles/tokens' as *;
+
+// ── Host fills the grid cell ────────────────────────────────────────────────
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;   // anchor for context menu
+  background: var(--clr-surface-50);
+}
+
+// ── Toolbar ──────────────────────────────────────────────────────────────────
+.canvas-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: var(--clr-surface-0);
+  border-bottom: 1px solid var(--clr-surface-200);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-height: 44px;
+}
+
+.toolbar__model-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--clr-text-900);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  background: transparent;
+  max-width: 200px;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+
+  &:hover { border-color: var(--clr-surface-200); background: var(--clr-surface-50); }
+  &:focus { outline: 2px solid var(--clr-brand-500); outline-offset: 0; border-color: transparent; background: var(--clr-surface-50); }
+}
+
+.toolbar__sep { width: 1px; height: 20px; background: var(--clr-surface-200); margin: 0 4px; flex-shrink: 0; }
+.toolbar__spacer { flex: 1; }
+.toolbar__group { display: flex; align-items: center; gap: 2px; }
+
+.tb-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--clr-text-600);
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+
+  &:hover { background: var(--clr-surface-100); color: var(--clr-text-900); border-color: var(--clr-surface-200); }
+  &:focus-visible { outline: 2px solid var(--clr-brand-500); outline-offset: 2px; }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  &--icon { padding: 4px 6px; }
+}
+
+.tb-zoom-label { font-size: var(--text-xs); color: var(--clr-text-400); min-width: 32px; text-align: center; }
+
+.tb-dirty-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--clr-warning); flex-shrink: 0;
+}
+
+// ── Canvas wrap ───────────────────────────────────────────────────────────────
+.canvas-wrap {
+  flex: 1;
+  min-height: 0;   // without this, flex-basis:auto keeps the SVG from shrinking
+  overflow: hidden;
+  position: relative;
+  user-select: none;
+}
+
+.canvas-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: default;
+}
+
+.canvas-bg {
+  fill: url(#dotgrid);
+}
+
+// ── Edge styles ───────────────────────────────────────────────────────────────
+
+.edge-group {
+  cursor: pointer;
+
+  // Presentation layer painted above the states: transparent to input so it
+  // does not block dragging a state underneath. Handles opt back in below.
+  &--visual {
+    pointer-events: none;
+    .edge-handle-hit { pointer-events: all; }
+  }
+
+  &--selected {
+    .edge-line { stroke: var(--clr-brand-500); stroke-width: 2; }
+    .edge-label { fill: var(--clr-brand-500); font-weight: 600; }
+    .edge-label-bg { fill: var(--clr-brand-50); stroke: var(--clr-brand-400); }
+  }
+}
+
+.edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;      // generous grab zone; invisible, below the states
+  cursor: pointer;
+}
+
+.edge-line {
+  fill: none;
+  stroke: var(--clr-edge);
+  stroke-width: 1.5;
+  transition: stroke var(--transition-fast);
+}
+
+.edge-label-bg {
+  fill: var(--clr-surface-0);
+  stroke: var(--clr-surface-200);
+  stroke-width: 1;
+  rx: 9;
+}
+
+.edge-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  fill: var(--clr-text-600);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.edge-guard {
+  font-family: monospace;
+  font-size: 10px;
+  fill: var(--clr-text-400);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.edge-drawing {
+  fill: none;
+  stroke: var(--clr-edge);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 3;
+  pointer-events: none;
+}
+
+// ── Node styles ───────────────────────────────────────────────────────────────
+.node-group {
+  cursor: grab;
+  &:active { cursor: grabbing; }
+  &:focus { outline: none; }
+
+  &--selected .node-bg { filter: drop-shadow(0 0 0 2px var(--clr-brand-500)); }
+  &--issue    .node-bg { filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.4)); }
+}
+
+.node-bg {
+  fill: var(--clr-surface-0);
+  stroke: var(--clr-surface-200);
+  stroke-width: 1.5;
+  transition: stroke var(--transition-fast), fill var(--transition-fast);
+
+  .node-group:hover & { stroke: var(--clr-brand-400); }
+
+  &--initial {
+    fill: var(--clr-brand-500);
+    stroke: var(--clr-brand-600);
+    .node-group:hover & { fill: var(--clr-brand-400); }
+  }
+
+  &--final {
+    fill: var(--clr-surface-0);
+    stroke: #16a34a;
+    stroke-width: 2.5;
+    .node-group:hover & { fill: #f0fdf4; }
+  }
+
+  // Decision (diamond)
+  &--decision {
+    fill: #fffbeb;
+    stroke: #f59e0b;
+    stroke-width: 1.75;
+    .node-group:hover & { fill: #fef3c7; }
+  }
+
+  // A custom border colour: the fill stays the kind default and only the
+  // outline changes. The colour itself is set inline (style beats CSS here).
+  &--outlined {
+    stroke-width: 2.5;
+  }
+}
+
+.node-ring {
+  fill: none;
+  stroke: var(--clr-brand-500);
+  stroke-width: 1.5;
+  opacity: 0.5;
+}
+
+.node-final-inner {
+  fill: none;
+  stroke: #22c55e;
+  stroke-width: 1.5;
+  opacity: 0.6;
+}
+
+.node-label {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  fill: var(--clr-text-900);
+  text-anchor: middle;
+  dominant-baseline: auto;
+  pointer-events: none;
+
+  &--light { fill: #ffffff; }
+}
+
+.node-kind-badge {
+  font-size: 9px;
+  text-anchor: end;
+  pointer-events: none;
+  fill: rgba(255,255,255,.75);          // on the filled initial state
+
+  &--final { fill: #16a34a; }           // on the white final state
+}
+
+.node-sel-ring {
+  fill: none;
+  stroke: var(--clr-brand-500);
+  stroke-width: 2;
+  stroke-dasharray: none;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.connector-dot {
+  fill: var(--clr-brand-500);
+  stroke: var(--clr-surface-0);
+  stroke-width: 2;
+  cursor: crosshair;
+  animation: connector-appear .1s ease forwards;
+  transition: r var(--transition-fast);
+
+  // The dot a drop would snap to.
+  &--target {
+    fill: #16a34a;
+    r: 7;
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 4px rgba(22, 163, 74, .55));
+  }
+}
+
+@keyframes connector-appear {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.node-edit-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: rgba(255,255,255,0.95);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  color: var(--clr-text-900);
+  border-radius: 4px;
+  padding: 2px 4px;
+  box-sizing: border-box;
+  box-shadow: 0 0 0 2px var(--clr-brand-500);
+}
+
+// ── Context menu ──────────────────────────────────────────────────────────────
+// Visuals come from the global .ctx-menu / .ctx-* utilities (styles/_ui.scss).
+
+// ── Empty hint ────────────────────────────────────────────────────────────────
+.canvas-hint {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+
+  p { font-size: var(--text-sm); color: var(--clr-text-400); line-height: 1.6; }
+  &__sub { font-size: var(--text-xs); margin-top: 4px; }
+}
+
+// ── Per-category test indicators on a state ───────────────────────────────────
+.node-tests {
+  pointer-events: none;
+
+  &__chip {
+    stroke-width: 1;
+
+    &--unit        { fill: #f5f3ff; stroke: #8b5cf6; }
+    &--integration { fill: #fffbeb; stroke: #f59e0b; }
+    &--feature     { fill: var(--clr-brand-50); stroke: var(--clr-brand-400); }
+  }
+
+  &__txt {
+    font-family: var(--font-sans);
+    font-size: 9px;
+    font-weight: 700;
+
+    &--unit        { fill: #6d28d9; }
+    &--integration { fill: #b45309; }
+    &--feature     { fill: var(--clr-brand-600); }
+  }
+
+  // Marks that the category contains at least one negative case.
+  &__neg {
+    fill: var(--clr-danger);
+    stroke: var(--clr-surface-0);
+    stroke-width: 1;
+  }
+}
+
+// On the filled initial state the chips need contrast against blue.
+.node-group:has(.node-bg--initial) .node-tests__chip {
+  fill: rgba(255,255,255,.94);
+}
+
+// ── Quick bar (shape palette) ─────────────────────────────────────────────────
+.canvas-wrap--drop {
+  outline: 2px dashed var(--clr-brand-400);
+  outline-offset: -6px;
+  background: var(--clr-brand-50);
+}
+
+.quickbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px;
+  background: var(--clr-surface-0);
+  border: 1px solid var(--clr-surface-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.qb-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--clr-text-600);
+  cursor: grab;
+  transition: background var(--transition-fast), border-color var(--transition-fast),
+              opacity var(--transition-fast);
+
+  &:hover { background: var(--clr-surface-100); }
+
+  &:active { cursor: grabbing; }
+  &--dragging { opacity: .4; border-color: var(--clr-brand-500); }
+}
+
+.quickbar__hint {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--clr-text-400);
+  text-align: center;
+  padding-bottom: 1px;
+}
+
+.qb-sep {
+  height: 1px;
+  margin: 2px 1px;
+  background: var(--clr-surface-200);
+}
+
+.qb-colors {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 3px;
+  transition: opacity var(--transition-fast);
+
+  &--disabled { opacity: .35; }
+}
+
+// ── Transition endpoint handles ───────────────────────────────────────────────
+// Shown on the selected transition; drag either one onto a different dot.
+// A 16px-radius transparent circle does the catching — a 6px dot alone was
+// too small to grab reliably, especially when zoomed out.
+.edge-handle-hit {
+  fill: transparent;
+  stroke: transparent;
+  cursor: grab;
+
+  &:active { cursor: grabbing; }
+}
+
+.edge-handle {
+  fill: var(--clr-surface-0);
+  stroke: var(--clr-brand-500);
+  stroke-width: 2.5;
+  pointer-events: none;          // the hit circle handles input
+  transition: r var(--transition-fast), fill var(--transition-fast);
+
+  // Grow on hover of the whole group, not just the dot.
+  .edge-handle-group:hover & {
+    r: 8;
+    fill: var(--clr-brand-50);
+  }
+
+  // The arrow end, so source and target are distinguishable.
+  &--target {
+    fill: var(--clr-brand-500);
+    stroke: var(--clr-surface-0);
+    .edge-handle-group:hover & { fill: var(--clr-brand-600); }
+  }
+}
+
+.edge-drawing--reconnect {
+  stroke: var(--clr-brand-500);
+  stroke-dasharray: 5 4;
+}
+
+// ── Group panels ──────────────────────────────────────────────────────────────
+// Painted behind the states; the fill is the group's colour at its own opacity
+// (10% by default) so the states on top stay legible.
+.group-panel {
+  &__bg {
+    cursor: grab;
+    stroke-width: 1.5;
+    stroke-dasharray: 6 4;
+    transition: stroke-width var(--transition-fast), fill-opacity var(--transition-fast);
+  }
+
+  &__bg:active { cursor: grabbing; }
+  &:hover &__bg { stroke-width: 2.5; }
+
+  &--selected &__bg {
+    stroke-width: 2.5;
+    stroke-dasharray: none;
+  }
+
+  &__label {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .01em;
+    cursor: grab;
+    user-select: none;
+  }
+
+  &__count {
+    font-weight: 500;
+    opacity: .7;
+  }
+}
+
+// ── Marquee ───────────────────────────────────────────────────────────────────
+.marquee {
+  fill: var(--clr-brand-500);
+  fill-opacity: .08;
+  stroke: var(--clr-brand-500);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+// ── Selection action bar ──────────────────────────────────────────────────────
+.selbar {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 8px;
+  max-width: calc(100% - 24px);
+  flex-wrap: wrap;
+  justify-content: center;
+  background: var(--clr-surface-0);
+  border: 1px solid var(--clr-surface-200);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .16);
+
+  &__count {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--clr-text-600);
+    padding: 0 7px;
+    white-space: nowrap;
+  }
+
+  &__sep {
+    width: 1px;
+    height: 20px;
+    background: var(--clr-surface-200);
+    margin: 0 3px;
+    flex-shrink: 0;
+  }
+
+  &__colors { display: flex; gap: 3px; }
+
+  &__btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 28px;
+    height: 28px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--clr-text-600);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background var(--transition-fast), color var(--transition-fast);
+
+    &:hover { background: var(--clr-surface-100); color: var(--clr-text-900); }
+
+    &--wide { width: auto; padding: 0 10px; font-size: var(--text-xs); font-weight: 500; }
+
+    &--danger {
+      color: var(--clr-danger);
+      &:hover { background: #fef2f2; }
+    }
+  }
+}
+
+// ── Group resize handles ──────────────────────────────────────────────────────
+.group-handle {
+  fill: var(--clr-surface-0);
+  stroke-width: 2;
+  transition: fill var(--transition-fast);
+
+  &:hover { fill: var(--clr-brand-50); }
+}
+
+// ── Group tools (fit / delete), shown while selected ─────────────────────────
+.group-tools { cursor: pointer; }
+
+.group-tool {
+  &__bg {
+    fill: var(--clr-surface-0);
+    stroke: var(--clr-surface-200);
+    stroke-width: 1;
+    transition: fill var(--transition-fast), stroke var(--transition-fast);
+  }
+
+  &__icon {
+    fill: none;
+    stroke: var(--clr-text-600);
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+  }
+
+  &:hover &__bg { fill: var(--clr-brand-50); stroke: var(--clr-brand-400); }
+  &:hover &__icon { stroke: var(--clr-brand-600); }
+
+  &--danger {
+    &:hover &__bg   { fill: #fef2f2; stroke: #fecaca; }
+    &:hover &__icon { stroke: var(--clr-danger); }
+  }
+}

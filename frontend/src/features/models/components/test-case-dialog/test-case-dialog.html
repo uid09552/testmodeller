@@ -1,0 +1,164 @@
+<div class="tcd-backdrop" (click)="cancel.emit()">
+  <div class="tcd" (click)="$event.stopPropagation()" role="dialog" aria-modal="true"
+       aria-labelledby="tcd-title">
+
+    <!-- ── Header ─────────────────────────────────────────────────────────── -->
+    <header class="tcd__head">
+      <div>
+        <h2 class="tcd__title" id="tcd-title">
+          Edit Test Case
+          @if (ref()) { <code class="tcd__ref">{{ ref() }}</code> }
+        </h2>
+        @if (stateName()) {
+          <p class="tcd__sub">Attached to state &ldquo;{{ stateName() }}&rdquo;</p>
+        }
+      </div>
+      <button class="tcd__close" (click)="cancel.emit()" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </header>
+
+    <div class="tcd__body">
+      <!-- ── Name ─────────────────────────────────────────────────────────── -->
+      <label class="tcd__label" for="tc-name">Scenario name</label>
+      <input id="tc-name" class="tcd__input" [value]="name()"
+             (input)="setName($any($event.target).value)"
+             placeholder="e.g. User submits valid credentials" autofocus />
+
+      <!-- ── Category ─────────────────────────────────────────────────────── -->
+      <label class="tcd__label">Category</label>
+      <div class="seg" role="radiogroup" aria-label="Test category">
+        @for (c of categories; track c) {
+          <button class="seg__btn seg__btn--{{ c }}"
+                  [class.seg__btn--on]="category() === c"
+                  role="radio" [attr.aria-checked]="category() === c"
+                  (click)="setCategory(c)">
+            <span class="seg__dot seg__dot--{{ c }}"></span>
+            {{ categoryLabel(c) }}
+          </button>
+        }
+      </div>
+
+      <!-- ── Polarity ─────────────────────────────────────────────────────── -->
+      <label class="tcd__label">Case type</label>
+      <div class="seg" role="radiogroup" aria-label="Case type">
+        @for (p of polarities; track p) {
+          <button class="seg__btn seg__btn--{{ p }}"
+                  [class.seg__btn--on]="polarity() === p"
+                  role="radio" [attr.aria-checked]="polarity() === p"
+                  (click)="setPolarity(p)">
+            @if (p === 'positive') {
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            } @else {
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            }
+            {{ p === 'positive' ? 'Positive' : 'Negative' }}
+          </button>
+        }
+      </div>
+
+      <!-- ── Gherkin steps ────────────────────────────────────────────────── -->
+      <label class="tcd__label">Gherkin steps</label>
+      <p class="tcd__hint">One step per line — extra lines become <code>And</code>.</p>
+
+      <div class="gherkin">
+        <div class="gherkin__row">
+          <span class="gherkin__kw gherkin__kw--given">Given</span>
+          <textarea class="gherkin__ta" rows="2" [value]="given()"
+                    (input)="setGiven($any($event.target).value)"
+                    placeholder="the precondition"></textarea>
+        </div>
+        <div class="gherkin__row">
+          <span class="gherkin__kw gherkin__kw--when">When</span>
+          <textarea class="gherkin__ta" rows="2" [value]="when()"
+                    (input)="setWhen($any($event.target).value)"
+                    placeholder="the action taken"></textarea>
+        </div>
+        <div class="gherkin__row">
+          <span class="gherkin__kw gherkin__kw--then">Then</span>
+          <textarea class="gherkin__ta" rows="2" [value]="then()"
+                    (input)="setThen($any($event.target).value)"
+                    placeholder="the expected outcome"></textarea>
+        </div>
+      </div>
+
+      <!-- ── Optional links ───────────────────────────────────────────────── -->
+      <label class="tcd__label">Links <span class="tcd__optional">optional</span></label>
+
+      <div class="link-field">
+        <span class="link-field__icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+          </svg>
+        </span>
+        <input class="tcd__input" type="url" inputmode="url"
+               [class.tcd__input--invalid]="implementationInvalid()"
+               placeholder="Implementation — https://github.com/org/repo/…/login.spec.ts"
+               [value]="implementationUrl()"
+               (input)="setImplementationUrl($any($event.target).value)" />
+        @if (implementationHref(); as href) {
+          <a class="link-field__open" [href]="href" target="_blank" rel="noopener noreferrer"
+             title="Open implementation">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </a>
+        }
+      </div>
+      @if (implementationInvalid()) {
+        <p class="tcd__error">Needs a full http(s) URL.</p>
+      }
+
+      <div class="link-field">
+        <span class="link-field__icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7h18M3 12h18M3 17h10"/>
+          </svg>
+        </span>
+        <input class="tcd__input" type="url" inputmode="url"
+               [class.tcd__input--invalid]="backlogInvalid()"
+               placeholder="Backlog item — https://…/browse/TM-123"
+               [value]="backlogUrl()"
+               (input)="setBacklogUrl($any($event.target).value)" />
+        @if (backlogHref(); as href) {
+          <a class="link-field__open" [href]="href" target="_blank" rel="noopener noreferrer"
+             title="Open backlog item">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </a>
+        }
+      </div>
+      @if (backlogInvalid()) {
+        <p class="tcd__error">Needs a full http(s) URL.</p>
+      }
+
+      <!-- ── Live preview ─────────────────────────────────────────────────── -->
+      <label class="tcd__label">Preview</label>
+      <pre class="tcd__preview">{{ preview() }}</pre>
+    </div>
+
+    <!-- ── Actions ────────────────────────────────────────────────────────── -->
+    <footer class="tcd__foot">
+      <button class="dialog__btn dialog__btn--cancel" (click)="cancel.emit()">Cancel</button>
+      <button class="dialog__btn dialog__btn--confirm" [disabled]="!valid()" (click)="onSave()">
+        Save Test Case
+      </button>
+    </footer>
+  </div>
+</div>

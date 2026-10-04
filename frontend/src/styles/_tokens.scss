@@ -1,0 +1,64 @@
+// ── Design tokens ────────────────────────────────────────────────────────────
+// All colours, spacing and typography are defined here as CSS custom properties
+// and SCSS variables so every component imports just this file.
+
+:root {
+  // Brand palette
+  --clr-brand-500: #4f6ef2;
+  --clr-brand-400: #7a92f7;
+  --clr-brand-600: #3550d4;
+  --clr-brand-50:  #eef1fe;
+
+  // Neutral
+  --clr-surface-0:  #ffffff;
+  --clr-surface-50: #f8f9fb;
+  --clr-surface-100:#f1f3f7;
+  --clr-surface-200:#e2e6ef;
+  --clr-text-900:   #111827;
+  --clr-text-600:   #4b5563;
+  --clr-text-400:   #9ca3af;
+
+  // Semantic
+  --clr-danger:  #ef4444;
+  --clr-warning: #f59e0b;
+  --clr-success: #22c55e;
+  --clr-info:    #3b82f6;
+
+  // Canvas edges — must be declared globally; a `:root` block inside a
+  // component stylesheet gets scoped by Angular and silently never matches.
+  --clr-edge:       #374151;
+  --clr-edge-hover: #111827;
+
+  // Shell dimensions
+  --nav-width:       220px;
+  --nav-width-collapsed: 56px;
+  --topbar-height:   52px;
+
+  // Shadows
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / .08);
+  --shadow-md: 0 4px 12px rgba(0 0 0 / .10);
+
+  // Radii
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  // Typography
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-lg:   1.125rem;
+  --text-xl:   1.25rem;
+
+  // Transitions
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+}
+
+// SCSS aliases (for use inside component SCSS)
+$brand:      var(--clr-brand-500);
+$surface-0:  var(--clr-surface-0);
+$surface-50: var(--clr-surface-50);
+$nav-width:  var(--nav-width);
+$topbar-h:   var(--topbar-height);

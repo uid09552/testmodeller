@@ -1,0 +1,97 @@
+<section class="page">
+  <header class="page__head">
+    <div>
+      <h1 class="page__title">AI Proposals</h1>
+      <p class="page__sub">
+        {{ pendingCount() }} proposal{{ pendingCount() === 1 ? '' : 's' }} awaiting review
+      </p>
+    </div>
+  </header>
+
+  <!-- Approval notice — proposals are never auto-applied -->
+  <div class="notice">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/>
+      <line x1="12" y1="8" x2="12.01" y2="8"/>
+    </svg>
+    <span>
+      AI-generated proposals are never saved to your models until you accept them.
+      Review each change before approving.
+    </span>
+  </div>
+
+  <div class="toolbar">
+    <div class="chips">
+      @for (f of ['pending', 'accepted', 'rejected', 'all']; track f) {
+        <button class="chip" [class.chip--active]="filter() === f"
+                (click)="setFilter($any(f))">{{ f }}</button>
+      }
+    </div>
+  </div>
+
+  @if (filtered().length === 0) {
+    <div class="empty">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a7 7 0 0 0-7 7c0 2.4 1.2 4.1 2.3 5.3.6.7.7 1 .7 1.7v1a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-1c0-.7.1-1 .7-1.7C17.8 13.1 19 11.4 19 9a7 7 0 0 0-7-7z"/>
+        <line x1="10" y1="22" x2="14" y2="22"/>
+      </svg>
+      <p>No proposals in this view.</p>
+    </div>
+  } @else {
+    <div class="prop-list">
+      @for (p of filtered(); track p.id) {
+        <article class="prop" [class.prop--open]="p.expanded">
+          <header class="prop__head" (click)="toggle(p.id)">
+            <span class="prop__chevron" [class.prop__chevron--open]="p.expanded">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </span>
+            <span class="prop__kind">{{ kindLabel(p.kind) }}</span>
+            <div class="prop__title-group">
+              <span class="prop__summary">{{ p.summary }}</span>
+              <span class="prop__meta">{{ p.target }} · {{ p.createdAt }}</span>
+            </div>
+            <span class="badge badge--{{ p.status }}">{{ p.status }}</span>
+          </header>
+
+          @if (p.expanded) {
+            <div class="prop__body">
+              <p class="prop__body-label">
+                @if (p.status === 'pending') { Will be added if accepted }
+                @else { Proposed content }
+              </p>
+              <ul class="prop__items">
+                @for (item of p.items; track $index) {
+                  <li>{{ item }}</li>
+                }
+              </ul>
+
+              @if (p.status === 'pending') {
+                <div class="prop__actions">
+                  <button class="btn btn--danger" (click)="reject(p.id)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                    Reject
+                  </button>
+                  <button class="btn btn--primary" (click)="accept(p.id)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    Accept &amp; Apply
+                  </button>
+                </div>
+              }
+            </div>
+          }
+        </article>
+      }
+    </div>
+  }
+</section>

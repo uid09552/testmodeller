@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.angular/
+.dockerignore
+*.md
+# nginx.conf.template is NOT ignored: the runtime stage copies it from the build context.
+# proxy.conf.json is only used by `ng serve`, but excluding it would also hide
+# it from the build context, so it is left in and simply unused.

@@ -1,0 +1,25 @@
+@use 'styles/tokens' as *;
+@use 'styles/page' as *;
+
+:host { @include page-host; }
+
+.page { max-width: 720px; }
+
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  .input { flex: 1; font-family: monospace; font-size: var(--text-xs); }
+  .icon-btn { flex-shrink: 0; border: 1px solid var(--clr-surface-200); width: 32px; height: 32px; }
+}
+
+.key-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--clr-text-600);
+  svg { flex-shrink: 0; color: #16a34a; }
+}
+
+.key-actions { display: flex; gap: 8px; margin-top: 10px; }

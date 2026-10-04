@@ -1,0 +1,141 @@
+@use 'styles/tokens' as *;
+
+// ── Shell sidenav ─────────────────────────────────────────────────────────────
+.sidenav {
+  display: flex;
+  flex-direction: column;
+  width: var(--nav-width);
+  min-width: var(--nav-width);
+  height: 100dvh;
+  background: var(--clr-surface-0);
+  border-right: 1px solid var(--clr-surface-200);
+  overflow: hidden;
+  transition: width var(--transition-base), min-width var(--transition-base);
+  position: relative;
+  flex-shrink: 0;
+
+  &--collapsed {
+    width: var(--nav-width-collapsed);
+    min-width: var(--nav-width-collapsed);
+  }
+}
+
+// ── Brand row ─────────────────────────────────────────────────────────────────
+.sidenav__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  height: var(--topbar-height);
+  text-decoration: none;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.sidenav__brand-icon {
+  flex-shrink: 0;
+  display: flex;
+}
+
+.sidenav__brand-text {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--clr-text-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+// ── Collapse toggle ───────────────────────────────────────────────────────────
+.sidenav__toggle {
+  position: absolute;
+  top: 14px;
+  right: -12px;
+  z-index: 10;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--clr-surface-0);
+  border: 1px solid var(--clr-surface-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--clr-text-600);
+  box-shadow: var(--shadow-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+
+  &:hover {
+    background: var(--clr-brand-50);
+    color: var(--clr-brand-500);
+    border-color: var(--clr-brand-400);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--clr-brand-500);
+    outline-offset: 2px;
+  }
+}
+
+// ── Nav lists ─────────────────────────────────────────────────────────────────
+.sidenav__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 8px 0;
+  overflow: hidden;
+
+  &--bottom {
+    margin-top: auto;
+    padding-bottom: 12px;
+    border-top: 1px solid var(--clr-surface-100);
+    padding-top: 8px;
+  }
+}
+
+// ── Individual nav item ────────────────────────────────────────────────────────
+.sidenav__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  color: var(--clr-text-600);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-decoration: none;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+
+  &:hover {
+    background: var(--clr-surface-100);
+    color: var(--clr-text-900);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--clr-brand-500);
+    outline-offset: -2px;
+  }
+
+  &--active {
+    background: var(--clr-brand-50);
+    color: var(--clr-brand-500);
+
+    .sidenav__item-icon {
+      color: var(--clr-brand-500);
+    }
+  }
+}
+
+.sidenav__item-icon {
+  flex-shrink: 0;
+}
+
+.sidenav__item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

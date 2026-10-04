@@ -1,0 +1,96 @@
+<section class="page">
+  <header class="page__head">
+    <div>
+      <h1 class="page__title">Coverage</h1>
+      <p class="page__sub">State and transition coverage across all models</p>
+    </div>
+  </header>
+
+  <!-- ── Gauges ──────────────────────────────────────────────────────────────── -->
+  <div class="gauges">
+    <div class="gauge-card">
+      <svg class="gauge" viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="gauge__track" cx="50" cy="50" r="38" />
+        <circle class="gauge__fill gauge__fill--{{ band(statePct()) }}"
+                cx="50" cy="50" r="38"
+                [attr.stroke-dasharray]="circumference"
+                [attr.stroke-dashoffset]="dashOffset(statePct())" />
+      </svg>
+      <div class="gauge-card__center">
+        <span class="gauge-card__pct">{{ statePct() }}%</span>
+        <span class="gauge-card__lbl">States</span>
+      </div>
+      <p class="gauge-card__detail">{{ coveredStates() }} / {{ totalStates() }} covered</p>
+    </div>
+
+    <div class="gauge-card">
+      <svg class="gauge" viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="gauge__track" cx="50" cy="50" r="38" />
+        <circle class="gauge__fill gauge__fill--{{ band(transitionPct()) }}"
+                cx="50" cy="50" r="38"
+                [attr.stroke-dasharray]="circumference"
+                [attr.stroke-dashoffset]="dashOffset(transitionPct())" />
+      </svg>
+      <div class="gauge-card__center">
+        <span class="gauge-card__pct">{{ transitionPct() }}%</span>
+        <span class="gauge-card__lbl">Transitions</span>
+      </div>
+      <p class="gauge-card__detail">{{ coveredTransitions() }} / {{ totalTransitions() }} covered</p>
+    </div>
+
+    <div class="summary-tiles">
+      <div class="stat">
+        <div class="stat__label">Models</div>
+        <div class="stat__value">{{ rows().length }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat__label">Fully covered</div>
+        <div class="stat__value" style="color:#16a34a">{{ fullyCovered() }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat__label">Untested</div>
+        <div class="stat__value" style="color:var(--clr-danger)">{{ uncovered() }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Per-model table ─────────────────────────────────────────────────────── -->
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Component</th>
+          <th style="width:150px">State coverage</th>
+          <th style="width:150px">Transition coverage</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (r of rows(); track r.model) {
+          <tr>
+            <td><strong>{{ r.model }}</strong></td>
+            <td style="color:var(--clr-text-400)">{{ r.component }}</td>
+            <td>
+              <div class="bar-cell">
+                <div class="bar">
+                  <div class="bar__fill bar__fill--{{ band(pct(r.statesCovered, r.states)) }}"
+                       [style.width.%]="pct(r.statesCovered, r.states)"></div>
+                </div>
+                <span class="bar-cell__txt">{{ r.statesCovered }}/{{ r.states }}</span>
+              </div>
+            </td>
+            <td>
+              <div class="bar-cell">
+                <div class="bar">
+                  <div class="bar__fill bar__fill--{{ band(pct(r.transitionsCovered, r.transitions)) }}"
+                       [style.width.%]="pct(r.transitionsCovered, r.transitions)"></div>
+                </div>
+                <span class="bar-cell__txt">{{ r.transitionsCovered }}/{{ r.transitions }}</span>
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</section>

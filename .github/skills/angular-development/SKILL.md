@@ -1,6 +1,6 @@
 ---
 name: angular-development
-description: Angular UI development for TestModeller. Use when adding or changing code in frontend/, components, state, routing, scenario editor or test case views.
+description: Angular UI development for TestModeller. Use when adding or changing code in frontend/, components, state, routing, model editor or test case views.
 ---
 
 # Angular development
@@ -9,5 +9,5 @@ description: Angular UI development for TestModeller. Use when adding or changin
 2. Structure: `src/app/{core,shared,features/<feature>}`; lazy-loaded feature routes.
 3. Standalone components, `OnPush`, signals for state, `inject()` for DI.
 4. API access only via typed services in `core/api`.
-5. Scenario editor is a graph/state-machine canvas; keep editor logic in a separate service from rendering.
+5. Model editor is a graph/state-machine canvas; keep editor logic in a separate service from rendering.
 6. Verify: `ng lint && ng test --watch=false && ng build`.

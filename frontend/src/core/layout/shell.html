@@ -1,0 +1,12 @@
+<div class="shell" [class]="shellClass()">
+  <!-- Left navigation -->
+  <tm-sidenav [collapsed]="collapsed()" (toggleCollapse)="toggleNav()" />
+
+  <!-- Right side: topbar + page content -->
+  <div class="shell__body">
+    <tm-topbar (menuClick)="toggleNav()" />
+    <main class="shell__main">
+      <router-outlet />
+    </main>
+  </div>
+</div>

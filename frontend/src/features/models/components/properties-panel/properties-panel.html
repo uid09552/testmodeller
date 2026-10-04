@@ -1,0 +1,422 @@
+<aside class="props" aria-label="Properties">
+
+  <!-- ── Multi-selection ──────────────────────────────────────────────── -->
+  @if (store.hasMultiSelection()) {
+    <header class="props__head">
+      <span class="props__kind-badge">{{ store.selectionCount() }}</span>
+      <h2 class="props__title">Selection</h2>
+      <button class="props__delete" title="Delete selection (Del)"
+              aria-label="Delete selection" (click)="store.deleteSelection()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+        </svg>
+      </button>
+    </header>
+    <div class="props__body">
+      <p class="props__empty-hint">
+        {{ store.selectedNodes().length }} state(s) selected. Use the bar on the
+        canvas to align, colour or group them.
+      </p>
+
+      <label class="props__label">Border colour</label>
+      <div class="color-row">
+        @for (c of colors; track c.name) {
+          <button class="swatch swatch--ring"
+                  [class.swatch--default]="c.value === null"
+                  [style.border-color]="c.value"
+                  [title]="c.value ? c.name + ' border' : 'Default border'"
+                  (click)="store.colorSelection(c.value)">
+            @if (c.value === null) {
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+            }
+          </button>
+        }
+      </div>
+
+      <label class="props__label">Align</label>
+      <div class="align-grid">
+        @for (a of alignActions; track a.mode) {
+          <button class="shape-btn" [title]="a.label" (click)="store.alignSelection(a.mode)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path [attr.d]="a.path" />
+            </svg>
+          </button>
+        }
+      </div>
+
+      <button class="props__wide-btn" [disabled]="store.selectedNodes().length < 2"
+              (click)="store.groupSelection()">
+        Group these states
+      </button>
+    </div>
+  }
+
+  <!-- ── Group properties ─────────────────────────────────────────────────── -->
+  @else if (store.selectedGroup(); as group) {
+    <header class="props__head">
+      <span class="props__kind-badge" [style.background]="group.color + '22'"
+            [style.color]="group.color">group</span>
+      <h2 class="props__title">Group</h2>
+      <button class="props__delete" title="Ungroup (keeps states)"
+              aria-label="Ungroup" (click)="store.ungroup(group.id)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4h6v6H4zM14 14h6v6h-6"/>
+        </svg>
+      </button>
+    </header>
+    <div class="props__body">
+      <label class="props__label" for="group-label">Name</label>
+      <input id="group-label" class="props__input" [value]="group.label"
+             (input)="store.updateGroup(group.id, { label: $any($event.target).value })" />
+
+      <label class="props__label">Colour</label>
+      <div class="color-row">
+        @for (c of groupColors; track c) {
+          <button class="swatch"
+                  [class.swatch--on]="group.color === c"
+                  [style.background]="c"
+                  (click)="setGroupColor(group.id, c)"></button>
+        }
+      </div>
+
+      <label class="props__label" for="group-opacity">
+        Fill opacity <span class="props__value">{{ (group.opacity * 100).toFixed(0) }}%</span>
+      </label>
+      <input id="group-opacity" class="props__range" type="range"
+             min="0" max="60" step="5"
+             [value]="group.opacity * 100"
+             (input)="setGroupOpacity(group.id, $any($event.target).value)" />
+      <p class="props__hint">Kept low so the states on top stay readable.</p>
+
+      <div class="props__meta">
+        <span class="props__meta-label">Size</span>
+        <code class="props__meta-val">{{ group.w.toFixed(0) }} × {{ group.h.toFixed(0) }}</code>
+      </div>
+      <div class="props__meta">
+        <span class="props__meta-label">States</span>
+        <code class="props__meta-val">{{ store.groupMemberCount(group) }}</code>
+      </div>
+
+      <button class="props__wide-btn" (click)="selectGroupMembers(group)">
+        Select members
+      </button>
+      <button class="props__wide-btn" (click)="store.fitGroup(group.id)">
+        Fit to contents
+      </button>
+      <button class="props__wide-btn" (click)="store.ungroup(group.id)">
+        Delete group <span class="props__value">keeps states</span>
+      </button>
+      <button class="props__wide-btn props__wide-btn--danger"
+              (click)="store.deleteGroupWithNodes(group.id)">
+        Delete group &amp; states
+      </button>
+    </div>
+  }
+
+  <!-- ── Node properties ──────────────────────────────────────────────── -->
+  @else if (store.selectedNode(); as node) {
+    <header class="props__head">
+      <span class="props__kind-badge"
+            [class.props__kind-badge--initial]="node.kind === 'initial'"
+            [class.props__kind-badge--final]="node.kind === 'final'">
+        {{ node.kind }}
+      </span>
+      <h2 class="props__title">State</h2>
+      <button class="props__delete" title="Delete state (Del)" aria-label="Delete state"
+              (click)="store.removeNode(node.id)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+        </svg>
+      </button>
+    </header>
+
+    <div class="props__body">
+      <label class="props__label" for="node-label">Label</label>
+      <input id="node-label" class="props__input"
+             [value]="getNodeLabel(node)"
+             (change)="setNodeLabel(node, $any($event.target).value)"
+             placeholder="State name" />
+
+      <label class="props__label" for="node-kind">Kind</label>
+      <select id="node-kind" class="props__select"
+              [value]="getNodeKind(node)"
+              (change)="setNodeKind(node, $any($event.target).value)">
+        <option value="initial">Initial</option>
+        <option value="regular">Regular</option>
+        <option value="decision">Decision</option>
+        <option value="final">Final</option>
+      </select>
+
+      <label class="props__label">Shape</label>
+      <div class="shape-row" role="radiogroup" aria-label="Shape">
+        @for (sh of shapes; track sh.value) {
+          <button class="shape-btn" [class.shape-btn--on]="node.shape === sh.value"
+                  role="radio" [attr.aria-checked]="node.shape === sh.value"
+                  [title]="sh.label"
+                  (click)="store.updateNode(node.id, { shape: sh.value })">
+            @switch (sh.value) {
+              @case ('circle') {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/></svg>
+              }
+              @case ('diamond') {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><polygon points="12,4 20,12 12,20 4,12"/></svg>
+              }
+              @default {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="7" width="18" height="10" rx="2"/></svg>
+              }
+            }
+          </button>
+        }
+      </div>
+
+      <label class="props__label">Border colour</label>
+      <div class="color-row">
+        @for (c of colors; track c.name) {
+          <button class="swatch swatch--ring"
+                  [class.swatch--default]="c.value === null"
+                  [class.swatch--on]="(node.color ?? null) === c.value"
+                  [style.border-color]="c.value"
+                  [title]="c.value ? c.name + ' border' : 'Default border'"
+                  (click)="store.updateNode(node.id, { color: c.value })">
+            @if (c.value === null) {
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+            }
+          </button>
+        }
+      </div>
+
+      <label class="props__label" for="node-desc">Description</label>
+      <textarea id="node-desc" class="props__textarea" rows="3"
+                placeholder="Optional description…"
+                [value]="getNodeDesc(node)"
+                (input)="setNodeDesc(node, $any($event.target).value)"></textarea>
+
+      <!-- ── Test cases attached to this state ── -->
+      <div class="props__section-head">
+        <span class="props__label" style="margin:0">
+          Test Cases
+          @if (node.tests.length) { <span class="tc-count">{{ node.tests.length }}</span> }
+        </span>
+        <button class="props__add-btn" title="Add test case"
+                (click)="store.addTest(node.id)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+      </div>
+
+      @if (node.tests.length === 0) {
+        <p class="props__empty-hint">
+          No test cases. Right-click the state on the canvas, or use + above.
+        </p>
+      } @else {
+        <ul class="tc-list" role="list">
+          @for (test of node.tests; track test.id) {
+            <li class="tc-row"
+                (dblclick)="openEditor(node.id, test.id)"
+                (contextmenu)="openTestCtx($event, node.id, test.id)">
+              <div class="tc-row__top">
+                <code class="tc-row__ref">{{ store.testRef(test) }}</code>
+                <span class="cat-pill cat-pill--sm cat-pill--{{ test.category }}" [title]="test.category">
+                  <span class="cat-pill__dot"></span>{{ test.category }}
+                </span>
+                <span class="pol-pill pol-pill--sm pol-pill--{{ test.polarity }}"
+                      [title]="test.polarity + ' case'">
+                  {{ test.polarity === 'positive' ? '+' : '−' }}
+                </span>
+                @if (implHref(test); as href) {
+                  <a class="tc-link" [href]="href" target="_blank" rel="noopener noreferrer"
+                     (click)="$event.stopPropagation()" title="Implementation">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                    </svg>
+                  </a>
+                }
+                @if (backlogHref(test); as href) {
+                  <a class="tc-link tc-link--backlog" [href]="href" target="_blank"
+                     rel="noopener noreferrer" (click)="$event.stopPropagation()" title="Backlog item">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M3 7h18M3 12h18M3 17h10"/>
+                    </svg>
+                  </a>
+                }
+
+              </div>
+              <span class="tc-row__name">{{ test.name }}</span>
+              <span class="tc-row__steps">{{ gherkinSummary(test) }}</span>
+              <span class="tc-row__actions">
+                <button class="icon-btn" title="Edit in overlay"
+                        (click)="openEditor(node.id, test.id)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+                <button class="icon-btn icon-btn--danger" title="Remove"
+                        (click)="store.removeTest(node.id, test.id)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  </svg>
+                </button>
+              </span>
+            </li>
+          }
+        </ul>
+      }
+
+      <div class="props__meta">
+        <span class="props__meta-label">ID</span>
+        <code class="props__meta-val">{{ node.id.slice(0, 8) }}…</code>
+      </div>
+    </div>
+  }
+
+  <!-- ── Edge properties ──────────────────────────────────────────────── -->
+  @else if (store.selectedEdge(); as edge) {
+    <header class="props__head">
+      <span class="props__kind-badge props__kind-badge--edge">transition</span>
+      <h2 class="props__title">Transition</h2>
+      <button class="props__delete" title="Delete transition (Del)" aria-label="Delete transition"
+              (click)="store.removeEdge(edge.id)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+        </svg>
+      </button>
+    </header>
+
+    <div class="props__body">
+      <div class="props__from-to">
+        <span class="props__ft-node">{{ nodeName(edge.fromId) }}</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+        </svg>
+        <span class="props__ft-node">{{ nodeName(edge.toId) }}</span>
+      </div>
+
+      <label class="props__label" for="edge-label">Event / Label</label>
+      <input id="edge-label" class="props__input"
+             [value]="getEdgeLabel(edge)"
+             (change)="setEdgeLabel(edge, $any($event.target).value)"
+             placeholder="Transition name" />
+
+      <label class="props__label" for="edge-guard">
+        Guard <span class="props__hint">[boolean expression]</span>
+      </label>
+      <input id="edge-guard" class="props__input props__input--mono"
+             [value]="getEdgeGuard(edge)"
+             (input)="setEdgeGuard(edge, $any($event.target).value)"
+             placeholder="e.g. x > 0" />
+
+      <label class="props__label" for="edge-action">
+        Action <span class="props__hint">assignment</span>
+      </label>
+      <input id="edge-action" class="props__input props__input--mono"
+             [value]="getEdgeAction(edge)"
+             (input)="setEdgeAction(edge, $any($event.target).value)"
+             placeholder="e.g. count := count + 1" />
+
+      <div class="props__meta">
+        <span class="props__meta-label">ID</span>
+        <code class="props__meta-val">{{ edge.id.slice(0, 8) }}…</code>
+      </div>
+    </div>
+  }
+
+  <!-- ── Model properties (nothing selected) ──────────────────────────── -->
+  @else {
+    <header class="props__head">
+      <h2 class="props__title">Model</h2>
+      <span class="props__status-badge"
+            [class.props__status-badge--approved]="store.modelStatus() === 'approved'"
+            [class.props__status-badge--review]="store.modelStatus() === 'review'">
+        {{ store.modelStatus() }}
+      </span>
+    </header>
+
+    <div class="props__body">
+      <label class="props__label" for="model-name">Name</label>
+      <input id="model-name" class="props__input"
+             [value]="store.name()"
+             (change)="store.setName($any($event.target).value)"
+             placeholder="Model name" />
+
+      <label class="props__label" for="model-desc">Description</label>
+      <textarea id="model-desc" class="props__textarea" rows="3"
+                placeholder="Describe this model…"
+                [value]="store.description()"
+                (input)="store.setDescription($any($event.target).value)"></textarea>
+
+      <label class="props__label" for="model-status">Status</label>
+      <select id="model-status" class="props__select"
+              [value]="store.modelStatus()"
+              (change)="store.setStatus($any($event.target).value)">
+        @for (s of statusOptions; track s) {
+          <option [value]="s">{{ s }}</option>
+        }
+      </select>
+
+      <!-- Stats -->
+      <div class="props__stats">
+        <div class="props__stat">
+          <span class="props__stat-val">{{ store.nodes().length }}</span>
+          <span class="props__stat-label">States</span>
+        </div>
+        <div class="props__stat">
+          <span class="props__stat-val">{{ store.edges().length }}</span>
+          <span class="props__stat-label">Transitions</span>
+        </div>
+        <div class="props__stat">
+          <span class="props__stat-val" [class.props__stat-val--error]="store.errorCount() > 0">
+            {{ store.errorCount() }}
+          </span>
+          <span class="props__stat-label">Errors</span>
+        </div>
+      </div>
+
+      <!-- Hint -->
+      <p class="props__tip">Select a state or transition to edit its properties.</p>
+    </div>
+  }
+
+
+  <!-- ── Test-case context menu ───────────────────────────────────────── -->
+  @if (testCtx(); as ctx) {
+    <div class="ctx-menu" role="menu" [style.left.px]="ctx.x" [style.top.px]="ctx.y">
+      <div class="ctx-header">Test Case</div>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" role="menuitem" (mousedown)="editFromCtx()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Edit
+      </button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item ctx-item--danger" role="menuitem" (mousedown)="removeFromCtx()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        Remove
+      </button>
+    </div>
+  }
+
+  <!-- ── Gherkin overlay editor ───────────────────────────────────────── -->
+  @if (editing(); as ed) {
+    <tm-test-case-dialog
+      [test]="ed.test"
+      [ref]="store.testRef(ed.test)"
+      [stateName]="ed.nodeLabel"
+      (save)="saveTest($event)"
+      (cancel)="closeEditor()" />
+  }
+</aside>

@@ -1,0 +1,150 @@
+<!-- ── Editor breadcrumb / context nav ──────────────────────────────────────── -->
+<nav class="editor-breadcrumb" aria-label="Model context">
+  <span class="editor-breadcrumb__item">
+    <a routerLink="/explorer">Projects</a>
+  </span>
+  <span class="editor-breadcrumb__sep">›</span>
+  <span class="editor-breadcrumb__item">
+    <a routerLink="/explorer">My Project</a>
+  </span>
+  <span class="editor-breadcrumb__sep">›</span>
+  <span class="editor-breadcrumb__item">
+    <a routerLink="/explorer">{{ featureName() ?? 'Auth Flow' }}</a>
+  </span>
+  <span class="editor-breadcrumb__sep">›</span>
+  <span class="editor-breadcrumb__current">{{ store.name() }}</span>
+
+  <span class="editor-breadcrumb__spacer"></span>
+
+  @if (savedAt(); as ts) {
+    @if (!store.dirty()) {
+      <span class="editor-breadcrumb__saved">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Saved
+      </span>
+    }
+  }
+
+  <button class="panel-toggle" [class.panel-toggle--active]="bottomCollapsed()"
+          (click)="toggleBottom()"
+          [title]="bottomCollapsed() ? 'Show bottom panel' : 'Hide bottom panel'"
+          [attr.aria-pressed]="bottomCollapsed()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="15" x2="21" y2="15"/>
+    </svg>
+  </button>
+  <button class="panel-toggle" [class.panel-toggle--active]="propsCollapsed()"
+          (click)="toggleProps()"
+          [title]="propsCollapsed() ? 'Show properties' : 'Hide properties'"
+          [attr.aria-pressed]="propsCollapsed()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/>
+    </svg>
+  </button>
+
+  <button class="editor-breadcrumb__btn editor-breadcrumb__btn--save"
+          [disabled]="!store.dirty() || saving()"
+          (click)="save()">
+    @if (saving()) {
+      <svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+        <path d="M21 12a9 9 0 1 1-6.22-8.56"/>
+      </svg>
+      Saving…
+    } @else {
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+        <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+      </svg>
+      Save
+    }
+  </button>
+
+  <button class="editor-breadcrumb__btn editor-breadcrumb__btn--delete"
+          title="Delete model" (click)="requestDelete()">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="3 6 5 6 21 6"/>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+      <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+    </svg>
+    Delete
+  </button>
+</nav>
+
+<!-- ── Editor grid ───────────────────────────────────────────────────────────── -->
+<div class="editor-layout"
+     [class.editor-layout--props-collapsed]="propsCollapsed()"
+     [class.editor-layout--bottom-collapsed]="bottomCollapsed()"
+     [style.--props-w]="propsWidthPx()"
+     [style.--bottom-h]="bottomHeightPx()">
+  <!-- Canvas (toolbar + SVG) -->
+  <div class="editor-canvas">
+    <tm-canvas (revealProperties)="propsCollapsed.set(false)" />
+  </div>
+
+  <!-- Properties panel (right column) -->
+  <tm-properties-panel class="editor-props" />
+
+  <!-- Bottom panel (scenario / test cases / validation) -->
+  <div class="editor-bottom">
+    <tm-bottom-panel />
+  </div>
+
+  <!-- ── Splitters ─────────────────────────────────────────────────────────── -->
+  @if (!propsCollapsed()) {
+    <div class="splitter splitter--v"
+         [style.right.px]="propsWidth()"
+         [style.bottom.px]="bottomCollapsed() ? 37 : bottomHeight()"
+         (mousedown)="startResizeProps($event)"
+         (dblclick)="resetPropsWidth()"
+         role="separator" aria-orientation="vertical"
+         aria-label="Resize properties panel"
+         title="Drag to resize · double-click to reset">
+      <span class="splitter__grip"></span>
+    </div>
+  }
+
+  @if (!bottomCollapsed()) {
+    <div class="splitter splitter--h"
+         [style.bottom.px]="bottomHeight()"
+         (mousedown)="startResizeBottom($event)"
+         (dblclick)="resetBottomHeight()"
+         role="separator" aria-orientation="horizontal"
+         aria-label="Resize bottom panel"
+         title="Drag to resize · double-click to reset">
+      <span class="splitter__grip"></span>
+    </div>
+  }
+</div>
+
+<!-- ── Delete confirmation ──────────────────────────────────────────────────── -->
+@if (confirmDelete()) {
+  <div class="dialog-backdrop" (click)="cancelDelete()">
+    <div class="dialog dialog--confirm" (click)="$event.stopPropagation()">
+      <div class="dialog__icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+      <h3 class="dialog__title">Delete this model?</h3>
+      <p class="dialog__text">
+        <strong>{{ store.name() }}</strong> and its
+        {{ store.nodes().length }} states / {{ store.edges().length }} transitions
+        will be permanently removed. This cannot be undone.
+      </p>
+      <div class="dialog__actions">
+        <button class="dialog__btn dialog__btn--cancel" (click)="cancelDelete()">Cancel</button>
+        <button class="dialog__btn dialog__btn--danger" (click)="confirmDeleteModel()">Delete Model</button>
+      </div>
+    </div>
+  </div>
+}

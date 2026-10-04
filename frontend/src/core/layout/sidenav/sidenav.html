@@ -1,0 +1,76 @@
+<nav class="sidenav" [class.sidenav--collapsed]="collapsed()" aria-label="Main navigation">
+
+  <!-- Logo / wordmark -->
+  <a class="sidenav__brand" routerLink="/" aria-label="TestModeller home">
+    <span class="sidenav__brand-icon" aria-hidden="true">
+      <!-- TM monogram -->
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="28" height="28" rx="6" fill="var(--clr-brand-500)" />
+        <path d="M6 9h16M14 9v10M8 9v10h2V14l4 5 4-5v5h2V9" stroke="#fff" stroke-width="1.8"
+          stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </span>
+    @if (!collapsed()) {
+      <span class="sidenav__brand-text">TestModeller</span>
+    }
+  </a>
+
+  <!-- Collapse toggle (chevron) -->
+  <button class="sidenav__toggle" (click)="toggleCollapse.emit()"
+    [attr.aria-label]="collapsed() ? 'Expand navigation' : 'Collapse navigation'">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      @if (collapsed()) {
+        <path d="M9 18l6-6-6-6" />
+      } @else {
+        <path d="M15 18l-6-6 6-6" />
+      }
+    </svg>
+  </button>
+
+  <!-- Primary nav items -->
+  <ul class="sidenav__list" role="list">
+    @for (item of navItems; track item.route) {
+      <li>
+        <a class="sidenav__item"
+           [routerLink]="item.route"
+           routerLinkActive="sidenav__item--active"
+           [routerLinkActiveOptions]="{ exact: !!item.exact }"
+           [attr.title]="collapsed() ? item.label : null"
+           [attr.aria-label]="item.label">
+          <svg class="sidenav__item-icon" width="20" height="20" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path [attr.d]="item.icon" />
+          </svg>
+          @if (!collapsed()) {
+            <span class="sidenav__item-label">{{ item.label }}</span>
+          }
+        </a>
+      </li>
+    }
+  </ul>
+
+  <!-- Bottom utility items (Settings) -->
+  <ul class="sidenav__list sidenav__list--bottom" role="list">
+    @for (item of bottomItems; track item.route) {
+      <li>
+        <a class="sidenav__item"
+           [routerLink]="item.route"
+           routerLinkActive="sidenav__item--active"
+           [attr.title]="collapsed() ? item.label : null"
+           [attr.aria-label]="item.label">
+          <svg class="sidenav__item-icon" width="20" height="20" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path [attr.d]="item.icon" />
+          </svg>
+          @if (!collapsed()) {
+            <span class="sidenav__item-label">{{ item.label }}</span>
+          }
+        </a>
+      </li>
+    }
+  </ul>
+
+</nav>

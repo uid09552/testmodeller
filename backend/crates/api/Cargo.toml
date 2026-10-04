@@ -3,9 +3,36 @@ name = "tm-api"
 version.workspace = true
 edition.workspace = true
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "testmodeller"
+path = "src/main.rs"
+
 [dependencies]
 tm-domain = { path = "../domain" }
 tm-generation = { path = "../generation" }
 tm-storage = { path = "../storage" }
 tm-ai = { path = "../ai" }
+reqwest.workspace = true
+serde_urlencoded = "0.7"
 tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+axum.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+thiserror.workspace = true
+testcontainers.workspace = true
+testcontainers-modules.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+http-body-util.workspace = true
+async-trait.workspace = true

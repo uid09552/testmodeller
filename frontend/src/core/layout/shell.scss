@@ -1,0 +1,29 @@
+@use 'styles/tokens' as *;
+
+.shell {
+  display: flex;
+  height: 100dvh;
+  overflow: hidden;
+  transition: grid-template-columns var(--transition-base);
+}
+
+// ── Body (topbar + main area) ─────────────────────────────────────────────────
+.shell__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0; // prevent flex blowout
+  overflow: hidden;
+}
+
+// Every routed page owns its own padding (.page) and scrolling (page-host
+// mixin / :host flex rules), so this is a plain full-bleed flex column.
+.shell__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--clr-surface-50);
+}

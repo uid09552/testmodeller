@@ -1,0 +1,4 @@
+@use 'styles/tokens' as *;
+@use 'styles/page' as *;
+
+:host { @include page-host; }

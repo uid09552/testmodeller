@@ -1,0 +1,153 @@
+<section class="page">
+  <header class="page__head">
+    <div>
+      <h1 class="page__title">Settings</h1>
+      <p class="page__sub">Workspace preferences and AI configuration</p>
+    </div>
+  </header>
+
+  <!-- ── AI provider ───────────────────────────────────────────────────────── -->
+  <div class="form-section">
+    <h2 class="form-section__title">AI Integration</h2>
+    <p class="form-section__desc">
+      Used for generating model and test-case proposals. All proposals require your
+      approval before anything is saved.
+    </p>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-row__text">Enable AI features</div>
+        <div class="toggle-row__hint">Turns proposal generation on or off globally</div>
+      </div>
+      <button class="switch" [class.switch--on]="aiEnabled()"
+              (click)="aiEnabled.set(!aiEnabled())"
+              [attr.aria-pressed]="aiEnabled()" aria-label="Enable AI features"></button>
+    </div>
+
+    <div class="field" style="margin-top:16px">
+      <label class="field__label" for="provider">Provider</label>
+      <select id="provider" class="select" [value]="provider()"
+              (change)="provider.set($any($event.target).value)">
+        <option value="anthropic">Anthropic</option>
+        <option value="openai">OpenAI</option>
+        <option value="none">None (disabled)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label class="field__label" for="model">Model</label>
+      <input id="model" class="input" [value]="model()"
+             (input)="model.set($any($event.target).value)" />
+      <p class="field__hint">Default: claude-opus-5-5</p>
+    </div>
+
+    <div class="field">
+      <label class="field__label" for="apikey">API Key</label>
+      <div class="key-row">
+        <input id="apikey" class="input"
+               [type]="keyVisible() ? 'text' : 'password'"
+               placeholder="sk-ant-…"
+               [value]="apiKey()"
+               (input)="apiKey.set($any($event.target).value)"
+               autocomplete="off" spellcheck="false" />
+        <button class="icon-btn" (click)="toggleKeyVisible()"
+                [attr.aria-label]="keyVisible() ? 'Hide key' : 'Show key'">
+          @if (keyVisible()) {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+              <line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+          } @else {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          }
+        </button>
+      </div>
+      <p class="field__hint key-hint">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        Held in memory only — never written to disk, the database, or logs.
+      </p>
+      <div class="key-actions">
+        <button class="btn btn--primary" [disabled]="!apiKey()" (click)="saveKey()">
+          @if (keySaved()) { Saved } @else { Save Key }
+        </button>
+        <button class="btn btn--secondary" [disabled]="!apiKey()" (click)="clearKey()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Generation defaults ───────────────────────────────────────────────── -->
+  <div class="form-section">
+    <h2 class="form-section__title">Test Generation Defaults</h2>
+    <p class="form-section__desc">Applied when generating test cases from a model.</p>
+
+    <div class="field">
+      <label class="field__label" for="criterion">Coverage criterion</label>
+      <select id="criterion" class="select" [value]="criterion()"
+              (change)="criterion.set($any($event.target).value)">
+        <option value="all-states">All states</option>
+        <option value="all-transitions">All transitions</option>
+        <option value="all-paths">All paths</option>
+      </select>
+      <p class="field__hint">All transitions is the usual default — balances size and coverage.</p>
+    </div>
+
+    <div class="field">
+      <label class="field__label" for="maxpath">Max path length</label>
+      <input id="maxpath" class="input" type="number" min="1" max="100"
+             [value]="maxPathLength()"
+             (input)="maxPathLength.set(+$any($event.target).value)" />
+      <p class="field__hint">Caps traversal depth so all-paths generation terminates.</p>
+    </div>
+
+    <div class="field">
+      <label class="field__label" for="seed">Random seed</label>
+      <input id="seed" class="input" placeholder="Leave empty for non-deterministic"
+             [value]="seed()" (input)="seed.set($any($event.target).value)" />
+      <p class="field__hint">Set a seed to make generation reproducible.</p>
+    </div>
+  </div>
+
+  <!-- ── Editor preferences ────────────────────────────────────────────────── -->
+  <div class="form-section">
+    <h2 class="form-section__title">Editor</h2>
+    <p class="form-section__desc">Behaviour of the model canvas.</p>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-row__text">Validate while editing</div>
+        <div class="toggle-row__hint">Show errors and warnings as you change the model</div>
+      </div>
+      <button class="switch" [class.switch--on]="autoValidate()"
+              (click)="autoValidate.set(!autoValidate())"
+              [attr.aria-pressed]="autoValidate()" aria-label="Validate while editing"></button>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-row__text">Snap to grid</div>
+        <div class="toggle-row__hint">Align states to the dot grid when dragging</div>
+      </div>
+      <button class="switch" [class.switch--on]="snapToGrid()"
+              (click)="snapToGrid.set(!snapToGrid())"
+              [attr.aria-pressed]="snapToGrid()" aria-label="Snap to grid"></button>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-row__text">Confirm before deleting</div>
+        <div class="toggle-row__hint">Ask before removing states, transitions or models</div>
+      </div>
+      <button class="switch" [class.switch--on]="confirmDeletes()"
+              (click)="confirmDeletes.set(!confirmDeletes())"
+              [attr.aria-pressed]="confirmDeletes()" aria-label="Confirm before deleting"></button>
+    </div>
+  </div>
+</section>

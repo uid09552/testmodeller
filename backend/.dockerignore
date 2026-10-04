@@ -1,0 +1,5 @@
+target/
+**/target/
+Dockerfile
+.dockerignore
+*.md

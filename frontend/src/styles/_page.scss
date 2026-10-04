@@ -1,0 +1,12 @@
+// ── Component-importable helpers ──────────────────────────────────────────────
+// Only mixins live here. Plain CSS rules must NOT go in this file: component
+// stylesheets `@use` it, and `@use` inlines rules into every consumer, which
+// duplicates them per component and blows the per-component style budget.
+// Shared utility classes belong in styles/_ui.scss (global, emitted once).
+
+@mixin page-host {
+  display: block;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}

@@ -1,0 +1,264 @@
+<div class="bottom-panel">
+
+  <!-- Tab strip -->
+  <div class="bottom-panel__tabs" role="tablist" aria-label="Editor panels">
+
+    <button class="bp-tab" role="tab"
+            [class.bp-tab--active]="activeTab() === 'scenario'"
+            [attr.aria-selected]="activeTab() === 'scenario'"
+            id="tab-scenario"
+            (click)="activeTab.set('scenario')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+      </svg>
+      Scenario Description
+    </button>
+
+    <button class="bp-tab" role="tab"
+            [class.bp-tab--active]="activeTab() === 'testcases'"
+            [attr.aria-selected]="activeTab() === 'testcases'"
+            id="tab-testcases"
+            (click)="activeTab.set('testcases')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2"/>
+      </svg>
+      Test Cases
+    </button>
+
+    <button class="bp-tab" role="tab"
+            [class.bp-tab--active]="activeTab() === 'validation'"
+            [attr.aria-selected]="activeTab() === 'validation'"
+            id="tab-validation"
+            (click)="activeTab.set('validation')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      Validation
+      @if (store.errorCount() > 0) {
+        <span class="bp-badge bp-badge--error">{{ store.errorCount() }}</span>
+      } @else if (store.warningCount() > 0) {
+        <span class="bp-badge bp-badge--warning">{{ store.warningCount() }}</span>
+      }
+    </button>
+
+  </div>
+
+  <!-- Tab panels -->
+  <div class="bottom-panel__body">
+
+    <!-- ── Scenario Description ─────────────────────────────────────── -->
+    @if (activeTab() === 'scenario') {
+      <div class="bp-pane" role="tabpanel" aria-labelledby="tab-scenario">
+        <div class="bp-pane__header">
+          <span class="bp-pane__label">Feature scenario description (Markdown supported)</span>
+        </div>
+        <textarea class="bp-scenario-input"
+                  placeholder="Describe the feature scenarios in plain language. This text is exported with the test cases as the Gherkin feature header…"
+                  [value]="store.scenarioDesc()"
+                  (input)="store.setScenarioDesc($any($event.target).value)"
+                  aria-label="Scenario description"
+                  spellcheck="true"></textarea>
+      </div>
+    }
+
+    <!-- ── Test Cases ────────────────────────────────────────────────── -->
+    @if (activeTab() === 'testcases') {
+      <div class="bp-pane" role="tabpanel" aria-labelledby="tab-testcases">
+        <div class="bp-pane__header">
+          <span class="bp-pane__label">
+            {{ store.allTests().length }} test case{{ store.allTests().length === 1 ? '' : 's' }}
+            across {{ statesWithTests() }} state{{ statesWithTests() === 1 ? '' : 's' }}
+          </span>
+          <div class="bp-pane__actions">
+            <!-- Category filters -->
+            @for (c of categoryFilters; track c) {
+              <button class="bp-chip bp-chip--{{ c }}"
+                      [class.bp-chip--on]="categoryFilter() === c"
+                      (click)="categoryFilter.set(c)">{{ c }}</button>
+            }
+            <button class="bp-action-btn" (click)="exportGherkin()" aria-label="Export Gherkin">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Export
+            </button>
+          </div>
+        </div>
+
+        @if (visibleTests().length === 0) {
+          <div class="bp-testcases-empty">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+                 style="color: var(--clr-text-400); margin-bottom: 8px">
+              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4"/>
+            </svg>
+            @if (store.allTests().length === 0) {
+              <p>No test cases yet.</p>
+              <p class="bp-testcases-empty__sub">
+                Right-click a state on the canvas and choose <strong>Add Test Case</strong>.
+              </p>
+            } @else {
+              <p>No {{ categoryFilter() }} test cases.</p>
+            }
+          </div>
+        } @else {
+          <div class="bp-tc-scroll">
+            <table class="bp-tc-table">
+              <thead>
+                <tr>
+                  <th style="width:120px">ID</th>
+                  <th>Scenario</th>
+                  <th style="width:130px">State</th>
+                  <th style="width:104px">Category</th>
+                  <th style="width:84px">Type</th>
+                  <th style="width:58px">Links</th>
+                  <th style="width:56px"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of visibleTests(); track row.test.id) {
+                  <tr (click)="focusState(row.nodeId)"
+                      (dblclick)="editTest(row.nodeId, row.test.id)"
+                      title="Double-click to edit">
+                    <td><code class="bp-tc-ref">{{ row.ref }}</code></td>
+                    <td>
+                      <div class="bp-tc-name">{{ row.test.name }}</div>
+                      <div class="bp-tc-steps">{{ gherkinSummary(row.test) }}</div>
+                    </td>
+                    <td class="bp-tc-state">{{ row.nodeLabel }}</td>
+                    <td>
+                      <span class="cat-pill cat-pill--{{ row.test.category }}">
+                        <span class="cat-pill__dot"></span>{{ row.test.category }}
+                      </span>
+                    </td>
+                    <td>
+                      <span class="pol-pill pol-pill--{{ row.test.polarity }}">
+                        {{ row.test.polarity === 'positive' ? 'Positive' : 'Negative' }}
+                      </span>
+                    </td>
+                    <td>
+                      <div class="tc-links">
+                        @if (implHref(row.test); as href) {
+                          <a class="tc-link" [href]="href" target="_blank" rel="noopener noreferrer"
+                             (click)="$event.stopPropagation()" title="Implementation">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                              <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                            </svg>
+                          </a>
+                        }
+                        @if (backlogHref(row.test); as href) {
+                          <a class="tc-link tc-link--backlog" [href]="href" target="_blank"
+                             rel="noopener noreferrer" (click)="$event.stopPropagation()"
+                             title="Backlog item">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M3 7h18M3 12h18M3 17h10"/>
+                            </svg>
+                          </a>
+                        }
+                        @if (!implHref(row.test) && !backlogHref(row.test)) {
+                          <span class="tc-links__none" title="No links set">—</span>
+                        }
+                      </div>
+                    </td>
+                    <td>
+                      <div class="bp-tc-actions">
+                        <button class="icon-btn" title="Edit"
+                                (click)="$event.stopPropagation(); editTest(row.nodeId, row.test.id)">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                        <button class="icon-btn icon-btn--danger" title="Remove"
+                                (click)="$event.stopPropagation(); store.removeTest(row.nodeId, row.test.id)">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    }
+
+    <!-- ── Validation ────────────────────────────────────────────────── -->
+    @if (activeTab() === 'validation') {
+      <div class="bp-pane" role="tabpanel" aria-labelledby="tab-validation">
+        <div class="bp-pane__header">
+          <span class="bp-pane__label">
+            Model validation — {{ store.issues().length }} issue{{ store.issues().length === 1 ? '' : 's' }}
+          </span>
+        </div>
+
+        @if (store.issues().length === 0) {
+          <div class="bp-validation-ok">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            Model is valid
+          </div>
+        } @else {
+          <ul class="bp-issue-list" role="list">
+            @for (issue of store.issues(); track issue.code + issue.elementId) {
+              <li class="bp-issue"
+                  [class.bp-issue--error]="issue.severity === 'error'"
+                  [class.bp-issue--warning]="issue.severity === 'warning'"
+                  [attr.aria-label]="issue.severity + ': ' + issue.message">
+                @if (issue.severity === 'error') {
+                  <svg class="bp-issue__icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                } @else {
+                  <svg class="bp-issue__icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                }
+                <div class="bp-issue__body">
+                  <span class="bp-issue__code">{{ issue.code }}</span>
+                  <span class="bp-issue__msg">{{ issue.message }}</span>
+                </div>
+                @if (issue.elementId) {
+                  <button class="bp-issue__focus" (click)="store.select(issue.elementId!, 'node')"
+                          title="Select element" aria-label="Focus element">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                  </button>
+                }
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    }
+
+  </div>
+</div>
+
+<!-- ── Test case overlay editor ─────────────────────────────────────────── -->
+@if (editing(); as ed) {
+  <tm-test-case-dialog
+    [test]="ed.test"
+    [ref]="store.testRef(ed.test)"
+    [stateName]="ed.nodeLabel"
+    (save)="saveTest($event)"
+    (cancel)="closeEditor()" />
+}

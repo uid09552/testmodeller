@@ -1,0 +1,40 @@
+<section class="page">
+  <header class="page__head">
+    <div>
+      <h1 class="page__title">Profile</h1>
+      <p class="page__sub">Your account details</p>
+    </div>
+  </header>
+
+  <div class="form-section">
+    <div class="profile-head">
+      <div class="profile-avatar">{{ initials() }}</div>
+      <div>
+        <div class="profile-head__name">{{ name() }}</div>
+        <div class="profile-head__email">{{ email() }}</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" for="pname">Display name</label>
+      <input id="pname" class="input" [value]="name()"
+             (input)="name.set($any($event.target).value)" />
+    </div>
+
+    <div class="field">
+      <label class="field__label" for="pemail">Email</label>
+      <input id="pemail" class="input" type="email" [value]="email()"
+             (input)="email.set($any($event.target).value)" />
+    </div>
+
+    <div class="field">
+      <label class="field__label" for="prole">Role</label>
+      <input id="prole" class="input" [value]="role()"
+             (input)="role.set($any($event.target).value)" />
+    </div>
+
+    <button class="btn btn--primary" (click)="save()">
+      @if (saved()) { Saved } @else { Save Changes }
+    </button>
+  </div>
+</section>

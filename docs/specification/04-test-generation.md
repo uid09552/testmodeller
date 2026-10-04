@@ -24,7 +24,7 @@ related: [02-domain-model.md, 03-requirements.md]
 5. Convert each path to a TestCase with steps.
 
 ## Expressions
-Guards/actions use a small expression language over scenario variables (booleans, integers, strings; `== != < > && || !`, assignment). Parsed in `domain`; infeasible paths (unsatisfiable guards) are skipped and reported.
+Guards/actions use a small expression language over model variables (booleans, integers, strings; `== != < > && || !`, assignment). Parsed in `domain`; infeasible paths (unsatisfiable guards) are skipped and reported.
 
 ## Output
 Test cases plus a coverage report: covered/total per criterion, uncovered elements, skipped infeasible paths.

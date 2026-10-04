@@ -1,6 +1,6 @@
 ---
 name: ai-proposals
-description: AI-assisted scenario and test case proposals. Use when working on the ai crate, prompt templates, proposal review UI, or LLM provider integration.
+description: AI-assisted model and test case proposals. Use when working on the ai crate, prompt templates, proposal review UI, or LLM provider integration.
 ---
 
 # AI proposals

@@ -6,3 +6,12 @@ edition.workspace = true
 [dependencies]
 tm-domain = { path = "../domain" }
 thiserror.workspace = true
+sqlx.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+testcontainers.workspace = true
+testcontainers-modules.workspace = true

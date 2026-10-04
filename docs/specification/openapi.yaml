@@ -1,0 +1,929 @@
+openapi: 3.1.0
+info:
+  title: TestModeller API
+  version: 0.1.0
+  description: >
+    Contract between the Angular UI and the Rust backend. Changes require explicit approval (see AGENTS.md).
+    Hierarchy: Project > Component > Feature > Model. A Feature has a scenario description and one or more Models
+    (state machines). Test cases belong to a Feature and are assigned to Model states or transitions (steps).
+servers:
+  - url: /api/v1
+tags:
+  - name: System
+  - name: Projects
+  - name: Components
+  - name: Features
+  - name: Models
+  - name: States
+  - name: Transitions
+  - name: TestCases
+  - name: Assignments
+  - name: Generation
+  - name: Coverage
+  - name: Export
+  - name: AI
+  - name: Settings
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Liveness/readiness
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } } }
+
+  /projects:
+    get:
+      tags: [Projects]
+      summary: List projects
+      parameters: [ { $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' } ]
+      responses:
+        '200': { description: Page of projects, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectPage' } } } }
+    post:
+      tags: [Projects]
+      summary: Create project
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}:
+    parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+    get:
+      tags: [Projects]
+      summary: Get project
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      tags: [Projects]
+      summary: Update project
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectInput' } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '412': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [Projects]
+      summary: Delete project and all its contents
+      responses:
+        '204': { description: Deleted }
+  /projects/{projectId}/tree:
+    parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+    get:
+      tags: [Projects]
+      summary: Component > Feature > Model tree for the explorer
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectTree' } } } }
+  /projects/{projectId}/search:
+    parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+    get:
+      tags: [Projects]
+      summary: Search components, features, models and test cases
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: types, in: query, schema: { type: array, items: { type: string, enum: [component, feature, model, testCase] } } }
+      responses:
+        '200': { description: Hits, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SearchHit' } } } } }
+
+  /projects/{projectId}/components:
+    parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+    get:
+      tags: [Components]
+      summary: List components
+      parameters: [ { $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ComponentPage' } } } }
+    post:
+      tags: [Components]
+      summary: Create component
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ComponentInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Component' } } } }
+  /components/{componentId}:
+    parameters: [ { $ref: '#/components/parameters/ComponentId' } ]
+    get:
+      tags: [Components]
+      summary: Get component
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Component' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      tags: [Components]
+      summary: Update component
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ComponentInput' } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Component' } } } }
+        '412': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [Components]
+      summary: Delete component (409 if it has features unless cascade=true)
+      parameters: [ { $ref: '#/components/parameters/Cascade' } ]
+      responses:
+        '204': { description: Deleted }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /components/{componentId}/features:
+    parameters: [ { $ref: '#/components/parameters/ComponentId' } ]
+    get:
+      tags: [Features]
+      summary: List features of a component
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { name: tag, in: query, schema: { type: string } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/FeaturePage' } } } }
+    post:
+      tags: [Features]
+      summary: Create feature
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FeatureInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Feature' } } } }
+  /features/{featureId}:
+    parameters: [ { $ref: '#/components/parameters/FeatureId' } ]
+    get:
+      tags: [Features]
+      summary: Get feature including its scenario description
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Feature' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      tags: [Features]
+      summary: Update feature (name, description, scenarioDescription, tags)
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FeatureInput' } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Feature' } } } }
+        '412': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [Features]
+      summary: Delete feature (409 if it has models or test cases unless cascade=true)
+      parameters: [ { $ref: '#/components/parameters/Cascade' } ]
+      responses:
+        '204': { description: Deleted }
+        '409': { $ref: '#/components/responses/Problem' }
+  /features/{featureId}/move:
+    parameters: [ { $ref: '#/components/parameters/FeatureId' } ]
+    post:
+      tags: [Features]
+      summary: Move feature to another component
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [componentId], properties: { componentId: { $ref: '#/components/schemas/Id' } } } } }
+      responses:
+        '200': { description: Moved, content: { application/json: { schema: { $ref: '#/components/schemas/Feature' } } } }
+
+  /features/{featureId}/models:
+    parameters: [ { $ref: '#/components/parameters/FeatureId' } ]
+    get:
+      tags: [Models]
+      summary: List models of a feature (summaries)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ModelSummary' } } } } }
+    post:
+      tags: [Models]
+      summary: Create model (optionally with states and transitions)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ModelInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Model' } } } }
+  /models/{modelId}:
+    parameters: [ { $ref: '#/components/parameters/ModelId' } ]
+    get:
+      tags: [Models]
+      summary: Get full model with states and transitions
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Model' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [Models]
+      summary: Replace whole model graph atomically (editor save)
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ModelInput' } } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/Model' } } } }
+        '412': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    patch:
+      tags: [Models]
+      summary: Update model metadata only (name, description, status)
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ModelMetaInput' } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/ModelSummary' } } } }
+        '412': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [Models]
+      summary: Delete model (assignments are removed, test cases kept)
+      responses:
+        '204': { description: Deleted }
+  /models/{modelId}/duplicate:
+    parameters: [ { $ref: '#/components/parameters/ModelId' } ]
+    post:
+      tags: [Models]
+      summary: Duplicate model, optionally into another feature
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { name: { type: string }, featureId: { $ref: '#/components/schemas/Id' } } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Model' } } } }
+  /models/{modelId}/validate:
+    parameters: [ { $ref: '#/components/parameters/ModelId' } ]
+    post:
+      tags: [Models]
+      summary: Validate stored model, or a draft graph if a body is given
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/ModelInput' } } }
+      responses:
+        '200': { description: Issues (empty if valid), content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ValidationIssue' } } } } }
+  /models/{modelId}/versions:
+    parameters: [ { $ref: '#/components/parameters/ModelId' } ]
+    get:
+      tags: [Models]
+      summary: Version history
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ModelVersion' } } } } }
+  /models/{modelId}/versions/{version}/restore:
+    parameters:
+      - { $ref: '#/components/parameters/ModelId' }
+      - { name: version, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    post:
+      tags: [Models]
+      summary: Restore a previous version as a new version
+      responses:
+        '200': { description: Restored, content: { application/json: { schema: { $ref: '#/components/schemas/Model' } } } }
+
+  /models/{modelId}/states:
+    parameters: [ { $ref: '#/components/parameters/ModelId' } ]
+    get:
+      tags: [States]
+      summary: List states
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/State' } } } } }
+    post:
+      tags: [States]
+      summary: Add state
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StateInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/State' } } } }
+  /states/{stateId}:
+    parameters: [ { $ref: '#/components/parameters/StateId' } ]
+    get:
+      tags: [States]
+      summary: Get state
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/State' } } } }
+    patch:
+      tags: [States]
+      summary: Update state
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StateInput' } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/State' } } } }
+    delete:
+      tags: [States]
+      summary: Delete state and its incident transitions
+      responses:
+        '204': { description: Deleted }
+
+  /models/{modelId}/transitions:
+    parameters: [ { $ref: '#/components/parameters/ModelId' } ]
+    get:
+      tags: [Transitions]
+      summary: List transitions (model steps)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Transition' } } } } }
+    post:
+      tags: [Transitions]
+      summary: Add transition
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TransitionInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Transition' } } } }
+  /transitions/{transitionId}:
+    parameters: [ { $ref: '#/components/parameters/TransitionId' } ]
+    get:
+      tags: [Transitions]
+      summary: Get transition
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Transition' } } } }
+    patch:
+      tags: [Transitions]
+      summary: Update transition
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TransitionInput' } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Transition' } } } }
+    delete:
+      tags: [Transitions]
+      summary: Delete transition
+      responses:
+        '204': { description: Deleted }
+
+  /features/{featureId}/test-cases:
+    parameters: [ { $ref: '#/components/parameters/FeatureId' } ]
+    get:
+      tags: [TestCases]
+      summary: List test cases of a feature
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { name: modelId, in: query, description: Only test cases assigned to this model, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/TestCaseStatus' } }
+        - { name: origin, in: query, schema: { $ref: '#/components/schemas/Origin' } }
+        - { name: unassigned, in: query, description: Only test cases without any assignment, schema: { type: boolean } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TestCasePage' } } } }
+    post:
+      tags: [TestCases]
+      summary: Create test case manually
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TestCaseInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/TestCase' } } } }
+  /test-cases/{testCaseId}:
+    parameters: [ { $ref: '#/components/parameters/TestCaseId' } ]
+    get:
+      tags: [TestCases]
+      summary: Get test case with steps and assignments
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TestCase' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [TestCases]
+      summary: Replace test case including steps
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TestCaseInput' } } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/TestCase' } } } }
+        '412': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [TestCases]
+      summary: Delete test case
+      responses:
+        '204': { description: Deleted }
+  /test-cases/{testCaseId}/move:
+    parameters: [ { $ref: '#/components/parameters/TestCaseId' } ]
+    post:
+      tags: [TestCases]
+      summary: Move test case to another feature (assignments are cleared)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [featureId], properties: { featureId: { $ref: '#/components/schemas/Id' } } } } }
+      responses:
+        '200': { description: Moved, content: { application/json: { schema: { $ref: '#/components/schemas/TestCase' } } } }
+
+  /test-cases/{testCaseId}/assignments:
+    parameters: [ { $ref: '#/components/parameters/TestCaseId' } ]
+    get:
+      tags: [Assignments]
+      summary: List where this test case is assigned
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Assignment' } } } } }
+    put:
+      tags: [Assignments]
+      summary: Replace all assignments of the test case
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AssignmentInput' } } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Assignment' } } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /states/{stateId}/test-cases:
+    parameters: [ { $ref: '#/components/parameters/StateId' } ]
+    get:
+      tags: [Assignments]
+      summary: Test cases assigned to a state
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TestCase' } } } } }
+  /states/{stateId}/test-cases/{testCaseId}:
+    parameters: [ { $ref: '#/components/parameters/StateId' }, { $ref: '#/components/parameters/TestCaseId' } ]
+    put:
+      tags: [Assignments]
+      summary: Assign test case to state (idempotent)
+      responses:
+        '204': { description: Assigned }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [Assignments]
+      summary: Remove assignment
+      responses:
+        '204': { description: Removed }
+  /transitions/{transitionId}/test-cases:
+    parameters: [ { $ref: '#/components/parameters/TransitionId' } ]
+    get:
+      tags: [Assignments]
+      summary: Test cases assigned to a transition (model step)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TestCase' } } } } }
+  /transitions/{transitionId}/test-cases/{testCaseId}:
+    parameters: [ { $ref: '#/components/parameters/TransitionId' }, { $ref: '#/components/parameters/TestCaseId' } ]
+    put:
+      tags: [Assignments]
+      summary: Assign test case to transition (idempotent)
+      responses:
+        '204': { description: Assigned }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [Assignments]
+      summary: Remove assignment
+      responses:
+        '204': { description: Removed }
+  /models/{modelId}/test-cases:
+    parameters: [ { $ref: '#/components/parameters/ModelId' } ]
+    get:
+      tags: [Assignments]
+      summary: Test cases assigned anywhere in the model, with their assignments
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TestCase' } } } } }
+
+  /models/{modelId}/generate:
+    parameters: [ { $ref: '#/components/parameters/ModelId' } ]
+    post:
+      tags: [Generation]
+      summary: Generate test cases from the model. Deterministic for model, criterion and seed.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GenerationRequest' } } } }
+      responses:
+        '200': { description: Generated (saved only if save=true), content: { application/json: { schema: { $ref: '#/components/schemas/GenerationResult' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /models/{modelId}/coverage:
+    parameters: [ { $ref: '#/components/parameters/ModelId' } ]
+    get:
+      tags: [Coverage]
+      summary: Coverage of the model by assigned test cases
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Coverage' } } } }
+  /features/{featureId}/coverage:
+    parameters: [ { $ref: '#/components/parameters/FeatureId' } ]
+    get:
+      tags: [Coverage]
+      summary: Aggregated coverage of a feature
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Coverage' } } } }
+  /components/{componentId}/coverage:
+    parameters: [ { $ref: '#/components/parameters/ComponentId' } ]
+    get:
+      tags: [Coverage]
+      summary: Aggregated coverage of a component
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Coverage' } } } }
+
+  /projects/{projectId}/export:
+    parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+    get:
+      tags: [Export]
+      summary: Export project data
+      parameters:
+        - { name: format, in: query, required: true, schema: { type: string, enum: [json, csv, gherkin] } }
+        - { name: featureId, in: query, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: componentId, in: query, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: File download
+          content:
+            application/json: { schema: { type: object } }
+            text/csv: { schema: { type: string } }
+            text/plain: { schema: { type: string } }
+  /projects/{projectId}/import:
+    parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+    post:
+      tags: [Export]
+      summary: Import a JSON export into the project
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '201': { description: Imported, content: { application/json: { schema: { type: object, properties: { components: { type: integer }, features: { type: integer }, models: { type: integer }, testCases: { type: integer } } } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /ai/proposals:
+    post:
+      tags: [AI]
+      summary: Request AI proposals. Runs asynchronously; poll the job.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProposalRequest' } } } }
+      responses:
+        '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '503': { $ref: '#/components/responses/Problem' }
+  /jobs/{jobId}:
+    parameters: [ { name: jobId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } } ]
+    get:
+      tags: [AI]
+      summary: Job status; result lists created proposal ids
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+  /projects/{projectId}/proposals:
+    parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+    get:
+      tags: [AI]
+      summary: List proposals
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/ProposalStatus' } }
+        - { name: featureId, in: query, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: modelId, in: query, schema: { $ref: '#/components/schemas/Id' } }
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Cursor' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProposalPage' } } } }
+  /proposals/{proposalId}:
+    parameters: [ { $ref: '#/components/parameters/ProposalId' } ]
+    get:
+      tags: [AI]
+      summary: Get proposal
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Proposal' } } } }
+  /proposals/{proposalId}/accept:
+    parameters: [ { $ref: '#/components/parameters/ProposalId' } ]
+    post:
+      tags: [AI]
+      summary: Accept proposal, optionally with an edited payload. Creates the entity with origin=ai.
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { payload: { type: object } } } } }
+      responses:
+        '200': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/Proposal' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /proposals/{proposalId}/reject:
+    parameters: [ { $ref: '#/components/parameters/ProposalId' } ]
+    post:
+      tags: [AI]
+      summary: Reject proposal
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { reason: { type: string } } } } }
+      responses:
+        '200': { description: Rejected, content: { application/json: { schema: { $ref: '#/components/schemas/Proposal' } } } }
+
+  /settings/ai:
+    get:
+      tags: [Settings]
+      summary: Get AI provider settings (secrets are never returned)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AiSettings' } } } }
+    put:
+      tags: [Settings]
+      summary: Update AI provider settings
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AiSettingsInput' } } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/AiSettings' } } } }
+
+components:
+  parameters:
+    ProjectId: { name: projectId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ComponentId: { name: componentId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    FeatureId: { name: featureId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ModelId: { name: modelId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    StateId: { name: stateId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    TransitionId: { name: transitionId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    TestCaseId: { name: testCaseId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ProposalId: { name: proposalId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: Entity `version` for optimistic concurrency
+      schema: { type: integer, minimum: 1 }
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+    Cursor: { name: cursor, in: query, schema: { type: string } }
+    Cascade: { name: cascade, in: query, schema: { type: boolean, default: false } }
+
+  responses:
+    Problem:
+      description: Error (RFC 7807)
+      content:
+        application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } }
+
+  schemas:
+    Id: { type: string, format: uuid }
+    Timestamp: { type: string, format: date-time }
+    Origin: { type: string, enum: [manual, generated, ai] }
+    TestCaseStatus: { type: string, enum: [draft, approved, deprecated] }
+    ProposalStatus: { type: string, enum: [pending, accepted, rejected] }
+
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        errors:
+          type: array
+          items: { type: object, properties: { field: { type: string }, message: { type: string } } }
+    Health:
+      type: object
+      required: [status, version]
+      properties: { status: { type: string, enum: [ok] }, version: { type: string } }
+
+    Audit:
+      type: object
+      required: [id, version, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        version: { type: integer, minimum: 1 }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+
+    ProjectInput:
+      type: object
+      required: [name]
+      properties: { name: { type: string, minLength: 1, maxLength: 200 }, description: { type: string } }
+    Project:
+      allOf: [ { $ref: '#/components/schemas/Audit' }, { $ref: '#/components/schemas/ProjectInput' } ]
+    ProjectPage:
+      type: object
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/Project' } }, nextCursor: { type: [string, 'null'] } }
+
+    ComponentInput:
+      type: object
+      required: [name]
+      properties: { name: { type: string, minLength: 1, maxLength: 200 }, description: { type: string } }
+    Component:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - { $ref: '#/components/schemas/ComponentInput' }
+        - { type: object, required: [projectId], properties: { projectId: { $ref: '#/components/schemas/Id' } } }
+    ComponentPage:
+      type: object
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/Component' } }, nextCursor: { type: [string, 'null'] } }
+
+    FeatureInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+        scenarioDescription: { type: string, description: Free-text (markdown) description of the scenarios this feature's models represent }
+        tags: { type: array, items: { type: string } }
+    Feature:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - { $ref: '#/components/schemas/FeatureInput' }
+        - { type: object, required: [componentId], properties: { componentId: { $ref: '#/components/schemas/Id' } } }
+    FeaturePage:
+      type: object
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/Feature' } }, nextCursor: { type: [string, 'null'] } }
+
+    ModelStatus: { type: string, enum: [draft, ready] }
+    ModelMetaInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+        status: { $ref: '#/components/schemas/ModelStatus' }
+    StateKind: { type: string, enum: [initial, normal, final] }
+    Position:
+      type: object
+      required: [x, y]
+      properties: { x: { type: number }, y: { type: number } }
+    StateInput:
+      type: object
+      required: [name, kind]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        kind: { $ref: '#/components/schemas/StateKind' }
+        position: { $ref: '#/components/schemas/Position' }
+    State:
+      allOf:
+        - { $ref: '#/components/schemas/StateInput' }
+        - type: object
+          required: [id, modelId, testCaseCount]
+          properties:
+            id: { $ref: '#/components/schemas/Id' }
+            modelId: { $ref: '#/components/schemas/Id' }
+            testCaseCount: { type: integer, readOnly: true }
+    TransitionInput:
+      type: object
+      required: [from, to, event]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        from: { $ref: '#/components/schemas/Id' }
+        to: { $ref: '#/components/schemas/Id' }
+        event: { type: string, minLength: 1 }
+        guard: { type: string }
+        action: { type: string }
+        expected: { type: string }
+    Transition:
+      allOf:
+        - { $ref: '#/components/schemas/TransitionInput' }
+        - type: object
+          required: [id, modelId, testCaseCount]
+          properties:
+            id: { $ref: '#/components/schemas/Id' }
+            modelId: { $ref: '#/components/schemas/Id' }
+            testCaseCount: { type: integer, readOnly: true }
+    Variable:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [boolean, integer, string] }
+        initial: {}
+    ModelInput:
+      allOf:
+        - { $ref: '#/components/schemas/ModelMetaInput' }
+        - type: object
+          required: [name]
+          properties:
+            variables: { type: array, items: { $ref: '#/components/schemas/Variable' } }
+            states: { type: array, items: { $ref: '#/components/schemas/StateInput' } }
+            transitions: { type: array, items: { $ref: '#/components/schemas/TransitionInput' } }
+    ModelSummary:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - { $ref: '#/components/schemas/ModelMetaInput' }
+        - type: object
+          required: [featureId, stateCount, transitionCount, testCaseCount]
+          properties:
+            featureId: { $ref: '#/components/schemas/Id' }
+            stateCount: { type: integer }
+            transitionCount: { type: integer }
+            testCaseCount: { type: integer }
+    Model:
+      allOf:
+        - { $ref: '#/components/schemas/ModelSummary' }
+        - type: object
+          properties:
+            variables: { type: array, items: { $ref: '#/components/schemas/Variable' } }
+            states: { type: array, items: { $ref: '#/components/schemas/State' } }
+            transitions: { type: array, items: { $ref: '#/components/schemas/Transition' } }
+    ModelVersion:
+      type: object
+      required: [version, createdAt]
+      properties: { version: { type: integer }, createdAt: { $ref: '#/components/schemas/Timestamp' }, summary: { type: string } }
+    ValidationIssue:
+      type: object
+      required: [severity, code, message]
+      properties:
+        severity: { type: string, enum: [error, warning] }
+        code: { type: string, examples: [NO_INITIAL_STATE, MULTIPLE_INITIAL_STATES, UNREACHABLE_STATE, DEAD_END, BAD_GUARD] }
+        message: { type: string }
+        stateId: { $ref: '#/components/schemas/Id' }
+        transitionId: { $ref: '#/components/schemas/Id' }
+
+    TestStepInput:
+      type: object
+      required: [action, expected]
+      properties:
+        action: { type: string }
+        expected: { type: string }
+    TestStep:
+      allOf:
+        - { $ref: '#/components/schemas/TestStepInput' }
+        - type: object
+          required: [order]
+          properties:
+            order: { type: integer, minimum: 1 }
+    TestCaseInput:
+      type: object
+      required: [name, steps]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 300 }
+        description: { type: string }
+        preconditions: { type: string }
+        priority: { type: string, enum: [low, medium, high] }
+        status: { $ref: '#/components/schemas/TestCaseStatus' }
+        tags: { type: array, items: { type: string } }
+        steps: { type: array, items: { $ref: '#/components/schemas/TestStepInput' } }
+        assignments: { type: array, items: { $ref: '#/components/schemas/AssignmentInput' } }
+    TestCase:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - type: object
+          required: [featureId, name, steps, origin, assignments]
+          properties:
+            featureId: { $ref: '#/components/schemas/Id' }
+            name: { type: string }
+            description: { type: string }
+            preconditions: { type: string }
+            priority: { type: string, enum: [low, medium, high] }
+            status: { $ref: '#/components/schemas/TestCaseStatus' }
+            tags: { type: array, items: { type: string } }
+            origin: { $ref: '#/components/schemas/Origin' }
+            generatedFromModelId: { $ref: '#/components/schemas/Id' }
+            steps: { type: array, items: { $ref: '#/components/schemas/TestStep' } }
+            assignments: { type: array, items: { $ref: '#/components/schemas/Assignment' } }
+    TestCasePage:
+      type: object
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/TestCase' } }, nextCursor: { type: [string, 'null'] } }
+
+    AssignmentInput:
+      type: object
+      required: [modelId]
+      description: Exactly one of stateId or transitionId. A test case may be assigned to many states/transitions, also across models of its feature.
+      properties:
+        modelId: { $ref: '#/components/schemas/Id' }
+        stateId: { $ref: '#/components/schemas/Id' }
+        transitionId: { $ref: '#/components/schemas/Id' }
+        stepOrder: { type: integer, minimum: 1, description: Optional test step this assignment refers to }
+    Assignment:
+      allOf:
+        - { $ref: '#/components/schemas/AssignmentInput' }
+        - type: object
+          required: [testCaseId]
+          properties: { testCaseId: { $ref: '#/components/schemas/Id' } }
+
+    CoverageCriterion: { type: string, enum: [state, transition, transition-pair, bounded-paths] }
+    GenerationRequest:
+      type: object
+      required: [criterion]
+      properties:
+        criterion: { $ref: '#/components/schemas/CoverageCriterion' }
+        seed: { type: integer }
+        maxPathLength: { type: integer, minimum: 1, description: Required for bounded-paths }
+        save: { type: boolean, default: false, description: Persist generated test cases and assign them to the model }
+    GenerationResult:
+      type: object
+      required: [testCases, coverage]
+      properties:
+        seed: { type: integer }
+        testCases: { type: array, items: { $ref: '#/components/schemas/TestCase' } }
+        coverage: { $ref: '#/components/schemas/Coverage' }
+        skippedPaths: { type: array, items: { type: object, properties: { transitionIds: { type: array, items: { $ref: '#/components/schemas/Id' } }, reason: { type: string } } } }
+    Coverage:
+      type: object
+      required: [states, transitions]
+      properties:
+        states: { $ref: '#/components/schemas/CoverageCount' }
+        transitions: { $ref: '#/components/schemas/CoverageCount' }
+        uncoveredStateIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+        uncoveredTransitionIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+    CoverageCount:
+      type: object
+      required: [covered, total]
+      properties: { covered: { type: integer }, total: { type: integer } }
+
+    ProjectTree:
+      type: object
+      properties:
+        components:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { $ref: '#/components/schemas/Id' }
+              name: { type: string }
+              features:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { $ref: '#/components/schemas/Id' }
+                    name: { type: string }
+                    models: { type: array, items: { type: object, properties: { id: { $ref: '#/components/schemas/Id' }, name: { type: string }, status: { $ref: '#/components/schemas/ModelStatus' } } } }
+    SearchHit:
+      type: object
+      required: [type, id, name]
+      properties:
+        type: { type: string, enum: [component, feature, model, testCase] }
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        snippet: { type: string }
+
+    ProposalKind: { type: string, enum: [model, states-and-transitions, test-cases, feature-description] }
+    ProposalRequest:
+      type: object
+      required: [kind, featureId]
+      properties:
+        kind: { $ref: '#/components/schemas/ProposalKind' }
+        featureId: { $ref: '#/components/schemas/Id' }
+        modelId: { $ref: '#/components/schemas/Id' }
+        prompt: { type: string, maxLength: 8000, description: Free-text instruction from the user }
+        count: { type: integer, minimum: 1, maximum: 20 }
+        previewContext: { type: boolean, default: false, description: Return the context that would be sent instead of calling the model }
+    Proposal:
+      type: object
+      required: [id, projectId, kind, status, payload, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        projectId: { $ref: '#/components/schemas/Id' }
+        featureId: { $ref: '#/components/schemas/Id' }
+        modelId: { $ref: '#/components/schemas/Id' }
+        kind: { $ref: '#/components/schemas/ProposalKind' }
+        status: { $ref: '#/components/schemas/ProposalStatus' }
+        payload: { type: object, description: Shape matches the target entity input (ModelInput, StateInput/TransitionInput lists, TestCaseInput list) }
+        rationale: { type: string }
+        source: { type: string, description: Model id of the LLM }
+        resultingEntityId: { $ref: '#/components/schemas/Id' }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+    ProposalPage:
+      type: object
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/Proposal' } }, nextCursor: { type: [string, 'null'] } }
+    Job:
+      type: object
+      required: [id, status]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        proposalIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+        error: { $ref: '#/components/schemas/Problem' }
+
+    AiSettings:
+      type: object
+      properties:
+        provider: { type: string, enum: [openai-compatible, anthropic, local, none] }
+        baseUrl: { type: string, format: uri }
+        model: { type: string }
+        secretConfigured: { type: boolean }
+        maxTokensPerRequest: { type: integer }
+    AiSettingsInput:
+      allOf:
+        - { $ref: '#/components/schemas/AiSettings' }
+        - type: object
+          properties: { apiKey: { type: string, writeOnly: true } }

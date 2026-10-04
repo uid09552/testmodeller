@@ -1,0 +1,77 @@
+<section class="page">
+  <header class="page__head">
+    <div>
+      <h1 class="page__title">Models</h1>
+      <p class="page__sub">{{ filtered().length }} of {{ models().length }} models</p>
+    </div>
+    <a routerLink="new" class="btn btn--primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      New Model
+    </a>
+  </header>
+
+  <div class="toolbar">
+    <div class="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input class="search__input" placeholder="Search models…"
+             [value]="search()" (input)="search.set($any($event.target).value)" />
+    </div>
+    <div class="chips">
+      @for (s of ['all', 'draft', 'review', 'approved']; track s) {
+        <button class="chip" [class.chip--active]="statusFilter() === s"
+                (click)="setStatus($any(s))">{{ s }}</button>
+      }
+    </div>
+  </div>
+
+  @if (filtered().length === 0) {
+    <div class="empty">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6zm4 4h8M8 14h5"/>
+      </svg>
+      <p>No models match your filters.</p>
+    </div>
+  } @else {
+    <div class="grid">
+      @for (m of filtered(); track m.id) {
+        <article class="card" (dblclick)="open(m)" title="Double-click to open">
+          <div class="card__head">
+            <a class="card__name" [routerLink]="['/models', m.id]">{{ m.name }}</a>
+            <span class="badge badge--{{ m.status }}">{{ m.status }}</span>
+          </div>
+          <p class="card__path">{{ m.component }} › {{ m.feature }}</p>
+          <div class="card__stats">
+            <span><strong>{{ m.states }}</strong> states</span>
+            <span><strong>{{ m.transitions }}</strong> transitions</span>
+          </div>
+          <div class="card__foot">
+            <span class="card__time">{{ m.updated }}</span>
+            <div class="card__actions">
+              <a class="icon-btn" [routerLink]="['/models', m.id]" title="Open">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+              </a>
+              <button class="icon-btn icon-btn--danger" (click)="deleteModel(m.id)" title="Delete">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </article>
+      }
+    </div>
+  }
+</section>

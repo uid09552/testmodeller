@@ -1,0 +1,32 @@
+@use 'styles/tokens' as *;
+@use 'styles/page' as *;
+
+:host { @include page-host; }
+
+.page { max-width: 620px; }
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--clr-surface-100);
+
+  &__name  { font-size: var(--text-base); font-weight: 600; }
+  &__email { font-size: var(--text-xs); color: var(--clr-text-400); margin-top: 2px; }
+}
+
+.profile-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--clr-brand-500);
+  color: #fff;
+  font-size: var(--text-lg);
+  font-weight: 700;
+}

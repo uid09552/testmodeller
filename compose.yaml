@@ -1,0 +1,83 @@
+# TestModeller stack: nginx-hosted frontend, Rust backend, PostgreSQL.
+#
+# Postgres is included because the backend requires TM_DATABASE_URL to start.
+# Its --dev-mode flag spins up a throwaway database via testcontainers, but
+# that needs a Docker socket inside the container, so a real service is the
+# right shape here.
+#
+#   cp .env.example .env     # then edit
+#   docker compose up --build
+#   open http://localhost:8088
+
+name: testmodeller
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-testmodeller}
+      POSTGRES_USER: ${POSTGRES_USER:-testmodeller}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Fail fast on a corrupt/partial initdb rather than starting unauthenticated.
+      POSTGRES_INITDB_ARGS: --data-checksums
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # Without -d the check can pass against the bootstrap database while the
+      # application database is still being created.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    # Not published by default so it cannot clash with a local PostgreSQL.
+    # Uncomment to inspect with psql from the host:
+    # ports:
+    #   - "127.0.0.1:5432:5432"
+    networks: [internal]
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TM_DATABASE_URL: postgres://${POSTGRES_USER:-testmodeller}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-testmodeller}
+      TM_BIND_ADDR: 0.0.0.0:8080
+      TM_DB_MAX_CONNECTIONS: ${TM_DB_MAX_CONNECTIONS:-10}
+      # The browser reaches the API through nginx on the same origin, so CORS
+      # is only needed if you call the published backend port directly.
+      TM_CORS_ORIGIN: ${TM_CORS_ORIGIN:-http://localhost:8088}
+      # Held in memory by the backend; never written to the database or logs.
+      TM_AI_API_KEY: ${TM_AI_API_KEY:-}
+      RUST_LOG: ${RUST_LOG:-info,tm_api=debug}
+    # Published for direct API access during development; the frontend does not
+    # need it. Drop this block to keep the backend entirely internal.
+    ports:
+      - "127.0.0.1:8081:8080"
+    networks: [internal]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    # 8088, not 8080: `make dev` runs the backend on 127.0.0.1:8080, so the
+    # default must not collide with the local dev workflow.
+    ports:
+      - "${FRONTEND_PORT:-8088}:80"
+    networks: [internal]
+
+volumes:
+  db-data:
+
+networks:
+  internal:
+    driver: bridge
