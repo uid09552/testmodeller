@@ -1,97 +1,19 @@
-import {
-  ChangeDetectionStrategy, Component, computed, HostListener, inject, signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
-  CanvasEdge, CanvasNode, ModelEditorStore, ModelStatus, StateKind, StateTest,
-  NodeShape, NODE_COLORS, safeExternalUrl, GROUP_COLORS, AlignMode, CanvasGroup,
+  CanvasEdge, CanvasNode, ModelEditorStore, ModelStatus, StateKind,
+  NodeShape, NODE_COLORS, GROUP_COLORS, AlignMode, CanvasGroup,
 } from '../../state/model-editor.store';
-import { TestCaseDialogComponent, TestDraft } from '../test-case-dialog/test-case-dialog';
 
 @Component({
   selector: 'tm-properties-panel',
-  imports: [FormsModule, TestCaseDialogComponent],
+  imports: [FormsModule],
   templateUrl: './properties-panel.html',
   styleUrl: './properties-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PropertiesPanelComponent {
   readonly store = inject(ModelEditorStore);
-
-  // ── State test cases ──────────────────────────────────────────────────
-  readonly testCtx = signal<{ x: number; y: number; nodeId: string; testId: string } | null>(null);
-
-  /** Which test the overlay is editing. */
-  readonly editingIds = signal<{ nodeId: string; testId: string } | null>(null);
-
-  readonly editing = computed(() => {
-    const ids = this.editingIds();
-    if (!ids) return null;
-    const node = this.store.nodeById(ids.nodeId);
-    const test = node?.tests.find(t => t.id === ids.testId);
-    if (!node || !test) return null;
-    return { test, nodeLabel: node.label };
-  });
-
-  openEditor(nodeId: string, testId: string): void {
-    this.editingIds.set({ nodeId, testId });
-  }
-
-  closeEditor(): void { this.editingIds.set(null); }
-
-  saveTest(changes: TestDraft): void {
-    const ids = this.editingIds();
-    if (ids) this.store.updateTest(ids.nodeId, ids.testId, changes);
-    this.closeEditor();
-  }
-
-  implHref(t: StateTest):    string | null { return safeExternalUrl(t.implementationUrl); }
-  backlogHref(t: StateTest): string | null { return safeExternalUrl(t.backlogUrl); }
-
-  /** One-line Given/When/Then digest. */
-  gherkinSummary(test: StateTest): string {
-    const part = (kw: string, body: string) => {
-      const first = body.split('\n').map(l => l.trim()).find(Boolean);
-      return first ? `${kw} ${first}` : '';
-    };
-    return [
-      part('Given', test.given),
-      part('When',  test.when),
-      part('Then',  test.then),
-    ].filter(Boolean).join(' · ') || 'No steps yet';
-  }
-
-  openTestCtx(e: MouseEvent, nodeId: string, testId: string): void {
-    e.preventDefault();
-    e.stopPropagation();
-    this.testCtx.set({
-      x: Math.max(8, Math.min(e.clientX, window.innerWidth  - 200)),
-      y: Math.max(8, Math.min(e.clientY, window.innerHeight - 130)),
-      nodeId, testId,
-    });
-  }
-
-  closeTestCtx(): void { this.testCtx.set(null); }
-
-  @HostListener('document:mousedown', ['$event'])
-  onDocMouseDown(e: MouseEvent): void {
-    if (this.testCtx() && !(e.target as Element).closest('.ctx-menu')) this.closeTestCtx();
-  }
-
-  @HostListener('document:keydown.escape')
-  onEscape(): void { this.closeTestCtx(); }
-
-  editFromCtx(): void {
-    const c = this.testCtx();
-    this.closeTestCtx();
-    if (c) this.openEditor(c.nodeId, c.testId);
-  }
-
-  removeFromCtx(): void {
-    const c = this.testCtx();
-    this.closeTestCtx();
-    if (c) this.store.removeTest(c.nodeId, c.testId);
-  }
 
   // ── Node bindings ─────────────────────────────────────────────────────
   getNodeLabel(n: CanvasNode): string { return n.label; }

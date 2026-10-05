@@ -197,85 +197,6 @@
                 [value]="getNodeDesc(node)"
                 (input)="setNodeDesc(node, $any($event.target).value)"></textarea>
 
-      <!-- ── Test cases attached to this state ── -->
-      <div class="props__section-head">
-        <span class="props__label" style="margin:0">
-          Test Cases
-          @if (node.tests.length) { <span class="tc-count">{{ node.tests.length }}</span> }
-        </span>
-        <button class="props__add-btn" title="Add test case"
-                (click)="store.addTest(node.id)">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-        </button>
-      </div>
-
-      @if (node.tests.length === 0) {
-        <p class="props__empty-hint">
-          No test cases. Right-click the state on the canvas, or use + above.
-        </p>
-      } @else {
-        <ul class="tc-list" role="list">
-          @for (test of node.tests; track test.id) {
-            <li class="tc-row"
-                (dblclick)="openEditor(node.id, test.id)"
-                (contextmenu)="openTestCtx($event, node.id, test.id)">
-              <div class="tc-row__top">
-                <code class="tc-row__ref">{{ store.testRef(test) }}</code>
-                <span class="cat-pill cat-pill--sm cat-pill--{{ test.category }}" [title]="test.category">
-                  <span class="cat-pill__dot"></span>{{ test.category }}
-                </span>
-                <span class="pol-pill pol-pill--sm pol-pill--{{ test.polarity }}"
-                      [title]="test.polarity + ' case'">
-                  {{ test.polarity === 'positive' ? '+' : '−' }}
-                </span>
-                @if (implHref(test); as href) {
-                  <a class="tc-link" [href]="href" target="_blank" rel="noopener noreferrer"
-                     (click)="$event.stopPropagation()" title="Implementation">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-                    </svg>
-                  </a>
-                }
-                @if (backlogHref(test); as href) {
-                  <a class="tc-link tc-link--backlog" [href]="href" target="_blank"
-                     rel="noopener noreferrer" (click)="$event.stopPropagation()" title="Backlog item">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M3 7h18M3 12h18M3 17h10"/>
-                    </svg>
-                  </a>
-                }
-
-              </div>
-              <span class="tc-row__name">{{ test.name }}</span>
-              <span class="tc-row__steps">{{ gherkinSummary(test) }}</span>
-              <span class="tc-row__actions">
-                <button class="icon-btn" title="Edit in overlay"
-                        (click)="openEditor(node.id, test.id)">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                       stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-                <button class="icon-btn icon-btn--danger" title="Remove"
-                        (click)="store.removeTest(node.id, test.id)">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                       stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                  </svg>
-                </button>
-              </span>
-            </li>
-          }
-        </ul>
-      }
-
       <div class="props__meta">
         <span class="props__meta-label">ID</span>
         <code class="props__meta-val">{{ node.id.slice(0, 8) }}…</code>
@@ -348,6 +269,21 @@
     </header>
 
     <div class="props__body">
+      <!-- Counts first, as a single compact line: they are a glance, not a
+           section of their own. -->
+      <div class="props__counts">
+        <span class="props__count">
+          <b class="props__count-val">{{ store.nodes().length }}</b> states
+        </span>
+        <span class="props__count">
+          <b class="props__count-val">{{ store.edges().length }}</b> transitions
+        </span>
+        <span class="props__count"
+              [class.props__count--error]="store.errorCount() > 0">
+          <b class="props__count-val">{{ store.errorCount() }}</b> errors
+        </span>
+      </div>
+
       <label class="props__label" for="model-name">Name</label>
       <input id="model-name" class="props__input"
              [value]="store.name()"
@@ -369,54 +305,10 @@
         }
       </select>
 
-      <!-- Stats -->
-      <div class="props__stats">
-        <div class="props__stat">
-          <span class="props__stat-val">{{ store.nodes().length }}</span>
-          <span class="props__stat-label">States</span>
-        </div>
-        <div class="props__stat">
-          <span class="props__stat-val">{{ store.edges().length }}</span>
-          <span class="props__stat-label">Transitions</span>
-        </div>
-        <div class="props__stat">
-          <span class="props__stat-val" [class.props__stat-val--error]="store.errorCount() > 0">
-            {{ store.errorCount() }}
-          </span>
-          <span class="props__stat-label">Errors</span>
-        </div>
-      </div>
-
       <!-- Hint -->
       <p class="props__tip">Select a state or transition to edit its properties.</p>
     </div>
   }
 
 
-  <!-- ── Test-case context menu ───────────────────────────────────────── -->
-  @if (testCtx(); as ctx) {
-    <div class="ctx-menu" role="menu" [style.left.px]="ctx.x" [style.top.px]="ctx.y">
-      <div class="ctx-header">Test Case</div>
-      <div class="ctx-sep"></div>
-      <button class="ctx-item" role="menuitem" (mousedown)="editFromCtx()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        Edit
-      </button>
-      <div class="ctx-sep"></div>
-      <button class="ctx-item ctx-item--danger" role="menuitem" (mousedown)="removeFromCtx()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-        Remove
-      </button>
-    </div>
-  }
-
-  <!-- ── Gherkin overlay editor ───────────────────────────────────────── -->
-  @if (editing(); as ed) {
-    <tm-test-case-dialog
-      [test]="ed.test"
-      [ref]="store.testRef(ed.test)"
-      [stateName]="ed.nodeLabel"
-      (save)="saveTest($event)"
-      (cancel)="closeEditor()" />
-  }
 </aside>

@@ -5,6 +5,9 @@
 # that needs a Docker socket inside the container, so a real service is the
 # right shape here.
 #
+# APISIX is the only published port: it performs the OIDC handshake and
+# forwards to the SPA and the backend (FR-047, see gateway/apisix.yaml).
+#
 #   cp .env.example .env     # then edit
 #   docker compose up --build
 #   open http://localhost:8088
@@ -52,13 +55,31 @@ services:
       # The browser reaches the API through nginx on the same origin, so CORS
       # is only needed if you call the published backend port directly.
       TM_CORS_ORIGIN: ${TM_CORS_ORIGIN:-http://localhost:8088}
-      # Held in memory by the backend; never written to the database or logs.
+      # AI provider, configured in .env rather than in the UI
+      # (07-ai-integration.md). Read at startup; restart to change provider.
+      TM_AI_PROVIDER: ${TM_AI_PROVIDER:-none}
+      TM_AI_MODEL: ${TM_AI_MODEL:-}
+      TM_AI_BASE_URL: ${TM_AI_BASE_URL:-}
+      TM_AI_MAX_TOKENS: ${TM_AI_MAX_TOKENS:-}
+      # Never logged.
       TM_AI_API_KEY: ${TM_AI_API_KEY:-}
+      TM_SECRET_KEY: ${TM_SECRET_KEY:-}
+      # Token validation (FR-040 to FR-043). The gateway forwards the access
+      # token; the backend verifies it against the provider's JWKS.
+      TM_JWKS_URL: ${TM_JWKS_URL:?set TM_JWKS_URL in .env}
+      TM_TENANT_CLAIM: ${TM_TENANT_CLAIM:-tenant}
+      TM_ROLE_CLAIM: ${TM_ROLE_CLAIM:-roles}
+      TM_JWT_ISSUER: ${TM_JWT_ISSUER:-}
+      TM_JWT_AUDIENCE: ${TM_JWT_AUDIENCE:-}
       RUST_LOG: ${RUST_LOG:-info,tm_api=debug}
-    # Published for direct API access during development; the frontend does not
-    # need it. Drop this block to keep the backend entirely internal.
-    ports:
-      - "127.0.0.1:8081:8080"
+    # Lets TM_AI_BASE_URL reach an Ollama running on this machine as
+    # host.docker.internal; inside the container, localhost is the container.
+    # Docker Desktop provides the name already; on Linux this maps it.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Not published: requests must come through the gateway, which is what
+    # attaches the token. Publish it only to debug, and expect 401s without a
+    # token of your own.
     networks: [internal]
 
   frontend:
@@ -69,10 +90,34 @@ services:
     depends_on:
       backend:
         condition: service_started
+    # Not published: the gateway serves the app, so there is no unauthenticated
+    # way in.
+    networks: [internal]
+
+  gateway:
+    image: apache/apisix:3.11.0-debian
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
+    environment:
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?set OIDC_CLIENT_ID in .env}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?set OIDC_CLIENT_SECRET in .env}
+      OIDC_DISCOVERY: ${OIDC_DISCOVERY:?set OIDC_DISCOVERY in .env}
+      OIDC_REALM: ${OIDC_REALM:-testmodeller}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:8088/callback}
+      OIDC_POST_LOGOUT_REDIRECT_URI: ${OIDC_POST_LOGOUT_REDIRECT_URI:-http://localhost:8088/}
+      # Signs the session cookie. Generate with: openssl rand -hex 32
+      OIDC_SESSION_SECRET: ${OIDC_SESSION_SECRET:?set OIDC_SESSION_SECRET in .env}
+    volumes:
+      - ./gateway/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./gateway/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
     # 8088, not 8080: `make dev` runs the backend on 127.0.0.1:8080, so the
     # default must not collide with the local dev workflow.
     ports:
-      - "${FRONTEND_PORT:-8088}:80"
+      - "${FRONTEND_PORT:-8088}:9080"
     networks: [internal]
 
 volumes:

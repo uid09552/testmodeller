@@ -62,6 +62,23 @@
   &:disabled { opacity: 0.4; cursor: not-allowed; }
 
   &--icon { padding: 4px 6px; }
+
+  // The active mode in a segmented pair. Modes stay lit; actions do not.
+  &--on {
+    color: var(--clr-brand-500);
+    background: var(--clr-brand-50);
+    border-color: var(--clr-brand-400);
+
+    &:hover { color: var(--clr-brand-600); background: var(--clr-brand-50); }
+  }
+}
+
+// Boxed so the pair reads as one control rather than two loose buttons.
+.tb-tools {
+  padding: 1px;
+  border: 1px solid var(--clr-surface-200);
+  border-radius: var(--radius-sm);
+  background: var(--clr-surface-50);
 }
 
 .tb-zoom-label { font-size: var(--text-xs); color: var(--clr-text-400); min-width: 32px; text-align: center; }
@@ -300,38 +317,57 @@
 }
 
 // ── Per-category test indicators on a state ───────────────────────────────────
+// ── Per-state test indicators ────────────────────────────────────────────────
+// These are the main signal that a state is covered, so they are filled rather
+// than outlined: an outlined chip on a coloured state washed out (06-ui.md).
 .node-tests {
-  pointer-events: none;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--clr-brand-500);
+    outline-offset: 2px;
+    border-radius: 10px;
+  }
+
+  // Transparent, but a hit target: `fill: none` would not be.
+  &__hit { fill: transparent; }
 
   &__chip {
-    stroke-width: 1;
+    stroke-width: 1.5;
+    stroke: var(--clr-surface-0);
+    filter: drop-shadow(0 1px 2px rgba(0 0 0 / .28));
+    transition: filter var(--transition-fast);
 
-    &--unit        { fill: #f5f3ff; stroke: #8b5cf6; }
-    &--integration { fill: #fffbeb; stroke: #f59e0b; }
-    &--feature     { fill: var(--clr-brand-50); stroke: var(--clr-brand-400); }
+    &--unit        { fill: #7c3aed; }
+    &--integration { fill: #d97706; }
+    &--feature     { fill: var(--clr-brand-500); }
   }
+
+  &:hover &__chip { filter: drop-shadow(0 2px 5px rgba(0 0 0 / .4)); }
 
   &__txt {
     font-family: var(--font-sans);
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
-
-    &--unit        { fill: #6d28d9; }
-    &--integration { fill: #b45309; }
-    &--feature     { fill: var(--clr-brand-600); }
+    fill: #fff;
+    pointer-events: none;
   }
 
   // Marks that the category contains at least one negative case.
   &__neg {
     fill: var(--clr-danger);
     stroke: var(--clr-surface-0);
-    stroke-width: 1;
+    stroke-width: 1.5;
   }
-}
 
-// On the filled initial state the chips need contrast against blue.
-.node-group:has(.node-bg--initial) .node-tests__chip {
-  fill: rgba(255,255,255,.94);
+  &__neg-txt {
+    font-family: var(--font-sans);
+    font-size: 9px;
+    font-weight: 700;
+    fill: #fff;
+    text-anchor: middle;
+    pointer-events: none;
+  }
 }
 
 // ── Quick bar (shape palette) ─────────────────────────────────────────────────

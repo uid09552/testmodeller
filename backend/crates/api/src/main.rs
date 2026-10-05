@@ -3,11 +3,14 @@
 use anyhow::{bail, Context};
 use axum::http::{HeaderValue, Method};
 use clap::Parser;
+use std::sync::Arc;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ImageExt};
 use testcontainers_modules::postgres::Postgres;
+
 use tm_api::config::Config;
-use tm_api::{router, AppState};
+use tm_api::secrets::{KeySource, SecretStore};
+use tm_api::{auth_mode, router, AppState};
 use tm_storage::Store;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -88,8 +91,55 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!(count = interrupted, "marked interrupted AI jobs as failed");
     }
 
-    let mut app =
-        router(AppState::new(store, config.ai_api_key.clone())).layer(TraceLayer::new_for_http());
+    // Fails fast when neither --dev-mode nor a JWKS URL is set, rather than
+    // starting an unauthenticated server (FR-040).
+    let auth = config.auth()?;
+    if auth.is_none() {
+        tracing::warn!("--dev-mode set: JWT validation is skipped and every request is an Editor");
+    }
+
+    // The AI provider key is always persisted; what differs is how well it is
+    // protected. With TM_SECRET_KEY the sealing key lives outside the database;
+    // without it the server generates one and keeps it in the database, which
+    // survives restarts but does not survive a dump of the database itself.
+    let secrets = match config.secret_key.as_deref().filter(|k| !k.is_empty()) {
+        Some(raw) => {
+            tracing::info!("secrets are sealed with TM_SECRET_KEY");
+            SecretStore::from_config(raw).map_err(|e| anyhow::anyhow!(e))?
+        }
+        None => {
+            let key = store
+                .get_or_create_data_key(&SecretStore::generate_key())
+                .await
+                .context("cannot read or create the server data key")?;
+            if config.ai_api_key.as_deref().is_none_or(str::is_empty) {
+                tracing::warn!(
+                    "TM_SECRET_KEY is not set: a provider key saved through the API is \
+                     sealed with a key stored in the database. Prefer TM_AI_API_KEY."
+                );
+            }
+            SecretStore::from_bytes(&key, KeySource::Generated).map_err(|e| anyhow::anyhow!(e))?
+        }
+    };
+
+    // AI settings from the environment win over whatever is stored, so .env
+    // (via compose.yaml) is the one place to configure the provider.
+    if let Some(settings) = config.ai_settings()? {
+        store
+            .put_ai_settings(&settings)
+            .await
+            .context("cannot apply the AI settings from the environment")?;
+        tracing::info!(
+            provider = settings.provider.as_str(),
+            model = settings.model.as_deref().unwrap_or("default"),
+            "AI provider configured from the environment"
+        );
+    }
+
+    let state = AppState::new(store, config.ai_api_key.clone(), Arc::new(secrets));
+    state.ai.load_persisted_key().await;
+
+    let mut app = router(state, auth_mode(auth)).layer(TraceLayer::new_for_http());
     let origin = config
         .cors_origin
         .clone()

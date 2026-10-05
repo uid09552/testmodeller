@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 use crate::dto::{ElementsPayload, FeatureDescriptionPayload, ModelInput, TestCaseInput};
 use crate::error::{ApiError, ApiResult};
+use crate::secrets::SecretStore;
 
 /// Default output token budget when none is configured.
 const DEFAULT_MAX_TOKENS: u32 = 16_000;
@@ -30,7 +31,10 @@ const MAX_CONTEXT_TEST_CASES: i64 = 100;
 pub struct AiService {
     store: Store,
     http: reqwest::Client,
+    /// Working copy of the provider key, so a request does not decrypt.
     api_key: RwLock<Option<String>>,
+    /// Seals the key for the database.
+    secrets: Arc<SecretStore>,
 }
 
 /// Everything a background job needs.
@@ -60,7 +64,7 @@ pub struct ProposalJobRequest {
 
 impl AiService {
     /// Creates the service with an optional initial API key.
-    pub fn new(store: Store, api_key: Option<String>) -> Self {
+    pub fn new(store: Store, api_key: Option<String>, secrets: Arc<SecretStore>) -> Self {
         Self {
             store,
             http: reqwest::Client::builder()
@@ -68,6 +72,36 @@ impl AiService {
                 .build()
                 .unwrap_or_default(),
             api_key: RwLock::new(api_key.filter(|k| !k.is_empty())),
+            secrets,
+        }
+    }
+
+    /// Loads the stored provider key, so a restart does not lose it.
+    ///
+    /// `TM_AI_API_KEY` wins when both are set: an operator passing a key
+    /// explicitly means it, and it is the way to recover from a rotated
+    /// `TM_SECRET_KEY`.
+    pub async fn load_persisted_key(&self) {
+        if self.api_key.read().await.is_some() {
+            tracing::info!("using the API key from the environment, not the stored one");
+            return;
+        }
+        let stored = match self.store.get_ai_secret().await {
+            Ok(Some(v)) => v,
+            Ok(None) => return,
+            Err(e) => {
+                tracing::error!(error = %e, "cannot read the stored AI key");
+                return;
+            }
+        };
+        match self.secrets.open(&stored.0, &stored.1) {
+            Ok(key) => {
+                *self.api_key.write().await = Some(key);
+                tracing::info!("loaded the stored AI provider key");
+            }
+            // Never fatal: the server runs fine without AI, and the user can
+            // set the key again.
+            Err(e) => tracing::error!(error = %e, "cannot use the stored AI key"),
         }
     }
 
@@ -76,9 +110,29 @@ impl AiService {
         self.api_key.read().await.is_some()
     }
 
-    /// Replaces the in-memory API key; an empty string clears it.
-    pub async fn set_api_key(&self, key: String) {
-        *self.api_key.write().await = Some(key).filter(|k| !k.is_empty());
+    /// Replaces the API key; an empty string clears it.
+    ///
+    /// Always persisted, encrypted, so it survives a restart. The key is never
+    /// logged, here or anywhere else.
+    pub async fn set_api_key(&self, key: String) -> ApiResult<()> {
+        let key = Some(key).filter(|k| !k.is_empty());
+        let sealed = match &key {
+            Some(k) => Some(self.secrets.seal(k).map_err(|e| {
+                tracing::error!(error = %e, "cannot seal the AI key");
+                ApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "cannot store the API key securely",
+                )
+            })?),
+            None => None,
+        };
+        // Persisted before the working copy is swapped: if the write fails the
+        // caller is told, rather than getting a key that works until restart.
+        self.store
+            .put_ai_secret(sealed.as_ref().map(|(n, c)| (n.as_slice(), c.as_slice())))
+            .await?;
+        *self.api_key.write().await = key;
+        Ok(())
     }
 
     async fn provider(&self, settings: &AiSettings) -> Option<Box<dyn LlmProvider>> {
@@ -100,7 +154,14 @@ impl AiService {
     }
 
     /// Validates the request, creates a job and runs it in the background.
-    pub async fn start_job(self: &Arc<Self>, req: ProposalJobRequest) -> ApiResult<Job> {
+    ///
+    /// The job is stamped with `tenant` so `GET /jobs/{id}` can be scoped to
+    /// it (FR-044).
+    pub async fn start_job(
+        self: &Arc<Self>,
+        tenant: &str,
+        req: ProposalJobRequest,
+    ) -> ApiResult<Job> {
         let feature = self.store.get_feature(req.feature_id).await?;
         let project_id = self.store.feature_project_id(req.feature_id).await?;
         let model = match req.model_id {
@@ -160,7 +221,7 @@ impl AiService {
             .filter(|t| *t > 0)
             .unwrap_or(DEFAULT_MAX_TOKENS);
 
-        let job = self.store.create_job().await?;
+        let job = self.store.create_job(tenant).await?;
         let spec = JobSpec {
             job_id: job.id,
             kind: req.kind,

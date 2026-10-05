@@ -1,8 +1,9 @@
 import {
-  ChangeDetectionStrategy, Component, computed, HostListener, inject, signal,
+  ChangeDetectionStrategy, Component, computed, effect, HostListener, inject, signal, untracked,
 } from '@angular/core';
+import { OrgApi } from '../../../core/api/org-api';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
-import { ModelRepository } from '../../models/state/model-repository';
+import { fromRemote, PersistedModel, testToInput } from '../../models/state/model-mapping';
 import {
   StateTest, TestCategory, gherkinClause, testRefPrefix, safeExternalUrl,
 } from '../../models/state/model-editor.store';
@@ -36,7 +37,44 @@ type PolarityFilter = 'all' | 'positive' | 'negative';
 })
 export class TestCaseListPageComponent {
   private readonly explorer = inject(ExplorerStore);
-  private readonly repo     = inject(ModelRepository);
+  private readonly api      = inject(OrgApi);
+
+  /** Every model's content, as stored in the database. */
+  private readonly stored = signal<Record<string, PersistedModel>>({});
+  readonly error = signal<string | null>(null);
+
+  constructor() {
+    effect(() => {
+      const ids = this.explorer.modelPaths().map(p => p.model.id);
+      untracked(() => void this.load(ids));
+    });
+  }
+
+  private async load(ids: string[]): Promise<void> {
+    try {
+      const entries = await Promise.all(ids.map(id => this.fetchModel(id)));
+      this.stored.set(Object.fromEntries(entries.map(m => [m.id, m])));
+      this.error.set(null);
+    } catch {
+      this.error.set('The test cases could not be loaded.');
+    }
+  }
+
+  private async fetchModel(id: string): Promise<PersistedModel> {
+    const [model, testCases] = await Promise.all([
+      this.api.getModel(id), this.api.modelTestCases(id),
+    ]);
+    return { ...fromRemote(model, testCases, id, '', null), id };
+  }
+
+  private async reloadModel(id: string): Promise<void> {
+    try {
+      const model = await this.fetchModel(id);
+      this.stored.update(s => ({ ...s, [id]: model }));
+    } catch {
+      this.error.set('The test cases could not be loaded.');
+    }
+  }
 
   // ── Filters ────────────────────────────────────────────────────────────────
   readonly projectFilter  = signal<string>('all');
@@ -62,7 +100,7 @@ export class TestCaseListPageComponent {
    * carries its full Component > Feature > Model path.
    */
   readonly allRows = computed<TestRow[]>(() => {
-    const stored = this.repo.all();
+    const stored = this.stored();
     return this.explorer.modelPaths().flatMap(path => {
       const model = stored[path.model.id];
       if (!model) return [];
@@ -142,7 +180,7 @@ export class TestCaseListPageComponent {
   readonly editing = computed(() => {
     const ids = this.editingIds();
     if (!ids) return null;
-    const model = this.repo.get(ids.modelId);
+    const model = this.stored()[ids.modelId];
     const node  = model?.nodes.find(n => n.id === ids.nodeId);
     const test  = node?.tests?.find(t => t.id === ids.testId);
     if (!model || !node || !test) return null;
@@ -159,37 +197,33 @@ export class TestCaseListPageComponent {
 
   closeEditor(): void { this.editingIds.set(null); }
 
-  /** Write the edited test straight back through the repository. */
-  saveTest(changes: TestDraft): void {
+  /** Writes the edited test through the API, keeping its other assignments. */
+  async saveTest(changes: TestDraft): Promise<void> {
     const ids = this.editingIds();
     if (!ids) return;
-    const model = this.repo.get(ids.modelId);
-    if (!model) { this.closeEditor(); return; }
-
-    this.repo.save({
-      ...model,
-      nodes: model.nodes.map(n =>
-        n.id !== ids.nodeId ? n : {
-          ...n,
-          tests: (n.tests ?? []).map(t => t.id === ids.testId ? { ...t, ...changes } : t),
-        },
-      ),
-    });
+    const test = this.editing()?.test;
     this.closeEditor();
+    if (!test) return;
+    try {
+      const current = await this.api.getTestCase(test.id);
+      const input = {
+        ...testToInput({ ...test, ...changes }, ids.modelId, ids.nodeId),
+        assignments: current.assignments.map(({ testCaseId: _id, ...a }) => a),
+      };
+      await this.api.replaceTestCase(current.id, current.version, input);
+      await this.reloadModel(ids.modelId);
+    } catch {
+      this.error.set('The test case could not be saved.');
+    }
   }
 
-  removeRow(row: TestRow): void {
-    const model = this.repo.get(row.modelId);
-    if (!model) return;
-    this.repo.save({
-      ...model,
-      nodes: model.nodes.map(n =>
-        n.id !== row.nodeId ? n : {
-          ...n,
-          tests: (n.tests ?? []).filter(t => t.id !== row.test.id),
-        },
-      ),
-    });
+  async removeRow(row: TestRow): Promise<void> {
+    try {
+      await this.api.deleteTestCase(row.test.id);
+      await this.reloadModel(row.modelId);
+    } catch {
+      this.error.set('The test case could not be deleted.');
+    }
   }
 
   // ── Export ─────────────────────────────────────────────────────────────────

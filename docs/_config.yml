@@ -1,0 +1,36 @@
+# GitHub Pages site for the TestModeller documentation.
+#
+# Built by .github/workflows/pages.yml with actions/jekyll-build-pages, which
+# runs the github-pages gem. Only themes and plugins bundled with that gem are
+# used, so a build never depends on fetching anything at run time.
+#
+# For a sidebar and search, swap the theme for a remote one:
+#   remote_theme: just-the-docs/just-the-docs@v0.10.1
+# and add `nav_order:` to the pages you want ordered.
+
+title: TestModeller
+description: Model-based testing — draw the model, generate the tests.
+theme: jekyll-theme-primer
+
+# Links between the documents are written as `.md` so they work when browsing
+# the repository; this rewrites them to the built pages so they also work on
+# the site. Both plugins ship with the github-pages gem.
+plugins:
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+
+relative_links:
+  enabled: true
+  collections: true
+
+# Markdown
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+defaults:
+  - scope:
+      path: ''
+    values:
+      layout: default

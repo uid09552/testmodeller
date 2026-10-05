@@ -1,5 +1,6 @@
-import { computed, effect, Injectable, signal } from '@angular/core';
-import { readJson, writeJson } from '../../../core/persistence/local-store';
+import { computed, inject, Injectable, signal } from '@angular/core';
+import { ApiError } from '../../../core/api/api-error';
+import { ModelSummary, OrgApi } from '../../../core/api/org-api';
 
 export interface ExplorerModel {
   id: string;
@@ -31,17 +32,52 @@ export interface ExplorerProject {
   expanded: boolean;
 }
 
-function uuid(): string { return crypto.randomUUID(); }
+/**
+ * What the tree has selected, as ids rather than object references: the tree is
+ * rebuilt on every edit, so a held reference would go stale.
+ */
+export type ExplorerSelection =
+  | { kind: 'project';   projectId: string }
+  | { kind: 'component'; projectId: string; componentId: string }
+  | { kind: 'feature';   projectId: string; componentId: string; featureId: string }
+  | { kind: 'model';     projectId: string; componentId: string; featureId: string; modelId: string };
 
-const KEY = 'explorer';
+/** What the "new item" dialog is about to create. */
+export type NewItemKind = 'project' | 'component' | 'feature' | 'model';
 
-/** Stable ids so ModelRepository can seed content for the demo models. */
-export const DEMO_LOGIN_MODEL_ID = 'demo-model-login';
-export const DEMO_REG_MODEL_ID   = 'demo-model-registration';
+/** Request to open the "new item" dialog, with the parent it hangs off. */
+export interface NewItemPrompt {
+  kind: NewItemKind;
+  projectId?: string;
+  componentId?: string;
+  featureId?: string;
+  /** Captured because "+" does not move the selection. */
+  featureName?: string;
+}
 
+function toExplorerModel(m: ModelSummary): ExplorerModel {
+  return {
+    id: m.id, name: m.name,
+    status: m.status === 'ready' ? 'approved' : 'draft',
+    states: m.stateCount, transitions: m.transitionCount,
+  };
+}
+
+/**
+ * The Project > Component > Feature > Model tree, as the backend holds it.
+ *
+ * Nothing is kept in the browser: the tree is read from the API on start and
+ * every change is made through it first, then shown.
+ */
 @Injectable({ providedIn: 'root' })
 export class ExplorerStore {
+  private readonly api = inject(OrgApi);
+
   readonly projects = signal<ExplorerProject[]>([]);
+  /** False until the first load has finished. */
+  readonly loaded = signal(false);
+  /** The last failure, for the UI to show. */
+  readonly error = signal<string | null>(null);
 
   // ── Computed ────────────────────────────────────────────────────────────────
   readonly totalModels = computed(() =>
@@ -50,21 +86,49 @@ export class ExplorerStore {
   );
 
   constructor() {
-    const stored = readJson<ExplorerProject[]>(KEY);
-    if (stored?.length) {
-      // Tolerate trees stored before `models` existed on features.
-      this.projects.set(stored.map(p => ({
-        ...p,
-        components: p.components.map(c => ({
-          ...c,
-          features: c.features.map(f => ({ ...f, models: f.models ?? [], expanded: f.expanded ?? true })),
-        })),
-      })));
-    } else {
-      this.loadDemo();
+    void this.refresh();
+  }
+
+  /** Reads the whole tree from the backend. */
+  async refresh(): Promise<void> {
+    try {
+      const projects = await this.api.listProjects();
+      const tree = await Promise.all(projects.map(async p => {
+        const comps = await this.api.listComponents(p.id);
+        const components = await Promise.all(comps.map(async c => {
+          const feats = await this.api.listFeatures(c.id);
+          const features = await Promise.all(feats.map(async f => ({
+            id: f.id, name: f.name, description: f.description ?? '',
+            models: (await this.api.listModels(f.id)).map(toExplorerModel),
+            expanded: true,
+          })));
+          return { id: c.id, name: c.name, features, expanded: true };
+        }));
+        return { id: p.id, name: p.name, components, expanded: true };
+      }));
+      this.projects.set(tree);
+      this.error.set(null);
+    } catch (e) {
+      this.fail(e);
+    } finally {
+      this.loaded.set(true);
     }
-    // Persist on every change.
-    effect(() => writeJson(KEY, this.projects()));
+  }
+
+  private fail(e: unknown): void {
+    this.error.set(e instanceof ApiError ? e.message : 'The server could not be reached.');
+  }
+
+  /** Runs a backend change; on failure shows the error and rethrows nothing. */
+  private async run<T>(change: () => Promise<T>): Promise<T | null> {
+    try {
+      const result = await change();
+      this.error.set(null);
+      return result;
+    } catch (e) {
+      this.fail(e);
+      return null;
+    }
   }
 
   /** Flattened tree with full path, for cross-cutting views. */
@@ -83,8 +147,16 @@ export class ExplorerStore {
     ),
   );
 
-  /** Keep the tree's cached counts in step with edited model content. */
-  syncModelStats(modelId: string, patch: { name?: string; states?: number; transitions?: number }): void {
+  /** Keep the tree's cached name, status and counts in step with the editor. */
+  syncModelStats(
+    modelId: string,
+    patch: {
+      name?: string;
+      status?: ExplorerModel['status'];
+      states?: number;
+      transitions?: number;
+    },
+  ): void {
     this.projects.update(ps => ps.map(p => ({
       ...p,
       components: p.components.map(c => ({
@@ -97,18 +169,73 @@ export class ExplorerStore {
     })));
   }
 
+  // ── Selection ──────────────────────────────────────────────────────────────
+  // Lives here, not on a page, because the tree is rendered in the nav bar and
+  // the Explorer page only shows the detail of whatever the tree selected.
+  readonly selection = signal<ExplorerSelection | null>(null);
+
+  readonly selectedProject = computed(() => {
+    const s = this.selection();
+    return s ? this.projects().find(p => p.id === s.projectId) ?? null : null;
+  });
+
+  readonly selectedComponent = computed(() => {
+    const s = this.selection();
+    if (!s || s.kind === 'project') return null;
+    return this.selectedProject()?.components.find(c => c.id === s.componentId) ?? null;
+  });
+
+  readonly selectedFeature = computed(() => {
+    const s = this.selection();
+    if (!s || s.kind === 'project' || s.kind === 'component') return null;
+    return this.selectedComponent()?.features.find(f => f.id === s.featureId) ?? null;
+  });
+
+  readonly selectedModel = computed(() => {
+    const s = this.selection();
+    if (s?.kind !== 'model') return null;
+    return this.selectedFeature()?.models.find(m => m.id === s.modelId) ?? null;
+  });
+
+  select(sel: ExplorerSelection | null): void { this.selection.set(sel); }
+
+  // ── "New item" dialog ──────────────────────────────────────────────────────
+  // The request lives here so the Explorer page can open the dialog that the
+  // tree — the component that is always mounted — renders.
+  readonly newItemPrompt = signal<NewItemPrompt | null>(null);
+
+  promptNew(prompt: NewItemPrompt): void { this.newItemPrompt.set(prompt); }
+
+  closePrompt(): void { this.newItemPrompt.set(null); }
+
+  /** True when `id` is the selected node, compared at its own level. */
+  isSelected(id: string): boolean {
+    const s = this.selection();
+    if (!s) return false;
+    switch (s.kind) {
+      case 'project':   return s.projectId === id;
+      case 'component': return s.componentId === id;
+      case 'feature':   return s.featureId === id;
+      case 'model':     return s.modelId === id;
+    }
+  }
+
   // ── Project mutations ──────────────────────────────────────────────────────
-  addProject(name: string): ExplorerProject {
-    const p: ExplorerProject = { id: uuid(), name, components: [], expanded: true };
+  async addProject(name: string): Promise<ExplorerProject | null> {
+    const created = await this.run(() => this.api.createProject(name));
+    if (!created) return null;
+    const p: ExplorerProject = { id: created.id, name: created.name, components: [], expanded: true };
     this.projects.update(ps => [...ps, p]);
     return p;
   }
 
-  renameProject(id: string, name: string): void {
+  async renameProject(id: string, name: string): Promise<void> {
+    if (!await this.run(() => this.api.renameProject(id, name))) return;
     this.projects.update(ps => ps.map(p => p.id === id ? { ...p, name } : p));
   }
 
-  deleteProject(id: string): void {
+  async deleteProject(id: string): Promise<void> {
+    if (!await this.run(() => this.api.deleteProject(id).then(() => true))) return;
     this.projects.update(ps => ps.filter(p => p.id !== id));
   }
 
@@ -117,15 +244,18 @@ export class ExplorerStore {
   }
 
   // ── Component mutations ────────────────────────────────────────────────────
-  addComponent(projectId: string, name: string): ExplorerComponent {
-    const c: ExplorerComponent = { id: uuid(), name, features: [], expanded: true };
+  async addComponent(projectId: string, name: string): Promise<ExplorerComponent | null> {
+    const created = await this.run(() => this.api.createComponent(projectId, name));
+    if (!created) return null;
+    const c: ExplorerComponent = { id: created.id, name: created.name, features: [], expanded: true };
     this.projects.update(ps => ps.map(p =>
       p.id === projectId ? { ...p, components: [...p.components, c] } : p,
     ));
     return c;
   }
 
-  renameComponent(projectId: string, componentId: string, name: string): void {
+  async renameComponent(projectId: string, componentId: string, name: string): Promise<void> {
+    if (!await this.run(() => this.api.renameComponent(componentId, name))) return;
     this.projects.update(ps => ps.map(p =>
       p.id === projectId ? {
         ...p,
@@ -134,7 +264,8 @@ export class ExplorerStore {
     ));
   }
 
-  deleteComponent(projectId: string, componentId: string): void {
+  async deleteComponent(projectId: string, componentId: string): Promise<void> {
+    if (!await this.run(() => this.api.deleteComponent(componentId).then(() => true))) return;
     this.projects.update(ps => ps.map(p =>
       p.id === projectId ? {
         ...p,
@@ -155,8 +286,13 @@ export class ExplorerStore {
   }
 
   // ── Feature mutations ──────────────────────────────────────────────────────
-  addFeature(projectId: string, componentId: string, name: string): ExplorerFeature {
-    const f: ExplorerFeature = { id: uuid(), name, description: '', models: [], expanded: true };
+  async addFeature(projectId: string, componentId: string, name: string): Promise<ExplorerFeature | null> {
+    const created = await this.run(() => this.api.createFeature(componentId, name));
+    if (!created) return null;
+    const f: ExplorerFeature = {
+      id: created.id, name: created.name, description: created.description ?? '',
+      models: [], expanded: true,
+    };
     this.projects.update(ps => ps.map(p =>
       p.id === projectId ? {
         ...p,
@@ -168,7 +304,8 @@ export class ExplorerStore {
     return f;
   }
 
-  renameFeature(projectId: string, componentId: string, featureId: string, name: string): void {
+  async renameFeature(projectId: string, componentId: string, featureId: string, name: string): Promise<void> {
+    if (!await this.run(() => this.api.renameFeature(featureId, name))) return;
     this.projects.update(ps => ps.map(p =>
       p.id === projectId ? {
         ...p,
@@ -182,7 +319,8 @@ export class ExplorerStore {
     ));
   }
 
-  deleteFeature(projectId: string, componentId: string, featureId: string): void {
+  async deleteFeature(projectId: string, componentId: string, featureId: string): Promise<void> {
+    if (!await this.run(() => this.api.deleteFeature(featureId).then(() => true))) return;
     this.projects.update(ps => ps.map(p =>
       p.id === projectId ? {
         ...p,
@@ -201,24 +339,34 @@ export class ExplorerStore {
   }
 
   // ── Model mutations ────────────────────────────────────────────────────────
-  addModel(
+  async addModel(
     projectId: string, componentId: string, featureId: string, name: string,
-    fixedId?: string,
-  ): ExplorerModel {
-    const m: ExplorerModel = {
-      id: fixedId ?? uuid(), name, status: 'draft', states: 0, transitions: 0,
-    };
+  ): Promise<ExplorerModel | null> {
+    const created = await this.run(() => this.api.createModel(featureId, { name }));
+    if (!created) return null;
+    const m = toExplorerModel(created);
     this.mapFeature(projectId, componentId, featureId,
       f => ({ ...f, models: [...f.models, m], expanded: true }));
     return m;
   }
 
-  renameModel(projectId: string, componentId: string, featureId: string, modelId: string, name: string): void {
+  async renameModel(
+    projectId: string, componentId: string, featureId: string, modelId: string, name: string,
+  ): Promise<void> {
+    if (!await this.run(() => this.api.renameModel(modelId, name))) return;
     this.mapFeature(projectId, componentId, featureId,
       f => ({ ...f, models: f.models.map(m => m.id === modelId ? { ...m, name } : m) }));
   }
 
-  deleteModel(projectId: string, componentId: string, featureId: string, modelId: string): void {
+  async deleteModel(
+    projectId: string, componentId: string, featureId: string, modelId: string,
+  ): Promise<void> {
+    if (!await this.run(() => this.api.deleteModel(modelId).then(() => true))) return;
+    this.removeModel(projectId, componentId, featureId, modelId);
+  }
+
+  /** Drops a model from the tree only; the caller has already deleted it. */
+  removeModel(projectId: string, componentId: string, featureId: string, modelId: string): void {
     this.mapFeature(projectId, componentId, featureId,
       f => ({ ...f, models: f.models.filter(m => m.id !== modelId) }));
   }
@@ -239,25 +387,5 @@ export class ExplorerStore {
         ),
       },
     ));
-  }
-
-  // ── Demo seed ──────────────────────────────────────────────────────────────
-  loadDemo(): void {
-    const proj = this.addProject('My Project');
-    const authComp = this.addComponent(proj.id, 'Auth Flow');
-    const loginFeat = this.addFeature(proj.id, authComp.id, 'Login');
-    this.addModel(proj.id, authComp.id, loginFeat.id, 'Login Flow', DEMO_LOGIN_MODEL_ID);
-    const regFeat = this.addFeature(proj.id, authComp.id, 'Registration');
-    this.addModel(proj.id, authComp.id, regFeat.id, 'Registration Flow', DEMO_REG_MODEL_ID);
-    this.addFeature(proj.id, authComp.id, 'Password Reset');
-    const checkoutComp = this.addComponent(proj.id, 'Checkout');
-    this.addFeature(proj.id, checkoutComp.id, 'Cart');
-    this.addFeature(proj.id, checkoutComp.id, 'Payment');
-    const proj2 = this.addProject('Mobile App');
-    const onboardComp = this.addComponent(proj2.id, 'Onboarding');
-    this.addFeature(proj2.id, onboardComp.id, 'Welcome Screen');
-    this.addFeature(proj2.id, onboardComp.id, 'Profile Setup');
-    proj2.expanded = false;
-    this.projects.update(ps => ps.map(p => p.id === proj2.id ? { ...p, expanded: false } : p));
   }
 }

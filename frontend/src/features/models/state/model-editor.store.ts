@@ -611,6 +611,16 @@ export class ModelEditorStore {
     return node;
   }
 
+  // ── Right-panel focus requests ────────────────────────────────────────────
+  /**
+   * Bumped whenever something asks the right panel to show the selected
+   * state's test cases — the canvas chips do, on double-click. The properties
+   * panel watches it, scrolls the section into view and flashes it.
+   */
+  readonly testsFocusTick = signal(0);
+
+  focusTests(): void { this.testsFocusTick.update(v => v + 1); }
+
   /** Record an undo point before a discrete, one-shot edit. */
   checkpoint(): void { this.pushUndo(); }
 

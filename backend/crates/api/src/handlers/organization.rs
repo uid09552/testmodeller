@@ -7,6 +7,7 @@ use serde::Deserialize;
 use tm_storage::SearchType;
 use uuid::Uuid;
 
+use crate::auth::Identity;
 use crate::dto::*;
 use crate::error::{ApiError, ApiResult};
 use crate::extract::{ApiJson, ApiPath, ApiQuery, IfMatch, Paging};
@@ -24,18 +25,30 @@ pub async fn health(State(state): State<AppState>) -> ApiResult<Json<Health>> {
 /// `GET /projects`
 pub async fn list_projects(
     State(state): State<AppState>,
+    identity: Identity,
     ApiQuery(paging): ApiQuery<Paging>,
 ) -> ApiResult<Json<PageDto<ProjectDto>>> {
-    let page = state.store.list_projects(paging.to_request()?).await?;
+    // The project list is the one read the tenant guard cannot cover: there is
+    // no id in the path, so it filters here instead (FR-044).
+    let page = state
+        .store
+        .list_projects(&identity.tenant, paging.to_request()?)
+        .await?;
     Ok(Json(PageDto::from_page(page)))
 }
 
 /// `POST /projects`
 pub async fn create_project(
     State(state): State<AppState>,
+    identity: Identity,
     ApiJson(input): ApiJson<NamedInput>,
 ) -> ApiResult<(StatusCode, Json<ProjectDto>)> {
-    let p = state.store.create_project(input.into_fields()?).await?;
+    // A new project belongs to the tenant that created it; nothing in the
+    // request body can change that.
+    let p = state
+        .store
+        .create_project(&identity.tenant, input.into_fields()?)
+        .await?;
     Ok((StatusCode::CREATED, Json((&p).into())))
 }
 

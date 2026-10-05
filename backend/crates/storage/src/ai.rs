@@ -90,12 +90,18 @@ fn job(row: &PgRow) -> Result<Job, sqlx::Error> {
 }
 
 impl Store {
-    /// Creates a queued job.
-    pub async fn create_job(&self) -> Result<Job> {
-        let row = sqlx::query("INSERT INTO jobs (id, status) VALUES ($1, 'queued') RETURNING *")
-            .bind(Uuid::new_v4())
-            .fetch_one(&self.pool)
-            .await?;
+    /// Creates a queued job owned by `tenant`.
+    ///
+    /// The tenant is stored on the job itself: a job hangs off no project, so
+    /// `GET /jobs/{id}` has nothing else to scope by (FR-044).
+    pub async fn create_job(&self, tenant: &str) -> Result<Job> {
+        let row = sqlx::query(
+            "INSERT INTO jobs (id, status, tenant_id) VALUES ($1, 'queued', $2) RETURNING *",
+        )
+        .bind(Uuid::new_v4())
+        .bind(tenant)
+        .fetch_one(&self.pool)
+        .await?;
         Ok(job(&row)?)
     }
 
@@ -340,9 +346,65 @@ impl Store {
         })
     }
 
+    /// The server's data key, generating and storing one on first use.
+    ///
+    /// Only reached when `TM_SECRET_KEY` is not configured. `ON CONFLICT DO
+    /// NOTHING` plus a re-read makes two servers starting at once agree on one
+    /// key rather than each overwriting the other's.
+    pub async fn get_or_create_data_key(&self, generated: &[u8]) -> Result<Vec<u8>> {
+        sqlx::query(
+            "INSERT INTO server_secrets (id, data_key) VALUES (true, $1)
+             ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(generated)
+        .execute(&self.pool)
+        .await?;
+        let key: Vec<u8> = sqlx::query_scalar("SELECT data_key FROM server_secrets WHERE id")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(key)
+    }
+
+    /// The stored provider key as `(nonce, ciphertext)`, if one was saved.
+    ///
+    /// The value is encrypted; only the API layer can open it (see
+    /// `tm_api::secrets`). Storage never sees the key itself.
+    pub async fn get_ai_secret(&self) -> Result<Option<(Vec<u8>, Vec<u8>)>> {
+        let row = sqlx::query("SELECT api_key_nonce, api_key_ciphertext FROM ai_settings WHERE id")
+            .fetch_optional(&self.pool)
+            .await?;
+        let Some(row) = row else { return Ok(None) };
+        let nonce: Option<Vec<u8>> = row.try_get("api_key_nonce")?;
+        let ciphertext: Option<Vec<u8>> = row.try_get("api_key_ciphertext")?;
+        Ok(nonce.zip(ciphertext))
+    }
+
+    /// Stores, or with `None` clears, the encrypted provider key.
+    pub async fn put_ai_secret(&self, secret: Option<(&[u8], &[u8])>) -> Result<()> {
+        let (nonce, ciphertext) = match secret {
+            Some((n, c)) => (Some(n), Some(c)),
+            None => (None, None),
+        };
+        // The settings row may not exist yet, so this upserts rather than
+        // updates: a key can be configured before anything else is.
+        sqlx::query(
+            "INSERT INTO ai_settings (id, api_key_nonce, api_key_ciphertext)
+             VALUES (true, $1, $2)
+             ON CONFLICT (id) DO UPDATE SET api_key_nonce = EXCLUDED.api_key_nonce,
+                 api_key_ciphertext = EXCLUDED.api_key_ciphertext",
+        )
+        .bind(nonce)
+        .bind(ciphertext)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     /// Saves AI settings.
     pub async fn put_ai_settings(&self, settings: &AiSettings) -> Result<AiSettings> {
         sqlx::query(
+            // The key columns are deliberately absent: saving settings must
+            // not disturb a key stored in the same row.
             "INSERT INTO ai_settings (id, provider, base_url, model, max_tokens_per_request)
              VALUES (true, $1, $2, $3, $4)
              ON CONFLICT (id) DO UPDATE SET provider = EXCLUDED.provider,

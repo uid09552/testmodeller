@@ -7,6 +7,8 @@
   </header>
 
   <!-- ── AI provider ───────────────────────────────────────────────────────── -->
+  <!-- Read-only: the provider is configured in .env and passed to the backend
+       by compose.yaml (07-ai-integration.md). -->
   <div class="form-section">
     <h2 class="form-section__title">AI Integration</h2>
     <p class="form-section__desc">
@@ -14,72 +16,52 @@
       approval before anything is saved.
     </p>
 
-    <div class="toggle-row">
-      <div>
-        <div class="toggle-row__text">Enable AI features</div>
-        <div class="toggle-row__hint">Turns proposal generation on or off globally</div>
-      </div>
-      <button class="switch" [class.switch--on]="aiEnabled()"
-              (click)="aiEnabled.set(!aiEnabled())"
-              [attr.aria-pressed]="aiEnabled()" aria-label="Enable AI features"></button>
-    </div>
-
-    <div class="field" style="margin-top:16px">
-      <label class="field__label" for="provider">Provider</label>
-      <select id="provider" class="select" [value]="provider()"
-              (change)="provider.set($any($event.target).value)">
-        <option value="anthropic">Anthropic</option>
-        <option value="openai">OpenAI</option>
-        <option value="none">None (disabled)</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label class="field__label" for="model">Model</label>
-      <input id="model" class="input" [value]="model()"
-             (input)="model.set($any($event.target).value)" />
-      <p class="field__hint">Default: claude-opus-5-5</p>
-    </div>
-
-    <div class="field">
-      <label class="field__label" for="apikey">API Key</label>
-      <div class="key-row">
-        <input id="apikey" class="input"
-               [type]="keyVisible() ? 'text' : 'password'"
-               placeholder="sk-ant-…"
-               [value]="apiKey()"
-               (input)="apiKey.set($any($event.target).value)"
-               autocomplete="off" spellcheck="false" />
-        <button class="icon-btn" (click)="toggleKeyVisible()"
-                [attr.aria-label]="keyVisible() ? 'Hide key' : 'Show key'">
-          @if (keyVisible()) {
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-              <line x1="1" y1="1" x2="23" y2="23"/>
-            </svg>
-          } @else {
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-            </svg>
+    @if (loading()) {
+      <p class="field__hint">Loading the current configuration…</p>
+    } @else if (error(); as err) {
+      <p class="field__hint field__hint--error" role="alert">{{ err }}</p>
+    } @else if (settings(); as s) {
+      <dl class="ai-config">
+        <dt>Provider</dt>
+        <dd>
+          {{ providerLabel() }}
+          @if (configured()) {
+            <span class="ai-config__state ai-config__state--ok">Ready</span>
+          } @else if (choice() !== 'none') {
+            <span class="ai-config__state ai-config__state--warn">No API key</span>
           }
-        </button>
-      </div>
-      <p class="field__hint key-hint">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-        </svg>
-        Held in memory only — never written to disk, the database, or logs.
+        </dd>
+
+        @if (choice() !== 'none') {
+          <dt>Model</dt>
+          <dd><code>{{ s.model || 'provider default' }}</code></dd>
+
+          <dt>Endpoint</dt>
+          <dd><code>{{ s.baseUrl || 'provider default' }}</code></dd>
+
+          <dt>API key</dt>
+          <dd>{{ s.secretConfigured ? 'Configured' : 'Not set' }}</dd>
+
+          @if (s.maxTokensPerRequest) {
+            <dt>Max output tokens</dt>
+            <dd>{{ s.maxTokensPerRequest }}</dd>
+          }
+        }
+      </dl>
+    }
+
+    <!-- How to change it: the one thing this section is for now. -->
+    <div class="ai-howto">
+      <p class="ai-howto__lead">
+        The provider is configured in <code>.env</code> and passed to the backend by
+        <code>compose.yaml</code>. Change it there, then restart the backend
+        (<code>make up</code>, or <code>make dev</code> locally).
       </p>
-      <div class="key-actions">
-        <button class="btn btn--primary" [disabled]="!apiKey()" (click)="saveKey()">
-          @if (keySaved()) { Saved } @else { Save Key }
-        </button>
-        <button class="btn btn--secondary" [disabled]="!apiKey()" (click)="clearKey()">Clear</button>
-      </div>
+      <pre class="ai-howto__code"><code>{{ envExample() }}</code></pre>
+      <p class="field__hint">
+        The key is never shown here and never logged. See <code>.env.example</code>
+        for every option.
+      </p>
     </div>
   </div>
 

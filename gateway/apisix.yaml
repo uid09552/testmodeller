@@ -1,0 +1,74 @@
+# APISIX standalone configuration (FR-047).
+#
+# The gateway is the only published port: it performs the OIDC handshake, keeps
+# the session in a cookie, and forwards to the SPA and the backend. The browser
+# therefore never holds a token (FR-048, ADR 0005).
+#
+# Standalone mode reads this file instead of etcd, so the stack stays at three
+# services. Edit and restart the container to change routing.
+
+routes:
+  # ── API ─────────────────────────────────────────────────────────────────────
+  # Authenticated, and the access token is forwarded in Authorization for the
+  # backend to validate (FR-041).
+  - uri: /api/*
+    name: backend-api
+    upstream_id: backend
+    plugins:
+      openid-connect:
+        client_id: ${{OIDC_CLIENT_ID}}
+        client_secret: ${{OIDC_CLIENT_SECRET}}
+        discovery: ${{OIDC_DISCOVERY}}
+        realm: ${{OIDC_REALM}}
+        scope: openid profile email
+        # Session mode: the browser gets a cookie, the upstream gets a bearer.
+        bearer_only: false
+        introspection_endpoint_auth_method: client_secret_post
+        set_access_token_header: true
+        access_token_in_authorization_header: true
+        set_id_token_header: false
+        set_userinfo_header: false
+        # A 401 here means the session expired; the SPA reloads so the
+        # handshake runs again (08-usermanagement.md).
+        unauth_action: auth
+        redirect_uri: ${{OIDC_REDIRECT_URI}}
+        post_logout_redirect_uri: ${{OIDC_POST_LOGOUT_REDIRECT_URI}}
+        logout_path: /logout
+        session:
+          secret: ${{OIDC_SESSION_SECRET}}
+
+  # ── SPA ─────────────────────────────────────────────────────────────────────
+  # Also behind the handshake, so an unauthenticated visitor is sent to the
+  # identity provider before the app loads. /logout is handled by the plugin.
+  - uri: /*
+    name: frontend
+    upstream_id: frontend
+    plugins:
+      openid-connect:
+        client_id: ${{OIDC_CLIENT_ID}}
+        client_secret: ${{OIDC_CLIENT_SECRET}}
+        discovery: ${{OIDC_DISCOVERY}}
+        realm: ${{OIDC_REALM}}
+        scope: openid profile email
+        bearer_only: false
+        set_access_token_header: false
+        set_id_token_header: false
+        set_userinfo_header: false
+        unauth_action: auth
+        redirect_uri: ${{OIDC_REDIRECT_URI}}
+        post_logout_redirect_uri: ${{OIDC_POST_LOGOUT_REDIRECT_URI}}
+        logout_path: /logout
+        session:
+          secret: ${{OIDC_SESSION_SECRET}}
+
+upstreams:
+  - id: backend
+    nodes:
+      "backend:8080": 1
+    type: roundrobin
+  - id: frontend
+    nodes:
+      "frontend:80": 1
+    type: roundrobin
+
+#END

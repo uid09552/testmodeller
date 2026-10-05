@@ -1,0 +1,24 @@
+# APISIX data-plane configuration.
+#
+# Standalone (no etcd): routes come from apisix.yaml, which the container
+# re-reads on restart. See docs/specification/08-usermanagement.md.
+
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml
+
+apisix:
+  node_listen: 9080
+  enable_admin: false
+  # The gateway terminates the session cookie, so it must know whether the
+  # original request was https when building redirect URIs.
+  enable_server_tokens: false
+
+nginx_config:
+  http:
+    custom_lua_shared_dict:
+      # Required by openid-connect for the discovery document and sessions.
+      discovery: 2m
+      jwks: 2m
+      introspection: 10m

@@ -30,7 +30,9 @@
   --clr-edge-hover: #111827;
 
   // Shell dimensions
-  --nav-width:       220px;
+  // The expanded nav holds the project tree (ADR 0004), so it is wider than a
+  // list of labels would need.
+  --nav-width:       288px;
   --nav-width-collapsed: 56px;
   --topbar-height:   52px;
 

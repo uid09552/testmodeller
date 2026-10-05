@@ -5,6 +5,7 @@ import {
   output,
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { ExplorerTreeComponent } from '../../../features/explorer/components/explorer-tree/explorer-tree';
 
 export interface NavItem {
   label: string;
@@ -14,13 +15,8 @@ export interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  {
-    label: 'Explorer',
-    icon: 'M3 7h18M3 12h18M3 17h18',
-    route: '/explorer',
-    exact: false,
-  },
-  // Models are reached through the Explorer tree, not a top-level nav entry.
+  // Projects and models are reached through the tree above these items, not
+  // through a nav entry of their own.
   {
     label: 'Test Cases',
     icon: 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4',
@@ -48,7 +44,7 @@ const BOTTOM_ITEMS: NavItem[] = [
 
 @Component({
   selector: 'tm-sidenav',
-  imports: [RouterLink, RouterLinkActive],
+  imports: [RouterLink, RouterLinkActive, ExplorerTreeComponent],
   templateUrl: './sidenav.html',
   styleUrl: './sidenav.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -59,4 +55,13 @@ export class SidenavComponent {
 
   readonly navItems = NAV_ITEMS;
   readonly bottomItems = BOTTOM_ITEMS;
+
+  /**
+   * The tree is the nav's main content, so it is always shown — there is no
+   * separate toggle. Collapsing the nav to icons is what hides it, because at
+   * that width there is no room for a tree.
+   */
+  showTree(): boolean {
+    return !this.collapsed();
+  }
 }

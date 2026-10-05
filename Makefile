@@ -1,5 +1,5 @@
-.PHONY: dev dev-fe build build-fe test fmt clippy check clean \
-        up down down-volumes logs ps docker-build
+.PHONY: dev dev-fe build build-fe test test-fe fmt clippy check clean \
+        screenshots up down down-volumes logs ps docker-build
 
 BACKEND_DIR  := backend
 FRONTEND_DIR := frontend
@@ -59,12 +59,22 @@ test:
 test-integration:
 	cd $(BACKEND_DIR) && cargo test --workspace -- --include-ignored
 
+## test-fe: run the frontend unit tests
+test-fe:
+	cd $(FRONTEND_DIR) && npx ng test
+
+# ── Documentation ──────────────────────────────────────────────────────────────
+
+## screenshots: regenerate docs/screenshots from a production build
+screenshots: build-fe
+	cd $(FRONTEND_DIR) && npm run screenshots
+
 # ── Containers ─────────────────────────────────────────────────────────────────
 
-## up: build and start the full stack (frontend, backend, postgres) on :8088
+## up: build and start the full stack (gateway, frontend, backend, postgres) on :8088
 up:
 	docker compose up --build -d
-	@echo "TestModeller is on http://localhost:8088"
+	@echo "TestModeller is on http://localhost:8088 (via the APISIX gateway)"
 
 ## down: stop the stack, keeping the database volume
 down:

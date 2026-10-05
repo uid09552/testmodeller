@@ -5,6 +5,7 @@ mod ai;
 mod export;
 mod models;
 mod organization;
+mod tenancy;
 mod test_cases;
 
 use std::str::FromStr;
@@ -25,6 +26,7 @@ pub use models::{ModelMeta, StateRecord, TransitionRecord};
 pub use organization::{
     FeatureFields, NamedFields, SearchHit, SearchType, TreeComponent, TreeFeature, TreeModel,
 };
+pub use tenancy::TenantScope;
 pub use test_cases::{NewAssignment, TestCaseFilter};
 
 /// Storage errors.

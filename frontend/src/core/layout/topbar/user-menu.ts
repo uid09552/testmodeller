@@ -3,12 +3,13 @@ import {
   Component,
   ElementRef,
   HostListener,
+  inject,
   input,
-  OnInit,
   output,
   viewChild,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { SessionService } from '../../auth/session';
 
 @Component({
   selector: 'tm-user-menu',
@@ -17,14 +18,17 @@ import { RouterLink } from '@angular/router';
   styleUrl: './user-menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class UserMenuComponent implements OnInit {
+export class UserMenuComponent {
   readonly open = input(false);
   readonly close = output<void>();
 
+  private readonly session = inject(SessionService);
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
 
-  ngOnInit(): void {
-    // Focus the menu panel when it opens so keyboard users can navigate it.
+  /** Ends the gateway session (FR-046). */
+  signOut(): void {
+    this.close.emit();
+    this.session.signOut();
   }
 
   @HostListener('document:click', ['$event'])

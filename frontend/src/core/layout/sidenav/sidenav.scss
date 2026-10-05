@@ -85,13 +85,38 @@
   gap: 2px;
   padding: 8px 8px 0;
   overflow: hidden;
+  flex: 1;
+  min-height: 0;
 
   &--bottom {
+    flex: 0 0 auto;
     margin-top: auto;
     padding-bottom: 12px;
     border-top: 1px solid var(--clr-surface-100);
     padding-top: 8px;
   }
+}
+
+// One nav row: a single link, sized to the nav's width.
+.sidenav__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+
+  .sidenav__item { flex: 1; min-width: 0; }
+}
+
+// Holds the tree: takes whatever height is left, so the items below it keep
+// their place and the tree scrolls internally rather than pushing them away.
+.sidenav__tree-host {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 -8px 6px;
+  border-bottom: 1px solid var(--clr-surface-100);
+  background: var(--clr-surface-50);
 }
 
 // ── Individual nav item ────────────────────────────────────────────────────────

@@ -43,8 +43,43 @@
     <button class="tb-btn tb-btn--icon" title="Zoom in" (click)="zoomIn()" aria-label="Zoom in">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </button>
+    <button class="tb-btn tb-btn--icon" title="Centre the diagram (or double-click the canvas)"
+            (click)="centerView()" aria-label="Centre the diagram">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+    </button>
     <button class="tb-btn tb-btn--icon" title="Reset view" (click)="resetView()" aria-label="Reset view">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+    </button>
+  </div>
+
+  <div class="toolbar__sep" aria-hidden="true"></div>
+
+  <!-- Select / pan, as a segmented pair: they are modes, not actions, so the
+       active one stays lit. -->
+  <div class="toolbar__group tb-tools" role="radiogroup" aria-label="Canvas tool">
+    <button class="tb-btn tb-btn--icon" [class.tb-btn--on]="tool() === 'select'"
+            role="radio" [attr.aria-checked]="tool() === 'select'"
+            title="Select and move (V)" aria-label="Select and move"
+            (click)="setTool('select')">
+      <!-- arrow cursor -->
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 3l7.5 17 2.2-6.3 6.3-2.2z"/>
+      </svg>
+    </button>
+    <button class="tb-btn tb-btn--icon" [class.tb-btn--on]="tool() === 'pan'"
+            role="radio" [attr.aria-checked]="tool() === 'pan'"
+            title="Pan the view (H) — or hold Shift while dragging"
+            aria-label="Pan the view"
+            (click)="setTool('pan')">
+      <!-- open hand -->
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 11V6.5a1.5 1.5 0 0 0-3 0V11"/>
+        <path d="M15 10.5V5a1.5 1.5 0 0 0-3 0v6"/>
+        <path d="M12 11V6a1.5 1.5 0 0 0-3 0v7"/>
+        <path d="M9 12.5V9.5a1.5 1.5 0 0 0-3 0V15a6 6 0 0 0 6 6h1a6 6 0 0 0 6-6v-4"/>
+      </svg>
     </button>
   </div>
 
@@ -88,13 +123,13 @@
      (dragover)="onCanvasDragOver($event)"
      (dragleave)="onCanvasDragLeave()"
      (drop)="onCanvasDrop($event)"
-     [style.cursor]="drawing() || reconnecting() ? 'crosshair' : null">
+     [style.cursor]="canvasCursor()">
 
   <svg #svgCanvas class="canvas-svg"
        (mousedown)="onBgMouseDown($event)"
        (dblclick)="onBgDblClick($event)"
        role="application"
-       aria-label="State machine canvas">
+       aria-label="State machine canvas. Double-click empty space to centre the diagram.">
 
     <defs>
       <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -269,18 +304,32 @@
             </text>
           }
 
-          <!-- Per-category test indicators: U / I / F with counts -->
+          <!-- Per-category test indicators: U / I / F with counts.
+               Double-clicking them opens the state's test cases in the right
+               panel (see docs/specification/06-ui.md). -->
           @if (node.tests.length) {
-            <g class="node-tests" [attr.transform]="'translate(5,' + (node.h - 6) + ')'">
+            <g class="node-tests" [attr.transform]="testsTransform(node)"
+               (dblclick)="onTestsDblClick($event, node)"
+               role="button" tabindex="0"
+               (keydown.enter)="revealTestsFor(node)"
+               [attr.aria-label]="'Test cases on ' + node.label + ': ' + node.tests.length
+                                  + '. Double-click to open.'">
+              <title>{{ node.tests.length }} test case(s) — double-click to open</title>
+              <!-- One hit area behind the row: the gaps between chips are part
+                   of the control, not dead space that falls through to the
+                   state underneath. -->
+              <rect class="node-tests__hit" x="-4" y="-14"
+                    [attr.width]="testsRowWidth(node) + 8" height="25" rx="12" ry="12" />
               @for (c of store.testCounts(node); track c.category; let i = $index) {
-                <g [attr.transform]="'translate(' + (i * 27) + ',0)'">
+                <g [attr.transform]="'translate(' + (i * TEST_CHIP_STEP) + ',0)'">
                   <rect class="node-tests__chip node-tests__chip--{{ c.category }}"
-                        x="0" y="-9" width="25" height="14" rx="7" ry="7" />
-                  <text class="node-tests__txt node-tests__txt--{{ c.category }}" x="5" y="1.5">
+                        x="0" y="-11" width="31" height="19" rx="9" ry="9" />
+                  <text class="node-tests__txt" x="7" y="2.5">
                     {{ c.category.charAt(0).toUpperCase() }}{{ c.count }}
                   </text>
                   @if (c.negative) {
-                    <circle class="node-tests__neg" cx="24" cy="-8" r="3" />
+                    <circle class="node-tests__neg" cx="29" cy="-10" r="4" />
+                    <text class="node-tests__neg-txt" x="29" y="-7.5">−</text>
                   }
                 </g>
               }
@@ -290,7 +339,8 @@
           <!-- ── Connector dots: the anchor points transitions attach to ── -->
           <!-- Shown on hover, and on every candidate target while drawing so
                the dot that would be used is visible before releasing. -->
-          @if ((hoveredNodeId() === node.id && !drawing()) || dropAnchor(node)) {
+          @if (tool() === 'select'
+               && ((hoveredNodeId() === node.id && !drawing()) || dropAnchor(node))) {
             @for (a of anchors; track a) {
               <circle class="connector-dot"
                       [class.connector-dot--target]="dropAnchor(node) === a"

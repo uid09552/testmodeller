@@ -28,10 +28,17 @@
     </svg>
   </button>
 
-  <!-- Primary nav items -->
+  <!-- The project tree is the nav's main content (ADR 0004); the items below
+       it are the cross-cutting views. -->
   <ul class="sidenav__list" role="list">
+    @if (showTree()) {
+      <li class="sidenav__tree-host">
+        <tm-explorer-tree />
+      </li>
+    }
+
     @for (item of navItems; track item.route) {
-      <li>
+      <li class="sidenav__row">
         <a class="sidenav__item"
            [routerLink]="item.route"
            routerLinkActive="sidenav__item--active"
@@ -54,7 +61,7 @@
   <!-- Bottom utility items (Settings) -->
   <ul class="sidenav__list sidenav__list--bottom" role="list">
     @for (item of bottomItems; track item.route) {
-      <li>
+      <li class="sidenav__row">
         <a class="sidenav__item"
            [routerLink]="item.route"
            routerLinkActive="sidenav__item--active"

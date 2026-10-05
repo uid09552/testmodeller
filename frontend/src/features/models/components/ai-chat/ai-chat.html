@@ -1,0 +1,156 @@
+<section class="chat" aria-label="AI assistant">
+
+  <!-- ── Transcript ───────────────────────────────────────────────────────── -->
+  <div class="chat__log" #transcript role="log" aria-live="polite" aria-atomic="false">
+
+    @if (store.entries().length === 0) {
+      <div class="chat__intro">
+        <p class="chat__intro-text">
+          Ask for scenarios, test cases or missing states. Your message goes to
+          the API as a proposal request, and what comes back is shown here —
+          nothing is applied to the model until you accept it.
+        </p>
+        <p class="chat__intro-text">
+          The feature and this model are synced to the backend on the first
+          question, so the assistant reasons about what is on the canvas now.
+        </p>
+        @if (!store.ready()) {
+          <p class="chat__warn">
+            This model is not in a project yet, so there is no feature to ask
+            about. Create it from the Projects tree, or open it from there.
+          </p>
+        }
+        <ul class="chat__suggestions" role="list">
+          @for (s of suggestions; track s) {
+            <li>
+              <button class="chat__suggestion" (click)="use(s)">{{ s }}</button>
+            </li>
+          }
+        </ul>
+      </div>
+    }
+
+    @for (entry of store.entries(); track entry.id) {
+      @switch (entry.kind) {
+
+        @case ('said') {
+          <div class="msg msg--{{ entry.role }}">
+            <span class="msg__who">{{ entry.role === 'user' ? 'You' : 'Assistant' }}</span>
+            <p class="msg__text">{{ entry.text }}</p>
+          </div>
+        }
+
+        @case ('failure') {
+          <div class="msg msg--failure" role="alert">
+            <span class="msg__who">Failed</span>
+            <p class="msg__text">{{ entry.text }}</p>
+            @if (entry.hint) {
+              <p class="msg__hint">{{ entry.hint }}</p>
+            }
+          </div>
+        }
+
+        @case ('card') {
+          @if (isCard(entry)) {
+            <article class="card card--{{ entry.state }}">
+              <header class="card__head">
+                <span class="card__kind">{{ kindLabel(entry.proposal.kind) }}</span>
+                <h4 class="card__title">{{ cardTitle(entry) }}</h4>
+              </header>
+
+              <ul class="card__lines" role="list">
+                @for (line of cardSummary(entry); track $index) {
+                  <li>{{ line }}</li>
+                }
+              </ul>
+
+              @if (entry.proposal.rationale) {
+                <p class="card__rationale">
+                  <span class="card__rationale-label">Why</span>
+                  {{ entry.proposal.rationale }}
+                </p>
+              }
+
+              @if (entry.proposal.source) {
+                <p class="card__source">AI proposal · {{ entry.proposal.source }}</p>
+              }
+
+              @if (entry.error) {
+                <p class="card__error" role="alert">{{ entry.error }}</p>
+              }
+
+              @switch (entry.state) {
+                @case ('pending') {
+                  <div class="card__actions">
+                    <button class="card__btn card__btn--accept" (click)="accept(entry)">
+                      Accept
+                    </button>
+                    <button class="card__btn card__btn--reject" (click)="reject(entry)">
+                      Reject
+                    </button>
+                  </div>
+                }
+                @case ('working') {
+                  <p class="card__state">Working…</p>
+                }
+                @case ('accepted') {
+                  <p class="card__state card__state--ok">
+                    Accepted. {{ entry.applied }}
+                  </p>
+                }
+                @case ('rejected') {
+                  <p class="card__state card__state--off">Rejected.</p>
+                }
+              }
+            </article>
+          }
+        }
+      }
+    }
+
+    @if (store.working(); as status) {
+      <div class="chat__working">
+        <svg class="spin" width="13" height="13" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-6.22-8.56"/>
+        </svg>
+        <span>{{ status }}</span>
+        <button class="chat__cancel" (click)="store.cancel()">Cancel</button>
+      </div>
+    }
+  </div>
+
+  <!-- ── Composer ─────────────────────────────────────────────────────────── -->
+  <div class="chat__composer">
+    <div class="chat__intents" role="radiogroup" aria-label="What to ask for">
+      @for (i of intents; track i.value) {
+        <button class="chat__intent"
+                [class.chat__intent--on]="store.intent() === i.value"
+                role="radio"
+                [attr.aria-checked]="store.intent() === i.value"
+                (click)="setIntent(i.value)">
+          {{ i.label }}
+        </button>
+      }
+    </div>
+
+    <label class="chat__label" for="chat-input">Message</label>
+    <textarea id="chat-input" class="chat__input" rows="3"
+              placeholder="e.g. propose negative test cases for the login state"
+              [value]="draft()"
+              (input)="draft.set($any($event.target).value)"
+              (keydown)="onKeydown($event)"></textarea>
+
+    <div class="chat__send-row">
+      @if (previewKind(); as kind) {
+        <span class="chat__preview">Sends as: {{ kind }}</span>
+      } @else {
+        <span class="chat__preview chat__preview--muted">Enter sends · Shift+Enter newline</span>
+      }
+      @if (store.entries().length) {
+        <button class="chat__clear" (click)="store.clear()">Clear</button>
+      }
+      <button class="chat__send" [disabled]="!canSend()" (click)="send()">Send</button>
+    </div>
+  </div>
+</section>

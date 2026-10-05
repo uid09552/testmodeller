@@ -19,6 +19,20 @@ export const PALETTE: { kind: StateKind; label: string }[] = [
   { kind: 'final',    label: 'End state' },
 ];
 
+/**
+ * What a left-drag on the canvas does.
+ *
+ * `select` is the editing default: drag the background to marquee-select, drag
+ * a state to move it. `pan` is the hand tool: a left-drag moves the view
+ * wherever it starts, which is what you want while reading a diagram you do
+ * not mean to change.
+ */
+export type CanvasTool = 'select' | 'pan';
+
+/** Test-chip geometry; the template and `testsTransform` must agree on it. */
+const TEST_CHIP_W = 31;
+const TEST_CHIP_STEP = 34;
+
 interface DragState {
   nodeId: string; startX: number; startY: number; origX: number; origY: number;
   /** Starting positions of every co-selected state, for moving them together. */
@@ -233,6 +247,37 @@ export class CanvasComponent {
     this.store.select(node.id, 'node');
   }
 
+  // ── Tool ──────────────────────────────────────────────────────────────────
+  readonly tool = signal<CanvasTool>('select');
+
+  setTool(tool: CanvasTool): void {
+    this.tool.set(tool);
+    // Anything half-started with the other tool would be stranded.
+    this.drawing.set(null);
+    this.reconnecting.set(null);
+    this.marquee.set(null);
+  }
+
+  /** True while the hand tool should take a left-drag, whatever it lands on. */
+  private handTool(e: MouseEvent): boolean {
+    return this.tool() === 'pan' && e.button === 0;
+  }
+
+  /** Starts a pan from this event. Returns true when it took the event. */
+  private startPan(e: MouseEvent): boolean {
+    e.preventDefault();
+    e.stopPropagation();
+    this.panning.set({ sx: e.clientX, sy: e.clientY, px: this.panX(), py: this.panY() });
+    return true;
+  }
+
+  /** Cursor for the canvas: the tool, unless something is already happening. */
+  canvasCursor(): string | null {
+    if (this.drawing() || this.reconnecting()) return 'crosshair';
+    if (this.panning()) return 'grabbing';
+    return this.tool() === 'pan' ? 'grab' : null;
+  }
+
   zoomIn():    void { this.zoom.update(z => Math.min(z + 0.15, 3)); }
   zoomOut():   void { this.zoom.update(z => Math.max(z - 0.15, 0.3)); }
   resetView(): void { this.panX.set(40); this.panY.set(40); this.zoom.set(1); }
@@ -384,12 +429,23 @@ export class CanvasComponent {
     if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); this.store.redo(); }
     if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); this.store.selectAll(); }
     if ((e.ctrlKey || e.metaKey) && e.key === 'g') { e.preventDefault(); this.groupSelection(); }
+    // V / H, as in every other canvas tool.
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === 'v' || e.key === 'V') this.setTool('select');
+      if (e.key === 'h' || e.key === 'H') this.setTool('pan');
+    }
     if ((e.key === 'Delete' || e.key === 'Backspace') && this.editNodeId() === null) this.deleteSelected();
     if (e.key === 'Escape') { this.cancelEdit(); this.drawing.set(null); this.reconnecting.set(null); this.marquee.set(null); this.closeContextMenu(); }
   }
 
   @HostListener('document:mousedown', ['$event'])
   onDocMouseDown(e: MouseEvent): void {
+    // Belt and braces for the focus above: whatever happens to focus, a click
+    // outside the label editor commits it, so editing cannot get stuck.
+    if (this.editNodeId() !== null
+        && !(e.target as Element).closest('.node-edit-input')) {
+      this.finishEdit();
+    }
     if (this.contextMenu()) {
       const menu = (e.target as Element).closest('.ctx-menu');
       if (!menu) this.closeContextMenu();
@@ -413,8 +469,10 @@ export class CanvasComponent {
 
   // ── Canvas background ────────────────────────────────────────────────
   onBgMouseDown(e: MouseEvent): void {
-    // Middle-mouse, or Shift/Alt + left, pans. Plain left-drag marquee-selects.
-    const wantsPan = e.button === 1 || (e.button === 0 && (e.shiftKey || e.altKey));
+    // Middle-mouse, Shift/Alt + left, or the hand tool pans. Plain left-drag
+    // marquee-selects.
+    const wantsPan =
+      e.button === 1 || (e.button === 0 && (e.shiftKey || e.altKey || this.tool() === 'pan'));
     if (wantsPan) {
       e.preventDefault();
       this.panning.set({ sx: e.clientX, sy: e.clientY, px: this.panX(), py: this.panY() });
@@ -448,6 +506,7 @@ export class CanvasComponent {
 
   onGroupMouseDown(e: MouseEvent, group: CanvasGroup): void {
     if (e.button !== 0) return;
+    if (this.handTool(e)) { this.startPan(e); return; }
     e.stopPropagation();
     if (e.ctrlKey || e.metaKey) this.store.toggleSelect(group.id, 'group');
     else this.store.select(group.id, 'group');
@@ -458,6 +517,7 @@ export class CanvasComponent {
   /** Begin resizing a group from one of its handles. */
   onGroupResizeStart(e: MouseEvent, group: CanvasGroup, handle: ResizeHandle): void {
     if (e.button !== 0) return;
+    if (this.handTool(e)) { this.startPan(e); return; }
     e.stopPropagation();
     e.preventDefault();
     this.store.select(group.id, 'group');
@@ -475,16 +535,49 @@ export class CanvasComponent {
   /** Remove the grouping; the states stay. */
   deleteGroup(id: string): void { this.store.ungroup(id); }
 
+  /**
+   * Double-clicking empty canvas centres the diagram in the viewport.
+   *
+   * It used to drop a new state, which made an easy gesture destructive on a
+   * diagram the user was only trying to look at. States are added from the
+   * palette, by dragging off a connector dot, or from "Add state here" in the
+   * right-click menu — all of which say what they will do first.
+   */
   onBgDblClick(e: MouseEvent): void {
-    const pt = toCanvas(e, this.svgEl().nativeElement, this.zoom(), this.panX(), this.panY());
-    const node = this.store.addNode('regular', pt.x - NODE_W / 2, pt.y - NODE_H / 2);
-    this.store.select(node.id, 'node');
-    this.startEdit(node.id, node.label);
+    e.preventDefault();
+    this.centerView();
+  }
+
+  /**
+   * Pans so the content sits in the middle of the viewport, leaving the zoom
+   * alone. With nothing on the canvas there is nothing to centre, so the view
+   * goes back to its default corner.
+   */
+  centerView(): void {
+    const nodes = this.store.nodes();
+    const svg = this.svgEl().nativeElement;
+    const view = svg.getBoundingClientRect();
+    if (nodes.length === 0 || view.width === 0) {
+      this.resetView();
+      return;
+    }
+    const minX = Math.min(...nodes.map(n => n.x));
+    const minY = Math.min(...nodes.map(n => n.y));
+    const maxX = Math.max(...nodes.map(n => n.x + n.w));
+    const maxY = Math.max(...nodes.map(n => n.y + n.h));
+    const zoom = this.zoom();
+    // Pan is applied before zoom (see `toCanvas`), so the offset that centres
+    // the content is measured in canvas units, not screen pixels.
+    this.panX.set(Math.round((view.width / zoom - (maxX - minX)) / 2 - minX));
+    this.panY.set(Math.round((view.height / zoom - (maxY - minY)) / 2 - minY));
   }
 
   // ── Node interaction ──────────────────────────────────────────────────
   onNodeMouseDown(e: MouseEvent, node: CanvasNode): void {
     if (e.button !== 0) return;
+    // The hand tool pans from anywhere, so grabbing a state moves the view
+    // rather than the state.
+    if (this.handTool(e)) { this.startPan(e); return; }
     e.stopPropagation();
     if (this.editNodeId() === node.id) return;
 
@@ -511,8 +604,54 @@ export class CanvasComponent {
     this.startEdit(node.id, node.label);
   }
 
+  // ── Test case indicators ──────────────────────────────────────────────────
+  /** Horizontal distance between two category chips. */
+  readonly TEST_CHIP_STEP = TEST_CHIP_STEP;
+
+  /**
+   * Where a state's test chips sit: centred under the state, just below its
+   * bottom edge.
+   *
+   * Outside rather than inside, because at a readable size they covered the
+   * state's own name — and a shape's interior is not reliably wide where the
+   * chips would be anyway, a diamond's lower half least of all.
+   */
+  testsTransform(node: CanvasNode): string {
+    const width = this.testsRowWidth(node);
+    const x = Math.round((node.w - width) / 2);
+    return `translate(${x},${node.h + 13})`;
+  }
+
+  /** Width of a state's whole chip row. */
+  testsRowWidth(node: CanvasNode): number {
+    const count = this.store.testCounts(node).length;
+    return count > 0 ? (count - 1) * TEST_CHIP_STEP + TEST_CHIP_W : 0;
+  }
+
+  /**
+   * Double-clicking the chips reveals the state's test cases instead of
+   * renaming the state, which is what a double-click elsewhere on it does.
+   */
+  onTestsDblClick(e: MouseEvent, node: CanvasNode): void {
+    e.stopPropagation();
+    e.preventDefault();
+    this.revealTestsFor(node);
+  }
+
+  revealTestsFor(node: CanvasNode): void {
+    this.store.select(node.id, 'node');
+    this.revealTests.emit();
+  }
+
+  /** Asks the page to open the properties panel on this state's test cases. */
+  readonly revealTests = output<void>();
+
+  /** The inline label editor, while one is open. */
+  private readonly editInput = viewChild<ElementRef<HTMLInputElement>>('editInput');
+
   // ── Connector (start drawing edge) ────────────────────────────────────
   onConnectorMouseDown(e: MouseEvent, node: CanvasNode, anchor: Anchor): void {
+    if (this.handTool(e)) { this.startPan(e); return; }
     e.stopPropagation();
     const p = anchorPoint(node, anchor);
     this.drawing.set({
@@ -558,6 +697,7 @@ export class CanvasComponent {
 
   /** Grab one end of a transition to re-attach it elsewhere. */
   onEndpointMouseDown(ev: MouseEvent, edge: CanvasEdge, end: 'from' | 'to'): void {
+    if (this.handTool(ev)) { this.startPan(ev); return; }
     ev.stopPropagation();
     ev.preventDefault();
     const p = this.edgeEndpoint(edge, end);
@@ -721,6 +861,15 @@ export class CanvasComponent {
     this.editNodeId.set(id);
     this.editValue.set(label);
     this.cdr.markForCheck();
+    // Focus the input once it exists. Without this nothing has focus, so no
+    // blur ever fires, editing never ends, and every shortcut that is
+    // suppressed during editing — Delete above all — stays dead.
+    setTimeout(() => {
+      const el = this.editInput()?.nativeElement;
+      if (!el) return;
+      el.focus();
+      el.select();
+    });
   }
 
   finishEdit(): void {

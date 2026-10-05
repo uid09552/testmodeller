@@ -1,0 +1,238 @@
+<div class="tree-head">
+  <span class="tree-head__title">Projects</span>
+  <button class="tree-head__btn" title="New project" aria-label="New project"
+          (click)="openNewPrompt('project')">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+  </button>
+</div>
+
+<div class="tree-scroll" role="tree" aria-label="Projects">
+  @for (project of store.projects(); track project.id) {
+    <!-- ── Project ── -->
+    <div class="tree-item tree-item--project"
+         [class.tree-item--selected]="store.isSelected(project.id)"
+         (click)="selectProject(project)"
+         (keydown.enter)="selectProject(project)"
+         (contextmenu)="openCtx($event, { kind: 'project', project })"
+         role="treeitem" tabindex="0"
+         [attr.aria-expanded]="project.expanded"
+         [attr.aria-label]="'Project ' + project.name">
+      <span class="tree-item__chevron" [class.tree-item__chevron--open]="project.expanded">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </span>
+      <svg class="tree-item__icon tree-item__icon--project" width="16" height="16"
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+      @if (isEditing(project.id)) {
+        <input class="tree-item__edit" [value]="editValue()"
+               (input)="editValue.set($any($event.target).value)"
+               (blur)="finishEdit(project)"
+               (keydown)="onEditKey($event, project)"
+               (click)="$event.stopPropagation()" autofocus />
+      } @else {
+        <span class="tree-item__label">{{ project.name }}</span>
+      }
+      <button class="tree-item__add" title="Add component" aria-label="Add component"
+              (click)="$event.stopPropagation(); openNewPrompt('component', project.id)">+</button>
+    </div>
+
+    @if (project.expanded) {
+      @for (comp of project.components; track comp.id) {
+        <!-- ── Component ── -->
+        <div class="tree-item tree-item--component"
+             [class.tree-item--selected]="store.isSelected(comp.id)"
+             (click)="selectComponent(project, comp)"
+             (keydown.enter)="selectComponent(project, comp)"
+             (contextmenu)="openCtx($event, { kind: 'component', project, component: comp })"
+             role="treeitem" tabindex="0"
+             [attr.aria-expanded]="comp.expanded"
+             [attr.aria-label]="'Component ' + comp.name">
+          <span class="tree-item__chevron" [class.tree-item__chevron--open]="comp.expanded">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </span>
+          <svg class="tree-item__icon tree-item__icon--component" width="16" height="16"
+               viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+          </svg>
+          @if (isEditing(comp.id)) {
+            <input class="tree-item__edit" [value]="editValue()"
+                   (input)="editValue.set($any($event.target).value)"
+                   (blur)="finishEdit(project, comp)"
+                   (keydown)="onEditKey($event, project, comp)"
+                   (click)="$event.stopPropagation()" autofocus />
+          } @else {
+            <span class="tree-item__label">{{ comp.name }}</span>
+          }
+          <button class="tree-item__add" title="Add feature" aria-label="Add feature"
+                  (click)="$event.stopPropagation(); openNewPrompt('feature', project.id, comp.id)">+</button>
+        </div>
+
+        @if (comp.expanded) {
+          @for (feat of comp.features; track feat.id) {
+            <!-- ── Feature ── -->
+            <div class="tree-item tree-item--feature"
+                 [class.tree-item--selected]="store.isSelected(feat.id)"
+                 (click)="selectFeature(project, comp, feat)"
+                 (keydown.enter)="selectFeature(project, comp, feat)"
+                 (contextmenu)="openCtx($event, { kind: 'feature', project, component: comp, feature: feat })"
+                 role="treeitem" tabindex="0"
+                 [attr.aria-expanded]="feat.expanded"
+                 [attr.aria-label]="'Feature ' + feat.name">
+              <span class="tree-item__chevron" [class.tree-item__chevron--open]="feat.expanded">
+                @if (feat.models.length) {
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                }
+              </span>
+              <svg class="tree-item__icon tree-item__icon--feature" width="14" height="14"
+                   viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+              @if (isEditing(feat.id)) {
+                <input class="tree-item__edit" [value]="editValue()"
+                       (input)="editValue.set($any($event.target).value)"
+                       (blur)="finishEdit(project, comp, feat)"
+                       (keydown)="onEditKey($event, project, comp, feat)"
+                       (click)="$event.stopPropagation()" autofocus />
+              } @else {
+                <span class="tree-item__label">{{ feat.name }}</span>
+              }
+              <!-- + on the feature row creates a new model -->
+              <button class="tree-item__add" title="New model" aria-label="New model"
+                      (click)="$event.stopPropagation(); createModel(project, comp, feat)">+</button>
+            </div>
+
+            @if (feat.expanded) {
+              @for (model of feat.models; track model.id) {
+                <!-- ── Model: one click opens the editor ── -->
+                <div class="tree-item tree-item--model"
+                     [class.tree-item--selected]="store.isSelected(model.id)"
+                     (click)="selectModel(project, comp, feat, model)"
+                     (keydown.enter)="selectModel(project, comp, feat, model)"
+                     (contextmenu)="openCtx($event, { kind: 'model', project, component: comp, feature: feat, model })"
+                     role="treeitem" tabindex="0"
+                     [attr.aria-label]="'Open model ' + model.name">
+                  <svg class="tree-item__icon tree-item__icon--model" width="13" height="13"
+                       viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z"/>
+                    <path d="M8 10h8M8 14h5"/>
+                  </svg>
+                  @if (isEditing(model.id)) {
+                    <input class="tree-item__edit" [value]="editValue()"
+                           (input)="editValue.set($any($event.target).value)"
+                           (blur)="finishEdit(project, comp, feat, model)"
+                           (keydown)="onEditKey($event, project, comp, feat, model)"
+                           (click)="$event.stopPropagation()" autofocus />
+                  } @else {
+                    <span class="tree-item__label">{{ model.name }}</span>
+                  }
+                  <span class="tree-item__dot tree-item__dot--{{ model.status }}"
+                        [title]="model.status"></span>
+                </div>
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  @if (store.projects().length === 0) {
+    <div class="tree-empty">
+      <p>No projects yet.</p>
+      <button class="tree-empty__btn" (click)="openNewPrompt('project')">Create a project</button>
+    </div>
+  }
+</div>
+
+<!-- ── Context menu ──────────────────────────────────────────────────────────── -->
+@if (ctxMenu(); as menu) {
+  <div class="ctx-menu" role="menu" [style.left.px]="menu.x" [style.top.px]="menu.y">
+    <div class="ctx-header">
+      {{ menu.target.kind === 'project'   ? menu.target.project.name :
+         menu.target.kind === 'component' ? menu.target.component.name :
+         menu.target.kind === 'feature'   ? menu.target.feature.name :
+                                            menu.target.model.name }}
+      <span class="ctx-kind-chip">{{ menu.target.kind }}</span>
+    </div>
+    <div class="ctx-sep"></div>
+
+    @if (menu.target.kind === 'model') {
+      <button class="ctx-item" role="menuitem" (mousedown)="runCtxAction('open-model')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z"/><path d="M8 10h8M8 14h5"/></svg>
+        Open in Editor
+      </button>
+    }
+
+    <button class="ctx-item" role="menuitem" (mousedown)="runCtxAction('rename')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      Rename
+    </button>
+
+    @if (menu.target.kind === 'project') {
+      <button class="ctx-item" role="menuitem" (mousedown)="runCtxAction('add-component')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Component
+      </button>
+    }
+    @if (menu.target.kind === 'component') {
+      <button class="ctx-item" role="menuitem" (mousedown)="runCtxAction('add-feature')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Feature
+      </button>
+    }
+    @if (menu.target.kind === 'feature') {
+      <button class="ctx-item" role="menuitem" (mousedown)="runCtxAction('add-model')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Model
+      </button>
+    }
+
+    <div class="ctx-sep"></div>
+    <button class="ctx-item ctx-item--danger" role="menuitem" (mousedown)="runCtxAction('delete')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+      Delete {{ menu.target.kind }}
+    </button>
+  </div>
+}
+
+<!-- ── New item dialog ───────────────────────────────────────────────────────── -->
+@if (newPrompt(); as prompt) {
+  <div class="dialog-backdrop" (click)="cancelNew()">
+    <div class="dialog" (click)="$event.stopPropagation()">
+      <h3 class="dialog__title">New {{ newPromptTitle() }}</h3>
+      <input class="dialog__input"
+             [placeholder]="'Enter ' + prompt.kind + ' name'"
+             [value]="newValue()"
+             (input)="newValue.set($any($event.target).value)"
+             (keydown.enter)="confirmNew()"
+             (keydown.escape)="cancelNew()" autofocus />
+      @if (prompt.kind === 'model') {
+        <p class="dialog__hint">Opens on an empty canvas — no template is applied.</p>
+      }
+      <div class="dialog__actions">
+        <button class="dialog__btn dialog__btn--cancel" (click)="cancelNew()">Cancel</button>
+        <button class="dialog__btn dialog__btn--confirm" (click)="confirmNew()">Create</button>
+      </div>
+    </div>
+  </div>
+}

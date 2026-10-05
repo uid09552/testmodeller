@@ -16,6 +16,14 @@
 
   <span class="editor-breadcrumb__spacer"></span>
 
+  @if (saveError(); as err) {
+    <span class="editor-breadcrumb__saved" role="alert">{{ err }}</span>
+    @if (saveState() === 'conflict') {
+      <button class="editor-breadcrumb__btn" (click)="keepMine()">Keep mine</button>
+      <button class="editor-breadcrumb__btn" (click)="takeTheirs()">Take theirs</button>
+    }
+  }
+
   @if (savedAt(); as ts) {
     @if (!store.dirty()) {
       <span class="editor-breadcrumb__saved">
@@ -86,11 +94,43 @@
      [style.--bottom-h]="bottomHeightPx()">
   <!-- Canvas (toolbar + SVG) -->
   <div class="editor-canvas">
-    <tm-canvas (revealProperties)="propsCollapsed.set(false)" />
+    <tm-canvas (revealProperties)="showTab('properties')"
+               (revealTests)="revealTests()" />
   </div>
 
-  <!-- Properties panel (right column) -->
-  <tm-properties-panel class="editor-props" />
+  <!-- Right column: Properties and the AI assistant (06-ui.md). It spans the
+       bottom panel's row too, so the test cases sit high and stay in full. -->
+  <aside class="editor-side" aria-label="Model side panel">
+    <div class="side-tabs" role="tablist" aria-label="Side panel">
+      <button class="side-tab" [class.side-tab--on]="sideTab() === 'tests'"
+              role="tab" [attr.aria-selected]="sideTab() === 'tests'"
+              (click)="showTab('tests')">
+        Test Cases
+        @if (store.totalTests(); as n) {
+          <span class="side-tab__badge side-tab__badge--count">{{ n }}</span>
+        }
+      </button>
+      <button class="side-tab" [class.side-tab--on]="sideTab() === 'properties'"
+              role="tab" [attr.aria-selected]="sideTab() === 'properties'"
+              (click)="showTab('properties')">
+        Properties
+      </button>
+      <button class="side-tab" [class.side-tab--on]="sideTab() === 'chat'"
+              role="tab" [attr.aria-selected]="sideTab() === 'chat'"
+              (click)="showTab('chat')">
+        AI
+        @if (chat.pendingCount(); as n) {
+          <span class="side-tab__badge">{{ n }}</span>
+        }
+      </button>
+    </div>
+
+    @switch (sideTab()) {
+      @case ('tests')      { <tm-test-cases-panel /> }
+      @case ('properties') { <tm-properties-panel /> }
+      @case ('chat')       { <tm-ai-chat /> }
+    }
+  </aside>
 
   <!-- Bottom panel (scenario / test cases / validation) -->
   <div class="editor-bottom">
@@ -101,7 +141,6 @@
   @if (!propsCollapsed()) {
     <div class="splitter splitter--v"
          [style.right.px]="propsWidth()"
-         [style.bottom.px]="bottomCollapsed() ? 37 : bottomHeight()"
          (mousedown)="startResizeProps($event)"
          (dblclick)="resetPropsWidth()"
          role="separator" aria-orientation="vertical"
@@ -114,6 +153,7 @@
   @if (!bottomCollapsed()) {
     <div class="splitter splitter--h"
          [style.bottom.px]="bottomHeight()"
+         [style.right.px]="propsCollapsed() ? 0 : propsWidth()"
          (mousedown)="startResizeBottom($event)"
          (dblclick)="resetBottomHeight()"
          role="separator" aria-orientation="horizontal"

@@ -1,416 +1,157 @@
-<div class="explorer-layout" (click)="onDocClick($event)">
+<!-- The tree lives in the nav bar (ADR 0004); this page is its detail view.
+     Models are not shown here — the tree opens them in the editor. -->
+<main class="explorer-detail">
+  @if (store.error(); as err) { <p role="alert">{{ err }}</p> }
 
-  <!-- ── Left: Tree panel ─────────────────────────────────────────────────── -->
-  <aside class="explorer-tree">
-    <div class="tree-head">
-      <span class="tree-head__title">Explorer</span>
-      <button class="tree-head__btn" title="New project" (click)="openNewPrompt('project')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- ── Feature selected ── -->
+  @if (selFeature(); as feat) {
+    <div class="detail-header">
+      <div class="detail-header__breadcrumb">
+        <span>{{ selProject()?.name }}</span>
+        <span class="sep">›</span>
+        <span>{{ selComponent()?.name }}</span>
+        <span class="sep">›</span>
+        <strong>{{ feat.name }}</strong>
+      </div>
+      <button class="detail-btn detail-btn--primary"
+              (click)="store.promptNew({
+                kind: 'model',
+                projectId: selProject()!.id,
+                componentId: selComponent()!.id,
+                featureId: feat.id,
+                featureName: feat.name })">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
+        New Model
       </button>
     </div>
+    <section class="detail-body">
+      <div class="detail-chip detail-chip--feature">Feature</div>
+      <h1 class="detail-title">{{ feat.name }}</h1>
+      <p class="detail-meta">{{ feat.models.length }} model{{ feat.models.length !== 1 ? 's' : '' }}</p>
 
-    <div class="tree-scroll">
-      @for (project of store.projects(); track project.id) {
-        <!-- ── Project ── -->
-        <div class="tree-item tree-item--project"
-             [class.tree-item--selected]="isSelected(project.id)"
-             (click)="selectProject(project)"
-             (contextmenu)="openCtx($event, { kind: 'project', project })">
-          <span class="tree-item__chevron" [class.tree-item__chevron--open]="project.expanded">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
-          </span>
-          <svg class="tree-item__icon tree-item__icon--project" width="16" height="16"
-               viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      @if (feat.models.length === 0) {
+        <div class="detail-empty-models">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"
+               class="detail-empty-models__icon" aria-hidden="true">
+            <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6zm4 4h8M8 14h5"/>
           </svg>
-          @if (isEditing(project.id)) {
-            <input class="tree-item__edit" [value]="editValue()"
-                   (input)="editValue.set($any($event.target).value)"
-                   (blur)="finishEdit(project)"
-                   (keydown)="onEditKey($event, project)"
-                   (click)="$event.stopPropagation()" autofocus />
-          } @else {
-            <span class="tree-item__label">{{ project.name }}</span>
-          }
-          <button class="tree-item__add" title="Add component"
-                  (click)="$event.stopPropagation(); openNewPrompt('component', project.id)">+</button>
+          <p>No models yet. Click <strong>New Model</strong> to create one.</p>
         </div>
-
-        @if (project.expanded) {
-          @for (comp of project.components; track comp.id) {
-            <!-- ── Component ── -->
-            <div class="tree-item tree-item--component"
-                 [class.tree-item--selected]="isSelected(comp.id)"
-                 (click)="selectComponent(project, comp)"
-                 (contextmenu)="openCtx($event, { kind: 'component', project, component: comp })">
-              <span class="tree-item__chevron" [class.tree-item__chevron--open]="comp.expanded">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </span>
-              <svg class="tree-item__icon tree-item__icon--component" width="16" height="16"
-                   viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                   stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-              </svg>
-              @if (isEditing(comp.id)) {
-                <input class="tree-item__edit" [value]="editValue()"
-                       (input)="editValue.set($any($event.target).value)"
-                       (blur)="finishEdit(project, comp)"
-                       (keydown)="onEditKey($event, project, comp)"
-                       (click)="$event.stopPropagation()" autofocus />
-              } @else {
-                <span class="tree-item__label">{{ comp.name }}</span>
-              }
-              <button class="tree-item__add" title="Add feature"
-                      (click)="$event.stopPropagation(); openNewPrompt('feature', project.id, comp.id)">+</button>
-            </div>
-
-            @if (comp.expanded) {
-              @for (feat of comp.features; track feat.id) {
-                <!-- ── Feature ── -->
-                <div class="tree-item tree-item--feature"
-                     [class.tree-item--selected]="isSelected(feat.id)"
-                     (click)="selectFeature(project, comp, feat)"
-                     (contextmenu)="openCtx($event, { kind: 'feature', project, component: comp, feature: feat })">
-                  <span class="tree-item__chevron" [class.tree-item__chevron--open]="feat.expanded">
-                    @if (feat.models.length) {
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="9 18 15 12 9 6"/>
-                      </svg>
-                    }
-                  </span>
-                  <svg class="tree-item__icon tree-item__icon--feature" width="14" height="14"
-                       viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                       stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
-                  </svg>
-                  @if (isEditing(feat.id)) {
-                    <input class="tree-item__edit" [value]="editValue()"
-                           (input)="editValue.set($any($event.target).value)"
-                           (blur)="finishEdit(project, comp, feat)"
-                           (keydown)="onEditKey($event, project, comp, feat)"
-                           (click)="$event.stopPropagation()" autofocus />
-                  } @else {
-                    <span class="tree-item__label">{{ feat.name }}</span>
-                  }
-                  <!-- + on the feature row creates a new model -->
-                  <button class="tree-item__add" title="New model"
-                          (click)="$event.stopPropagation(); createModel(project, comp, feat)">+</button>
-                </div>
-
-                @if (feat.expanded) {
-                  @for (model of feat.models; track model.id) {
-                    <!-- ── Model ── -->
-                    <div class="tree-item tree-item--model"
-                         [class.tree-item--selected]="isSelected(model.id)"
-                         (click)="selectModel(project, comp, feat, model)"
-                         (dblclick)="openModel(model, feat)"
-                         (contextmenu)="openCtx($event, { kind: 'model', project, component: comp, feature: feat, model })">
-                      <svg class="tree-item__icon tree-item__icon--model" width="13" height="13"
-                           viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z"/>
-                        <path d="M8 10h8M8 14h5"/>
-                      </svg>
-                      @if (isEditing(model.id)) {
-                        <input class="tree-item__edit" [value]="editValue()"
-                               (input)="editValue.set($any($event.target).value)"
-                               (blur)="finishEdit(project, comp, feat, model)"
-                               (keydown)="onEditKey($event, project, comp, feat, model)"
-                               (click)="$event.stopPropagation()" autofocus />
-                      } @else {
-                        <span class="tree-item__label">{{ model.name }}</span>
-                      }
-                      <span class="tree-item__dot tree-item__dot--{{ model.status }}"
-                            [title]="model.status"></span>
-                    </div>
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-
-      @if (store.projects().length === 0) {
-        <div class="tree-empty">
-          <p>No projects yet.</p>
-          <button class="tree-empty__btn" (click)="openNewPrompt('project')">Create a project</button>
-        </div>
-      }
-    </div>
-  </aside>
-
-  <!-- ── Right: Detail panel ──────────────────────────────────────────────── -->
-  <main class="explorer-detail">
-
-    <!-- ── Model selected ── -->
-    @if (selModel(); as model) {
-      <div class="detail-header">
-        <div class="detail-header__breadcrumb">
-          <span>{{ selProject()?.name }}</span>
-          <span class="sep">›</span>
-          <span>{{ selComponent()?.name }}</span>
-          <span class="sep">›</span>
-          <span>{{ selFeature()?.name }}</span>
-          <span class="sep">›</span>
-          <strong>{{ model.name }}</strong>
-        </div>
-        <button class="detail-btn detail-btn--primary" (click)="openModel(model, selFeature()!)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-          </svg>
-          Open in Editor
-        </button>
-      </div>
-      <section class="detail-body">
-        <div class="detail-chip detail-chip--model">Model</div>
-        <h1 class="detail-title">{{ model.name }}</h1>
-        <p class="detail-meta">
-          <span class="status-pill status-pill--{{ model.status }}">{{ model.status }}</span>
-        </p>
-        <div class="stat-grid">
-          <div class="stat-box">
-            <span class="stat-box__val">{{ model.states }}</span>
-            <span class="stat-box__lbl">States</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-box__val">{{ model.transitions }}</span>
-            <span class="stat-box__lbl">Transitions</span>
-          </div>
-        </div>
-        <p class="detail-hint">Double-click the model in the tree to open it in the editor.</p>
-      </section>
-    }
-
-    <!-- ── Feature selected ── -->
-    @else if (selFeature(); as feat) {
-      <div class="detail-header">
-        <div class="detail-header__breadcrumb">
-          <span>{{ selProject()?.name }}</span>
-          <span class="sep">›</span>
-          <span>{{ selComponent()?.name }}</span>
-          <span class="sep">›</span>
-          <strong>{{ feat.name }}</strong>
-        </div>
-        <button class="detail-btn detail-btn--primary"
-                (click)="createModel(selProject()!, selComponent()!, feat)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          New Model
-        </button>
-      </div>
-      <section class="detail-body">
-        <div class="detail-chip detail-chip--feature">Feature</div>
-        <h1 class="detail-title">{{ feat.name }}</h1>
-        <p class="detail-meta">{{ feat.models.length }} model{{ feat.models.length !== 1 ? 's' : '' }}</p>
-
-        @if (feat.models.length === 0) {
-          <div class="detail-empty-models">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"
-                 style="color:var(--clr-text-400);margin-bottom:8px">
-              <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6zm4 4h8M8 14h5"/>
-            </svg>
-            <p>No models yet. Click <strong>New Model</strong> to create one.</p>
-          </div>
-        } @else {
-          <div class="detail-feature-grid">
-            @for (model of feat.models; track model.id) {
-              <div class="feature-card"
-                   (click)="selectModel(selProject()!, selComponent()!, feat, model)"
-                   (dblclick)="openModel(model, feat)">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                     style="color:var(--clr-brand-500)">
-                  <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z"/>
-                  <path d="M8 10h8M8 14h5"/>
-                </svg>
-                <span class="feature-card__name">{{ model.name }}</span>
-                <span class="feature-card__count">
-                  {{ model.states }} states · {{ model.transitions }} transitions
-                </span>
-              </div>
-            }
-          </div>
-        }
-      </section>
-    }
-
-    <!-- ── Component selected ── -->
-    @else if (selComponent(); as comp) {
-      <div class="detail-header">
-        <div class="detail-header__breadcrumb">
-          <span>{{ selProject()?.name }}</span>
-          <span class="sep">›</span>
-          <strong>{{ comp.name }}</strong>
-        </div>
-        <button class="detail-btn detail-btn--secondary"
-                (click)="openNewPrompt('feature', selProject()!.id, comp.id)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          New Feature
-        </button>
-      </div>
-      <section class="detail-body">
-        <div class="detail-chip detail-chip--component">Component</div>
-        <h1 class="detail-title">{{ comp.name }}</h1>
-        <p class="detail-meta">{{ comp.features.length }} feature{{ comp.features.length !== 1 ? 's' : '' }}</p>
+      } @else {
         <div class="detail-feature-grid">
-          @for (feat of comp.features; track feat.id) {
-            <div class="feature-card" (click)="selectFeature(selProject()!, comp, feat)">
+          @for (model of feat.models; track model.id) {
+            <button class="feature-card" (click)="openModel(model, feat)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                    stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                   style="color:var(--clr-brand-500)">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
+                   class="feature-card__icon" aria-hidden="true">
+                <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z"/>
+                <path d="M8 10h8M8 14h5"/>
               </svg>
-              <span class="feature-card__name">{{ feat.name }}</span>
-              <span class="feature-card__count">{{ feat.models.length }} models</span>
-            </div>
+              <span class="feature-card__name">{{ model.name }}</span>
+              <span class="feature-card__count">
+                {{ model.states }} states · {{ model.transitions }} transitions
+              </span>
+            </button>
           }
         </div>
-      </section>
-    }
+      }
+    </section>
+  }
 
-    <!-- ── Project selected ── -->
-    @else if (selProject(); as proj) {
-      <div class="detail-header">
-        <div class="detail-header__breadcrumb"><strong>{{ proj.name }}</strong></div>
-        <button class="detail-btn detail-btn--secondary" (click)="openNewPrompt('component', proj.id)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          New Component
-        </button>
+  <!-- ── Component selected ── -->
+  @else if (selComponent(); as comp) {
+    <div class="detail-header">
+      <div class="detail-header__breadcrumb">
+        <span>{{ selProject()?.name }}</span>
+        <span class="sep">›</span>
+        <strong>{{ comp.name }}</strong>
       </div>
-      <section class="detail-body">
-        <div class="detail-chip detail-chip--project">Project</div>
-        <h1 class="detail-title">{{ proj.name }}</h1>
-        <p class="detail-meta">{{ proj.components.length }} component{{ proj.components.length !== 1 ? 's' : '' }}</p>
-        <div class="detail-comp-list">
-          @for (comp of proj.components; track comp.id) {
-            <div class="comp-row" (click)="selectComponent(proj, comp)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                   stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                   style="color:var(--clr-brand-400)">
-                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-              </svg>
-              <span class="comp-row__name">{{ comp.name }}</span>
-              <span class="comp-row__badge">{{ comp.features.length }} features</span>
-            </div>
-          }
-        </div>
-      </section>
-    }
-
-    @else {
-      <div class="detail-welcome">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      <button class="detail-btn detail-btn--secondary"
+              (click)="store.promptNew({
+                kind: 'feature',
+                projectId: selProject()!.id,
+                componentId: comp.id })">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
-        <h2>Select a project</h2>
-        <p>Choose a project, component, feature or model from the tree to see its details.</p>
-        <button class="detail-btn detail-btn--primary" (click)="openNewPrompt('project')">
-          Create your first project
-        </button>
-      </div>
-    }
-  </main>
-
-  <!-- ── Context menu ──────────────────────────────────────────────────────── -->
-  @if (ctxMenu(); as menu) {
-    <div class="ctx-menu" role="menu" [style.left.px]="menu.x" [style.top.px]="menu.y">
-      <div class="ctx-header">
-        {{ menu.target.kind === 'project'   ? menu.target.project.name :
-           menu.target.kind === 'component' ? menu.target.component.name :
-           menu.target.kind === 'feature'   ? menu.target.feature.name :
-                                              menu.target.model.name }}
-        <span class="ctx-kind-chip">{{ menu.target.kind }}</span>
-      </div>
-      <div class="ctx-sep"></div>
-
-      @if (menu.target.kind === 'model') {
-        <button class="ctx-item" (mousedown)="runCtxAction('open-model')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z"/><path d="M8 10h8M8 14h5"/></svg>
-          Open in Editor
-        </button>
-      }
-
-      <button class="ctx-item" (mousedown)="runCtxAction('rename')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        Rename
-      </button>
-
-      @if (menu.target.kind === 'project') {
-        <button class="ctx-item" (mousedown)="runCtxAction('add-component')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Component
-        </button>
-      }
-      @if (menu.target.kind === 'component') {
-        <button class="ctx-item" (mousedown)="runCtxAction('add-feature')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Feature
-        </button>
-      }
-      @if (menu.target.kind === 'feature') {
-        <button class="ctx-item" (mousedown)="runCtxAction('add-model')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New Model
-        </button>
-      }
-
-      <div class="ctx-sep"></div>
-      <button class="ctx-item ctx-item--danger" (mousedown)="runCtxAction('delete')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-        Delete {{ menu.target.kind }}
+        New Feature
       </button>
     </div>
-  }
-
-  <!-- ── New item dialog ───────────────────────────────────────────────────── -->
-  @if (newPrompt(); as prompt) {
-    <div class="dialog-backdrop" (click)="cancelNew()">
-      <div class="dialog" (click)="$event.stopPropagation()">
-        <h3 class="dialog__title">New {{ newPromptTitle() }}</h3>
-        <input class="dialog__input"
-               [placeholder]="'Enter ' + prompt.kind + ' name'"
-               [value]="newValue()"
-               (input)="newValue.set($any($event.target).value)"
-               (keydown.enter)="confirmNew()"
-               (keydown.escape)="cancelNew()" autofocus />
-        @if (prompt.kind === 'model') {
-          <p class="dialog__hint">Opens on an empty canvas — no template is applied.</p>
+    <section class="detail-body">
+      <div class="detail-chip detail-chip--component">Component</div>
+      <h1 class="detail-title">{{ comp.name }}</h1>
+      <p class="detail-meta">{{ comp.features.length }} feature{{ comp.features.length !== 1 ? 's' : '' }}</p>
+      <div class="detail-feature-grid">
+        @for (feat of comp.features; track feat.id) {
+          <button class="feature-card" (click)="selectFeature(comp, feat)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+                 class="feature-card__icon" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span class="feature-card__name">{{ feat.name }}</span>
+            <span class="feature-card__count">{{ feat.models.length }} models</span>
+          </button>
         }
-        <div class="dialog__actions">
-          <button class="dialog__btn dialog__btn--cancel" (click)="cancelNew()">Cancel</button>
-          <button class="dialog__btn dialog__btn--confirm" (click)="confirmNew()">Create</button>
-        </div>
       </div>
-    </div>
+    </section>
   }
 
-</div>
+  <!-- ── Project selected ── -->
+  @else if (selProject(); as proj) {
+    <div class="detail-header">
+      <div class="detail-header__breadcrumb"><strong>{{ proj.name }}</strong></div>
+      <button class="detail-btn detail-btn--secondary"
+              (click)="store.promptNew({ kind: 'component', projectId: proj.id })">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        New Component
+      </button>
+    </div>
+    <section class="detail-body">
+      <div class="detail-chip detail-chip--project">Project</div>
+      <h1 class="detail-title">{{ proj.name }}</h1>
+      <p class="detail-meta">{{ proj.components.length }} component{{ proj.components.length !== 1 ? 's' : '' }}</p>
+      <div class="detail-comp-list">
+        @for (comp of proj.components; track comp.id) {
+          <button class="comp-row" (click)="selectComponent(comp)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+                 class="comp-row__icon" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+              <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+            </svg>
+            <span class="comp-row__name">{{ comp.name }}</span>
+            <span class="comp-row__badge">{{ comp.features.length }} features</span>
+          </button>
+        }
+      </div>
+    </section>
+  }
+
+  @else {
+    <div class="detail-welcome">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+      <h2>Select a project</h2>
+      <p>
+        Choose a project, component or feature in the tree on the left to see its
+        details. Clicking a model opens it in the editor.
+      </p>
+      <button class="detail-btn detail-btn--primary"
+              (click)="store.promptNew({ kind: 'project' })">
+        Create your first project
+      </button>
+    </div>
+  }
+</main>

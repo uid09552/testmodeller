@@ -139,16 +139,17 @@ fn like_pattern(q: &str) -> String {
 
 impl Store {
     /// Lists projects.
-    pub async fn list_projects(&self, page: PageRequest) -> Result<Page<Project>> {
+    pub async fn list_projects(&self, tenant: &str, page: PageRequest) -> Result<Page<Project>> {
         let (ts, id) = page.cursor_parts();
         let sql = format!(
-            "SELECT * FROM projects WHERE {} ORDER BY created_at, id LIMIT $3",
+            "SELECT * FROM projects WHERE tenant_id = $4 AND {} ORDER BY created_at, id LIMIT $3",
             keyset(1, 2)
         );
         let rows = sqlx::query(&sql)
             .bind(ts)
             .bind(id)
             .bind(page.limit + 1)
+            .bind(tenant)
             .fetch_all(&self.pool)
             .await?;
         let items = rows.iter().map(project).collect::<Result<Vec<_>, _>>()?;
@@ -157,14 +158,16 @@ impl Store {
         }))
     }
 
-    /// Creates a project.
-    pub async fn create_project(&self, input: NamedFields) -> Result<Project> {
+    /// Creates a project owned by `tenant`.
+    pub async fn create_project(&self, tenant: &str, input: NamedFields) -> Result<Project> {
         let row = sqlx::query(
-            "INSERT INTO projects (id, name, description) VALUES ($1, $2, $3) RETURNING *",
+            "INSERT INTO projects (id, name, description, tenant_id)
+             VALUES ($1, $2, $3, $4) RETURNING *",
         )
         .bind(Uuid::new_v4())
         .bind(&input.name)
         .bind(&input.description)
+        .bind(tenant)
         .fetch_one(&self.pool)
         .await?;
         Ok(project(&row)?)

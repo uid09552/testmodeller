@@ -29,6 +29,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+jsonwebtoken = "9"
+chacha20poly1305 = "0.10"
+base64 = "0.22"
 async-trait = "0.1"
 testcontainers = "0.25"
 testcontainers-modules = { version = "0.13", features = ["postgres"] }

@@ -6,10 +6,11 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
 use tm_domain::{AiSettings, ProposalStatus};
-use tm_storage::ProposalFilter;
+use tm_storage::{ProposalFilter, TenantScope};
 use uuid::Uuid;
 
 use crate::ai_service::{acceptance_for, ProposalJobRequest};
+use crate::auth::Identity;
 use crate::dto::*;
 use crate::error::{ApiError, ApiResult};
 use crate::extract::{optional_json, ApiJson, ApiPath, ApiQuery, Paging};
@@ -20,6 +21,7 @@ const MAX_PROMPT_CHARS: usize = 8000;
 /// `POST /ai/proposals` — starts an asynchronous job (202).
 pub async fn request_proposals(
     State(state): State<AppState>,
+    identity: Identity,
     ApiJson(req): ApiJson<ProposalRequestDto>,
 ) -> ApiResult<(StatusCode, Json<JobDto>)> {
     if req.preview_context {
@@ -36,17 +38,42 @@ pub async fn request_proposals(
             return Err(ApiError::bad_request("count must be between 1 and 20"));
         }
     }
+    // This route names its feature in the body, so the tenant guard cannot see
+    // it; the same check happens here (FR-044).
+    require_tenant(&state, &identity, TenantScope::Feature, req.feature_id).await?;
+    if let Some(model_id) = req.model_id {
+        require_tenant(&state, &identity, TenantScope::Model, model_id).await?;
+    }
     let job = state
         .ai
-        .start_job(ProposalJobRequest {
-            kind: req.kind,
-            feature_id: req.feature_id,
-            model_id: req.model_id,
-            prompt: req.prompt,
-            count: req.count,
-        })
+        .start_job(
+            &identity.tenant,
+            ProposalJobRequest {
+                kind: req.kind,
+                feature_id: req.feature_id,
+                model_id: req.model_id,
+                prompt: req.prompt,
+                count: req.count,
+            },
+        )
         .await?;
     Ok((StatusCode::ACCEPTED, Json((&job).into())))
+}
+
+/// Rejects an id that belongs to another tenant, reporting it as missing.
+async fn require_tenant(
+    state: &AppState,
+    identity: &Identity,
+    scope: TenantScope,
+    id: Uuid,
+) -> ApiResult<()> {
+    if state.store.tenant_of(scope, id).await? != identity.tenant {
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            format!("{} not found", scope.entity()),
+        ));
+    }
+    Ok(())
 }
 
 /// `GET /jobs/{jobId}`
@@ -167,7 +194,7 @@ pub async fn put_ai_settings(
     };
     let saved = state.store.put_ai_settings(&settings).await?;
     if let Some(key) = input.api_key {
-        state.ai.set_api_key(key).await;
+        state.ai.set_api_key(key).await?;
     }
     Ok(Json(settings_dto(&state, saved).await))
 }

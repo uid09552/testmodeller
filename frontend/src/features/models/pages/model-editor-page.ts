@@ -1,13 +1,17 @@
 import {
   ChangeDetectionStrategy, Component, computed, effect, HostListener,
-  inject, OnInit, signal,
+  inject, OnInit, signal, untracked,
 } from '@angular/core';
-import { Router, RouterLink, ActivatedRoute } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ParamMap, Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { CanvasComponent } from '../components/canvas/canvas';
 import { PropertiesPanelComponent } from '../components/properties-panel/properties-panel';
+import { TestCasesPanelComponent } from '../components/test-cases-panel/test-cases-panel';
 import { BottomPanelComponent } from '../components/bottom-panel/bottom-panel';
+import { AiChatComponent } from '../components/ai-chat/ai-chat';
+import { AiChatStore } from '../state/ai-chat.store';
 import { ModelEditorStore } from '../state/model-editor.store';
-import { ModelRepository } from '../state/model-repository';
+import { ModelPersistenceService } from '../state/model-persistence';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
 import { readJson, writeJson } from '../../../core/persistence/local-store';
 
@@ -15,17 +19,26 @@ function clamp(v: number, min: number, max: number): number {
   return Math.min(Math.max(v, min), max);
 }
 
+/** The panes of the editor's right column, in the order they are shown. */
+export type SideTab = 'tests' | 'properties' | 'chat';
+
 @Component({
   selector: 'tm-model-editor-page',
-  imports: [RouterLink, CanvasComponent, PropertiesPanelComponent, BottomPanelComponent],
-  providers: [ModelEditorStore],   // each editor instance gets its own store
+  imports: [
+    RouterLink, CanvasComponent, TestCasesPanelComponent, PropertiesPanelComponent,
+    BottomPanelComponent, AiChatComponent,
+  ],
+  // Each editor instance gets its own stores. The chat store is here, not in
+  // the panel, so the transcript survives switching the right-panel tab.
+  providers: [ModelEditorStore, ModelPersistenceService, AiChatStore],
   templateUrl: './model-editor-page.html',
   styleUrl: './model-editor-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ModelEditorPageComponent implements OnInit {
   readonly store = inject(ModelEditorStore);
-  private readonly repo     = inject(ModelRepository);
+  readonly chat  = inject(AiChatStore);
+  private readonly remote   = inject(ModelPersistenceService);
   private readonly explorer = inject(ExplorerStore);
   private readonly route    = inject(ActivatedRoute);
   private readonly router   = inject(Router);
@@ -33,6 +46,26 @@ export class ModelEditorPageComponent implements OnInit {
   // Panel collapse — gives the canvas full width/height on demand.
   readonly propsCollapsed  = signal(false);
   readonly bottomCollapsed = signal(false);
+
+  /**
+   * Which pane the right column shows (docs/specification/06-ui.md). Test
+   * cases are the default: they are what the tool is for.
+   */
+  readonly sideTab = signal<SideTab>('tests');
+
+  showTab(tab: SideTab): void {
+    this.sideTab.set(tab);
+    this.propsCollapsed.set(false);
+  }
+
+  /**
+   * The canvas asked to show a state's test cases: open the right column on the
+   * Test Cases tab, then let the panel scroll them into view.
+   */
+  revealTests(): void {
+    this.showTab('tests');
+    this.store.focusTests();
+  }
 
   // ── Resizable panels ───────────────────────────────────────────────────────
   private static readonly PROPS_MIN = 200;
@@ -101,14 +134,33 @@ export class ModelEditorPageComponent implements OnInit {
   readonly savedAt       = signal<Date | null>(null);
   readonly confirmDelete = signal(false);
 
-  /** Feature context passed from the Explorer. */
-  readonly featureName = signal<string | null>(null);
-  /** The id this editor persists under. */
+  /** The feature the open model belongs to, as the database has it. */
+  readonly featureName = this.remote.featureName;
+  readonly featureId   = this.remote.featureId;
+  /** What the stored copy is up to; the template shows failures. */
+  readonly saveState   = this.remote.state;
+  readonly saveError   = this.remote.error;
+  /** The id this editor persists under; null while loading, so autosave is off. */
   private readonly modelId = signal<string | null>(null);
 
+  /** Route id the editor is currently showing, so a re-run is a no-op. */
+  private readonly loadedRouteId = signal<string | null | undefined>(undefined);
+
+  // Route parameters as signals: they emit synchronously, so the first value
+  // is available before the first render.
+  private readonly routeParams = toSignal(this.route.paramMap, { requireSync: true });
+
   constructor() {
-    // Autosave: any change to model content is written through to the
-    // repository, so nothing is lost on refresh or navigation.
+    // Follow the route: opening another model from the tree reuses this
+    // component, so this is what loads it.
+    effect(() => {
+      const routeId = this.routeParams().get('modelId');
+      // Only the route is a dependency; everything the load touches is read
+      // and written outside the reactive context.
+      untracked(() => this.openRouteModel(routeId));
+    });
+
+    // Autosave: any change to model content is scheduled for storage.
     effect(() => {
       const nodes = this.store.nodes();
       const edges = this.store.edges();
@@ -120,12 +172,17 @@ export class ModelEditorPageComponent implements OnInit {
       const id = this.modelId();
       if (!id) return;
 
-      this.repo.save(this.store.toPersisted(id));
+      this.remote.schedule(this.store.toPersisted(id));
       this.explorer.syncModelStats(id, {
         name,
+        status: this.store.modelStatus(),
         states: nodes.length,
         transitions: edges.length,
       });
+    });
+
+    effect(() => {
+      if (this.remote.state() === 'saved') this.store.clearDirty();
     });
   }
 
@@ -139,34 +196,65 @@ export class ModelEditorPageComponent implements OnInit {
       this.bottomHeight.set(clamp(saved.bottom, ModelEditorPageComponent.BOTTOM_MIN,
                                                 ModelEditorPageComponent.BOTTOM_MAX));
     }
-
-    const qp = this.route.snapshot.queryParamMap;
-    const routeId = this.route.snapshot.paramMap.get('modelId');
-    this.featureName.set(qp.get('feature-name'));
-
-    // `/models/new` gets a fresh id so autosave has somewhere to write.
-    const id = routeId ?? crypto.randomUUID();
-
-    const stored = this.repo.get(id);
-    if (stored) {
-      this.store.loadFrom(stored);
-    } else {
-      this.store.reset();
-      this.store.setName(qp.get('name') ?? 'Untitled Model');
-      this.store.clearDirty();
-    }
-
-    this.modelId.set(id);
   }
+
+  /**
+   * Loads the model the route points at.
+   *
+   * Picking another model in the tree only changes the route parameter, and
+   * Angular reuses this component for that, so the load has to follow the
+   * route rather than run once on init — otherwise the editor keeps showing
+   * the model that was open before.
+   */
+  private openRouteModel(routeId: string | null): void {
+    if (routeId === this.loadedRouteId()) return;
+    this.loadedRouteId.set(routeId);
+
+    // Stop autosave first, so nothing is saved against the wrong model while
+    // the new one loads.
+    this.modelId.set(null);
+    this.store.reset();
+    this.store.clearDirty();
+    this.savedAt.set(null);
+    this.confirmDelete.set(false);
+
+    // The transcript goes with the old model: its proposals belong to that feature.
+    this.chat.clear();
+
+    if (!routeId) {
+      void this.router.navigate(['/explorer']);
+      return;
+    }
+    this.chat.setContext({ localModelId: routeId, modelName: null });
+
+    // Autosave stays off until the stored copy is here, or an empty canvas
+    // could be saved over it.
+    void this.remote.open(routeId).then(loaded => {
+      if (this.loadedRouteId() !== routeId || !loaded) return;   // moved on, or failed
+      this.store.loadFrom(loaded);
+      this.modelId.set(routeId);
+    });
+  }
+
+  /** After a conflict: take the other version. */
+  async takeTheirs(): Promise<void> {
+    const loaded = await this.remote.takeTheirs();
+    if (loaded) this.store.loadFrom(loaded);
+  }
+
+  keepMine(): Promise<void> { return this.remote.keepMine(); }
 
   async save(): Promise<void> {
     this.saving.set(true);
     const id = this.modelId();
-    if (id) this.repo.save(this.store.toPersisted(id));
-    // TODO: replace with POST/PUT /models once the API contract is wired up.
-    await new Promise(r => setTimeout(r, 300));
-    this.store.clearDirty();
-    this.savedAt.set(new Date());
+    if (id) {
+      this.remote.schedule(this.store.toPersisted(id));
+      const stored = await this.remote.flush();
+      if (stored) {
+        this.store.clearDirty();
+        this.savedAt.set(new Date());
+      }
+    }
     this.saving.set(false);
   }
 
@@ -180,10 +268,15 @@ export class ModelEditorPageComponent implements OnInit {
     const id = this.modelId();
     this.confirmDelete.set(false);
     if (id) {
-      this.modelId.set(null);   // stop autosave re-creating the record
-      this.repo.remove(id);
+      this.modelId.set(null);   // stop autosave
+      const path = this.explorer.modelPaths().find(p => p.model.id === id);
+      try {
+        await this.remote.remove();
+      } catch {
+        return;   // not deleted: stay, the model is still there
+      }
+      if (path) this.explorer.removeModel(path.projectId, path.componentId, path.featureId, id);
     }
-    // TODO: replace with DELETE /models/{id}
     await this.router.navigate(['/explorer']);
   }
 }

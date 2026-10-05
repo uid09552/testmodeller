@@ -1,4 +1,5 @@
 <section class="page">
+  @if (error(); as err) { <p role="alert">{{ err }}</p> }
   <header class="page__head">
     <div>
       <h1 class="page__title">Test Cases</h1>
@@ -110,7 +111,7 @@
       @if (allRows().length === 0) {
         <p>No test cases yet.</p>
         <p style="font-size:var(--text-xs);margin-top:4px">
-          Open a model from the Explorer, right-click a state and choose <strong>Add Test Case</strong>.
+          Open a model from the Projects tree, right-click a state and choose <strong>Add Test Case</strong>.
         </p>
       } @else {
         <p>No test cases match these filters.</p>

@@ -1,11 +1,14 @@
 //! HTTP API for TestModeller. See docs/specification/05-api.md and openapi.yaml.
 
 pub mod ai_service;
+pub mod auth;
 pub mod config;
 pub mod dto;
 pub mod error;
 pub mod extract;
 pub mod handlers;
+pub mod secrets;
+pub mod tenant_guard;
 
 use std::sync::Arc;
 
@@ -15,6 +18,7 @@ use axum::Router;
 use tm_storage::Store;
 
 use crate::ai_service::AiService;
+use crate::auth::{AuthMode, Authenticator};
 use crate::handlers::{ai, export, models, organization as org, test_cases as tc};
 
 /// Maximum request body size (imports can be large).
@@ -30,19 +34,35 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Creates state from a store and an optional AI API key.
-    pub fn new(store: Store, ai_api_key: Option<String>) -> Self {
+    /// Creates state from a store, an optional AI API key, and the secret
+    /// store that persists it (see `secrets`).
+    pub fn new(
+        store: Store,
+        ai_api_key: Option<String>,
+        secrets: Arc<secrets::SecretStore>,
+    ) -> Self {
         Self {
-            ai: Arc::new(AiService::new(store.clone(), ai_api_key)),
+            ai: Arc::new(AiService::new(store.clone(), ai_api_key, secrets)),
             store,
         }
     }
 }
 
+/// Builds the authentication mode: dev mode skips validation (FR-040).
+pub fn auth_mode(config: Option<auth::AuthConfig>) -> AuthMode {
+    match config {
+        Some(c) => AuthMode::Jwt(Arc::new(Authenticator::new(c))),
+        None => AuthMode::Dev,
+    }
+}
+
 /// Builds the `/api/v1` router.
-pub fn router(state: AppState) -> Router {
-    let api = Router::new()
-        .route("/health", get(org::health))
+///
+/// `auth` decides whether tokens are validated. Every route except `/health`
+/// runs through authentication and the tenant guard, so a new endpoint is
+/// covered the day it is added (FR-041, FR-044, FR-045).
+pub fn router(state: AppState, auth: AuthMode) -> Router {
+    let protected = Router::new()
         .route(
             "/projects",
             get(org::list_projects).post(org::create_project),
@@ -159,7 +179,23 @@ pub fn router(state: AppState) -> Router {
             "/settings/ai",
             get(ai::get_ai_settings).put(ai::put_ai_settings),
         )
+        // Order matters: the guard runs after authentication, so it can read
+        // the identity, and both run before any handler.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            tenant_guard::guard,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            auth,
+            auth::authenticate,
+        ))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
-        .with_state(state);
+        .with_state(state.clone());
+
+    let api = Router::new()
+        // Open, so a load balancer needs no token.
+        .route("/health", get(org::health))
+        .with_state(state)
+        .merge(protected);
     Router::new().nest("/api/v1", api)
 }
