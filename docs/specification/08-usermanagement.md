@@ -21,7 +21,9 @@ Source requirements, as given:
 2. The token is passed in the `Authorization` header.
 3. The token contains a role and an org id.
 4. The org id is the tenant and is used for tenant separation.
-5. The claim name for the org id is configurable; the default is `tenant`.
+5. The claim name for the org id is configurable; the default is `tenant`. The
+   org id and the role may sit in a nested claim, e.g.
+   `"edge.siemens.cloud": { "tenant": "xyz", "roles": ["Editor"] }`.
 6. Roles are `Editor` and `User`. `User` suffices for all `GET` requests; every
    mutating request (`POST`, `PUT`, `PATCH`, `DELETE`) requires `Editor`.
 7. The JWKS well-known URL is configurable and is used to fetch the public key.
@@ -46,6 +48,11 @@ These map to FR-040 to FR-048 in [03-requirements.md](03-requirements.md).
 - The role claim (default `roles`) may be a string, a space-separated string or
   an array of strings. `Editor` wins over `User`; an unknown role is ignored.
   No recognised role means `User`.
+- Both claim settings are paths. A plain name is a top-level claim; dots reach
+  into nested objects (`org.id`). Claim names may contain dots themselves, so
+  at each level the longest run of segments that names an existing key wins:
+  `edge.siemens.cloud.tenant` resolves `{"edge.siemens.cloud": {"tenant": …}}`.
+  A path that does not resolve counts as a missing claim.
 
 ## Dev mode
 
@@ -90,8 +97,8 @@ day it is added.
 | Flag / env | Default | Meaning |
 | --- | --- | --- |
 | `--jwks-url` / `TM_JWKS_URL` | — | JWKS or OIDC discovery URL. Required unless `--dev-mode`. |
-| `--tenant-claim` / `TM_TENANT_CLAIM` | `tenant` | Claim holding the org id. |
-| `--role-claim` / `TM_ROLE_CLAIM` | `roles` | Claim holding the role. |
+| `--tenant-claim` / `TM_TENANT_CLAIM` | `tenant` | Claim path to the org id, e.g. `edge.siemens.cloud.tenant`. |
+| `--role-claim` / `TM_ROLE_CLAIM` | `roles` | Claim path to the role, e.g. `edge.siemens.cloud.roles`. |
 | `--jwt-issuer` / `TM_JWT_ISSUER` | — | Expected `iss`; unchecked when unset. |
 | `--jwt-audience` / `TM_JWT_AUDIENCE` | — | Expected `aud`; unchecked when unset. |
 | `--jwks-cache-secs` / `TM_JWKS_CACHE_SECS` | `300` | How long a fetched key set is reused. |
@@ -99,6 +106,9 @@ day it is added.
 
 A discovery URL ending in `/.well-known/openid-configuration` is resolved to
 its `jwks_uri` on first use.
+
+For step-by-step setup with examples per token layout, see
+[Configuring authentication](../guides/authentication-setup.md).
 
 ## UI
 

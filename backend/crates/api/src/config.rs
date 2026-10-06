@@ -65,11 +65,12 @@ pub struct Config {
     #[arg(long, env = "TM_JWKS_URL")]
     pub jwks_url: Option<String>,
 
-    /// Claim holding the org id used as the tenant (FR-043).
+    /// Claim holding the org id used as the tenant (FR-043). Nested claims are
+    /// reached with dots, e.g. `edge.siemens.cloud.tenant`.
     #[arg(long, env = "TM_TENANT_CLAIM", default_value = "tenant")]
     pub tenant_claim: String,
 
-    /// Claim holding the caller's role.
+    /// Claim holding the caller's role; a dotted path like the tenant claim.
     #[arg(long, env = "TM_ROLE_CLAIM", default_value = "roles")]
     pub role_claim: String,
 

@@ -44,7 +44,10 @@ The app is on <http://localhost:8088>, served by an APISIX gateway. The gateway
 is the only published port: it performs the OIDC handshake and attaches the
 access token the backend validates, so neither the SPA nor the API is reachable
 without signing in (see
-[08 User management](docs/specification/08-usermanagement.md)).
+[08 User management](docs/specification/08-usermanagement.md)). To connect your
+identity provider and map the tenant and role claims, including nested ones
+like `edge.siemens.cloud.tenant`, follow
+[Configuring authentication](docs/guides/authentication-setup.md).
 
 ### Developing
 

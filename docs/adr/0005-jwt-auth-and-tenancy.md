@@ -53,6 +53,11 @@ another tenant.
   existing queries.
 - The guard costs one small indexed lookup per request. Its join chain is at
   most four levels deep (transition → model → feature → component → project).
+- The tenant and role claims are dotted paths, because providers often nest
+  them under a namespaced claim (`"edge.siemens.cloud": {"tenant": …}`). Claim
+  names may contain dots, so each level takes the longest matching key rather
+  than requiring an escape syntax (JSON Pointer was the alternative; it is
+  unambiguous but awkward to write in an environment variable).
 - A tenant cannot be renamed by moving rows; the tenant id is whatever the
   identity provider puts in the claim, and it is a text column for that reason.
 - Row-level security was the alternative. It would enforce in the database, but

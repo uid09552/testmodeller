@@ -114,7 +114,9 @@ make dev-fe   # Angular dev server on :4200, proxied to the backend
 ```
 
 See [User management](specification/08-usermanagement.md) for what `--dev-mode`
-skips and why.
+skips and why, and [Configuring authentication](guides/authentication-setup.md)
+to connect your identity provider, including where the tenant and role sit in
+its tokens.
 
 ## Documentation
 
@@ -135,6 +137,7 @@ skips and why.
 - [Decision records](adr/README.md)
 
 ### Guides
+- [Configuring authentication](guides/authentication-setup.md)
 - [Rust coding guide](guides/rust-coding-guide.md)
 - [Angular coding guide](guides/angular-coding-guide.md)
 - [Testing guide](guides/testing-guide.md)

@@ -120,9 +120,9 @@ impl<S: Send + Sync> FromRequestParts<S> for Identity {
 pub struct AuthConfig {
     /// JWKS URL, or an OIDC discovery URL to resolve one from.
     pub jwks_url: String,
-    /// Claim holding the org id (FR-043).
+    /// Claim path to the org id (FR-043); see [`claim_at`].
     pub tenant_claim: String,
-    /// Claim holding the role.
+    /// Claim path to the role; see [`claim_at`].
     pub role_claim: String,
     /// Expected `iss`; unchecked when `None`.
     pub issuer: Option<String>,
@@ -204,8 +204,7 @@ impl Authenticator {
             .map_err(|e| unauthorized(format!("the token was rejected: {}", e.kind_detail())))?
             .claims;
 
-        let tenant = claims
-            .get(&self.config.tenant_claim)
+        let tenant = claim_at(&claims, &self.config.tenant_claim)
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|t| !t.is_empty())
@@ -220,7 +219,7 @@ impl Authenticator {
 
         Ok(Identity {
             tenant,
-            role: role_from(claims.get(&self.config.role_claim)),
+            role: role_from(claim_at(&claims, &self.config.role_claim)),
             subject: claims.get("sub").and_then(Value::as_str).map(str::to_owned),
         })
     }
@@ -359,6 +358,30 @@ fn to_decoding_key(jwk: &jsonwebtoken::jwk::Jwk, alg: Algorithm) -> Result<Decod
     })
 }
 
+/// The claim at `path`, which names a top-level claim or a claim nested in
+/// objects, separated by dots: `tenant`, `org.id`, `edge.siemens.cloud.tenant`.
+///
+/// Claim names may themselves contain dots (namespaced claims such as
+/// `edge.siemens.cloud` or `https://example.com/roles`), so at each level the
+/// longest run of segments that names an existing key wins. That keeps a plain
+/// claim name working unchanged and needs no escaping in configuration.
+fn claim_at<'a>(claims: &'a Value, path: &str) -> Option<&'a Value> {
+    let segments: Vec<&str> = path.split('.').collect();
+    let mut current = claims;
+    let mut start = 0;
+    while start < segments.len() {
+        let object = current.as_object()?;
+        let (end, value) = (start + 1..=segments.len()).rev().find_map(|end| {
+            object
+                .get(&segments[start..end].join("."))
+                .map(|v| (end, v))
+        })?;
+        current = value;
+        start = end;
+    }
+    Some(current)
+}
+
 /// Highest role in the claim. Accepts a string, a space-separated string or an
 /// array of strings, which is what the common providers emit.
 fn role_from(claim: Option<&Value>) -> Role {
@@ -484,6 +507,48 @@ mod tests {
         assert_eq!(role_from(None), Role::User);
         assert_eq!(role_from(Some(&json!("admin"))), Role::User);
         assert_eq!(role_from(Some(&json!(42))), Role::User);
+    }
+
+    #[test]
+    fn a_plain_claim_name_is_a_top_level_claim() {
+        let claims = json!({ "tenant": "acme", "org": { "tenant": "nested" } });
+        assert_eq!(claim_at(&claims, "tenant"), Some(&json!("acme")));
+    }
+
+    #[test]
+    fn a_dotted_path_reaches_into_nested_objects() {
+        let claims = json!({ "org": { "id": "acme" } });
+        assert_eq!(claim_at(&claims, "org.id"), Some(&json!("acme")));
+    }
+
+    #[test]
+    fn a_namespaced_claim_name_containing_dots_is_matched_whole() {
+        let claims = json!({
+            "edge.siemens.cloud": { "tenant": "xyz", "roles": ["editor"] }
+        });
+        assert_eq!(
+            claim_at(&claims, "edge.siemens.cloud.tenant"),
+            Some(&json!("xyz"))
+        );
+        assert_eq!(
+            role_from(claim_at(&claims, "edge.siemens.cloud.roles")),
+            Role::Editor
+        );
+        assert_eq!(
+            claim_at(
+                &json!({ "https://example.com/roles": "editor" }),
+                "https://example.com/roles"
+            ),
+            Some(&json!("editor"))
+        );
+    }
+
+    #[test]
+    fn a_path_that_does_not_resolve_is_missing() {
+        let claims = json!({ "org": { "id": "acme" }, "flat": "x" });
+        assert_eq!(claim_at(&claims, "org.name"), None);
+        assert_eq!(claim_at(&claims, "flat.deeper"), None);
+        assert_eq!(claim_at(&claims, "edge.siemens.cloud.tenant"), None);
     }
 
     #[test]

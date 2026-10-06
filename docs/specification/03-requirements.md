@@ -45,7 +45,7 @@ See [08-usermanagement.md](08-usermanagement.md).
 - FR-040 Validate a JWT on every request unless `--dev-mode` is set.
 - FR-041 Read the token from the `Authorization: Bearer` header.
 - FR-042 Verify the signature against a JWKS fetched from a configurable well-known URL.
-- FR-043 Take the tenant from a configurable claim (default `tenant`); reject a token without one.
+- FR-043 Take the tenant from a configurable, possibly nested claim (default `tenant`); reject a token without one.
 - FR-044 Scope every read and write to the caller's tenant.
 - FR-045 Allow `GET` for the `User` role; require `Editor` for every mutating method.
 - FR-046 Offer logout from the user profile in the top-right corner.
