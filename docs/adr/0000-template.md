@@ -2,7 +2,7 @@
 title: NNNN. Title
 type: adr
 status: proposed
-date: YYYY-MM-DD
+date:  # YYYY-MM-DD, the day the decision is accepted
 tags: []
 related: []
 ---
