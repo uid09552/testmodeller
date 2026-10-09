@@ -1,0 +1,72 @@
+<div class="mt">
+  @for (grid of grids; track grid.key) {
+    <section class="mt__section" [attr.aria-labelledby]="'mt-title-' + grid.key">
+      <header class="mt__head">
+        <h2 class="mt__title" [id]="'mt-title-' + grid.key">{{ grid.title }} ({{ rows(grid.key).length }})</h2>
+        <button type="button" class="mt__add" (click)="grid.key === 'states' ? addState() : addTransition()"
+                [disabled]="grid.key === 'transitions' && !states().length">
+          + Add {{ grid.key === 'states' ? 'state' : 'transition' }}
+        </button>
+      </header>
+
+      @if (!rows(grid.key).length) {
+        <p class="mt__empty">No {{ grid.title.toLowerCase() }} yet.</p>
+      } @else {
+        <table class="mt__grid" role="grid" [attr.aria-labelledby]="'mt-title-' + grid.key">
+          <thead>
+            <tr role="row">
+              @for (c of columns(grid.key); track c.key) { <th role="columnheader" scope="col">{{ c.label }}</th> }
+              <th role="columnheader" scope="col">Issues</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of rows(grid.key); track r.id; let ri = $index) {
+              <tr role="row" [class.mt__row--pending]="pendingDelete()?.id === r.id"
+                  [attr.aria-describedby]="issues().get(r.id) ? 'mt-issue-' + r.id : null">
+                @for (c of columns(grid.key); track c.key; let ci = $index) {
+                  <td role="gridcell" [id]="cellId(grid.key, ri, ci)"
+                      [attr.tabindex]="isActive(grid.key, ri, ci) ? 0 : -1"
+                      [attr.aria-readonly]="c.edit ? null : true"
+                      [class.mt__cell--editable]="!!c.edit"
+                      (focus)="active.set({ grid: grid.key, row: ri, col: ci })"
+                      (click)="focusCell(grid.key, ri, ci)"
+                      (dblclick)="startEdit(grid.key, ri, ci)"
+                      (keydown)="onCellKey($event, grid.key, ri, ci)">
+                    @if (isEditing(grid.key, ri, ci)) {
+                      @if (c.edit === 'select') {
+                        <select class="mt__editor" [id]="cellId(grid.key, ri, ci) + '-edit'"
+                                [attr.aria-label]="c.label" (keydown)="onEditorKey($event)"
+                                (change)="draft($any($event.target).value)" (blur)="finishEdit(true)">
+                          @for (o of c.options!(); track o.value) {
+                            <option [value]="o.value" [selected]="o.value === editing()!.value">{{ o.label }}</option>
+                          }
+                        </select>
+                      } @else {
+                        <input class="mt__editor" [id]="cellId(grid.key, ri, ci) + '-edit'"
+                               [attr.aria-label]="c.label" [value]="editing()!.value"
+                               (input)="draft($any($event.target).value)"
+                               (keydown)="onEditorKey($event)" (blur)="finishEdit(true)" />
+                      }
+                    } @else {
+                      {{ c.get(r) }}
+                    }
+                  </td>
+                }
+                <td role="gridcell" class="mt__issue" [id]="'mt-issue-' + r.id" aria-readonly="true">
+                  {{ issues().get(r.id) ?? '' }}
+                  @if (pendingDelete()?.id === r.id) {
+                    <strong role="alert">Press Delete again to delete, Esc to keep.</strong>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </section>
+  }
+  <p class="mt__help">
+    Arrows move between cells · Enter or F2 edits · Enter saves · Esc cancels ·
+    Delete twice deletes a row · Ctrl+Z undoes, as on the canvas.
+  </p>
+</div>

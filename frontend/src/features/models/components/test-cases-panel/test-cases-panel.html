@@ -91,6 +91,10 @@
                   <span class="stale-reason">{{ r.message }}</span>
                 }
                 <span class="tc-row__actions">
+                  <button class="icon-btn" title="Show path on the canvas" aria-label="Show path"
+                          (click)="store.showPath(test.id)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/><path d="M7 19h6a4 4 0 0 0 0-8h-2a4 4 0 0 1 0-8h6"/></svg>
+                  </button>
                   <button class="icon-btn" title="Edit in overlay" aria-label="Edit test case"
                           (click)="openEditor(n.id, test.id)">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"

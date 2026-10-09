@@ -461,6 +461,23 @@ paths:
       summary: Coverage of the model by assigned test cases
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Coverage' } } } }
+  /models/{modelId}/simulate:
+    parameters: [ { $ref: '#/components/parameters/ModelId' } ]
+    post:
+      tags: [Generation]
+      summary: One simulation step on the graph the caller sends (the editor's current one). Nothing is stored.
+      description: >-
+        Without `stateId` the simulation starts at the initial state with every variable at its initial value.
+        With `take`, that transition is taken from `stateId` with `env` (guard checked, action applied) and the
+        result is the new state. The response always lists the outgoing transitions of the resulting state as
+        enabled or blocked. Guards and actions are evaluated exactly as test generation evaluates them.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SimulationRequest' } } }
+      responses:
+        '200': { description: Step result, content: { application/json: { schema: { $ref: '#/components/schemas/SimulationStep' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
   /models/{modelId}/stale-tests:
     parameters: [ { $ref: '#/components/parameters/ModelId' } ]
     get:
@@ -779,6 +796,16 @@ components:
             variables: { type: array, items: { $ref: '#/components/schemas/Variable' } }
             states: { type: array, items: { $ref: '#/components/schemas/StateInput' } }
             transitions: { type: array, items: { $ref: '#/components/schemas/TransitionInput' } }
+            layout: { $ref: '#/components/schemas/ModelLayout' }
+    ModelLayout:
+      type: [object, 'null']
+      additionalProperties: true
+      description: >-
+        Editor presentation (shapes, colours, sizes, groups, transition routing, display numbers).
+        Owned by the editor and versioned by its own `v` key; the backend stores and returns it without
+        interpreting it, except that element ids inside it are remapped when a model is duplicated or
+        imported. At most 256 KB. On save, an absent `layout` keeps the stored one and `null` clears it.
+        Ignored by validation, generation and coverage.
     ModelSummary:
       allOf:
         - { $ref: '#/components/schemas/Audit' }
@@ -798,6 +825,7 @@ components:
             variables: { type: array, items: { $ref: '#/components/schemas/Variable' } }
             states: { type: array, items: { $ref: '#/components/schemas/State' } }
             transitions: { type: array, items: { $ref: '#/components/schemas/Transition' } }
+            layout: { $ref: '#/components/schemas/ModelLayout' }
     ModelVersion:
       type: object
       required: [version, createdAt]
@@ -974,6 +1002,33 @@ components:
         duplicates: { type: integer, description: Matched results already stored for the same run }
         unmatched: { type: array, items: { type: string }, description: Names of results matching no test case }
         ambiguous: { type: array, items: { type: string }, description: Names matching several test cases }
+    SimulationRequest:
+      type: object
+      required: [graph]
+      properties:
+        graph: { $ref: '#/components/schemas/ModelInput' }
+        stateId: { $ref: '#/components/schemas/Id' }
+        env:
+          type: object
+          additionalProperties: true
+          description: Variable values at `stateId`, as returned by the previous step
+        take: { $ref: '#/components/schemas/Id' }
+    SimulationStep:
+      type: object
+      required: [stateId, env, final, transitions]
+      properties:
+        stateId: { $ref: '#/components/schemas/Id' }
+        env: { type: object, additionalProperties: true }
+        final: { type: boolean, description: The state is a final state }
+        transitions:
+          type: array
+          items:
+            type: object
+            required: [transitionId, enabled]
+            properties:
+              transitionId: { $ref: '#/components/schemas/Id' }
+              enabled: { type: boolean }
+              reason: { type: string, description: Why it is blocked (the false guard or the evaluation error) }
     StaleTest:
       type: object
       required: [testCaseId, reasons]

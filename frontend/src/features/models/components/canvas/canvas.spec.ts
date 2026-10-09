@@ -567,3 +567,465 @@ describe('CanvasComponent test results', () => {
       .toBe('1/1 states (0 passing), 2/3 transitions (1 passing)');
   });
 });
+
+describe('CanvasComponent transition routing', () => {
+  let store: ModelEditorStore;
+  let fixture: ReturnType<typeof TestBed.createComponent<CanvasComponent>>;
+  let root: HTMLElement;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [CanvasComponent],
+      providers: [ModelEditorStore],
+    }).compileComponents();
+    fixture = TestBed.createComponent(CanvasComponent);
+    store = TestBed.inject(ModelEditorStore);
+    root = fixture.nativeElement;
+  });
+
+  function selectedPair() {
+    const a = store.addNode('regular', 0, 0);
+    const b = store.addNode('regular', 400, 0);
+    const e = store.addEdge(a.id, b.id);
+    store.select(e.id, 'edge');
+    fixture.detectChanges();
+    return { a, b, e };
+  }
+  /** Screen position of a canvas point (inverse of the component's toCanvas). */
+  const screen = (p: { x: number; y: number }) => {
+    const c = fixture.componentInstance;
+    const r = root.querySelector('svg')!.getBoundingClientRect();
+    return { clientX: p.x * c.zoom() + c.panX() + r.left, clientY: p.y * c.zoom() + c.panY() + r.top };
+  };
+  const mouse = (type: string, target: EventTarget, p: { x: number; y: number }, extra = {}) =>
+    target.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, ...screen(p), ...extra }));
+  const edge = (id: string) => store.edgeById(id)!;
+
+  it('bends a transition through the dragged point and straightens it on double-click', () => {
+    const { e } = selectedPair();
+    const handle = root.querySelector('.edge-bend__hit')!;
+    const g = fixture.componentInstance.geometries().get(e.id)!;
+    mouse('mousedown', handle, g.bend!);
+    mouse('mousemove', document, { x: g.bend!.x, y: g.bend!.y + 60 });
+    mouse('mouseup', document, { x: g.bend!.x, y: g.bend!.y + 60 });
+    fixture.detectChanges();
+
+    expect(Math.abs(edge(e.id).curve)).toBe(120);
+    const bent = fixture.componentInstance.geometries().get(e.id)!;
+    expect(bent.bend!.y).toBeCloseTo(g.bend!.y + 60, 0);
+
+    root.querySelector('.edge-bend__hit')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(edge(e.id).curve).toBe(0);
+
+    store.undo();
+    expect(Math.abs(edge(e.id).curve)).toBe(120);
+  });
+
+  it('adds a bend point with Alt+click and from the context menu, moves it, and removes it', () => {
+    const { e } = selectedPair();
+    const line = root.querySelector('path.edge-hit')!;
+    mouse('click', line, { x: 150, y: 80 }, { altKey: true });
+    fixture.detectChanges();
+    expect(edge(e.id).waypoints).toEqual([{ x: 150, y: 80 }]);
+
+    mouse('contextmenu', line, { x: 300, y: 90 });
+    fixture.componentInstance.runMenuAction('add-bend-point');
+    fixture.detectChanges();
+    expect(edge(e.id).waypoints).toEqual([{ x: 150, y: 80 }, { x: 300, y: 90 }]);
+
+    const second = root.querySelectorAll('.edge-waypoint__hit')[1];
+    mouse('mousedown', second, { x: 300, y: 90 });
+    mouse('mousemove', document, { x: 320, y: 140 });
+    mouse('mouseup', document, { x: 320, y: 140 });
+    fixture.detectChanges();
+    expect(edge(e.id).waypoints![1]).toEqual({ x: 320, y: 140 });
+
+    root.querySelectorAll('.edge-waypoint__hit')[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    fixture.detectChanges();
+    expect(edge(e.id).waypoints).toEqual([{ x: 320, y: 140 }]);
+  });
+
+  it('drags a label off the line with a leader line, and resets it', () => {
+    const { e } = selectedPair();
+    expect(root.querySelector('.edge-leader')).toBeNull();
+    const label = root.querySelector('.edge-label-group')!;
+    const g = fixture.componentInstance.geometries().get(e.id)!;
+    mouse('mousedown', label, g.label);
+    mouse('mousemove', document, { x: g.label.x + 10, y: g.label.y - 50 });
+    mouse('mouseup', document, { x: g.label.x + 10, y: g.label.y - 50 });
+    fixture.detectChanges();
+
+    expect(edge(e.id).labelOffset).toEqual({ dx: 10, dy: -50 });
+    expect(root.querySelector('.edge-leader')).not.toBeNull();
+
+    mouse('contextmenu', root.querySelector('path.edge-hit')!, { x: 100, y: 20 });
+    fixture.componentInstance.runMenuAction('reset-label');
+    fixture.detectChanges();
+    expect(edge(e.id).labelOffset).toBeUndefined();
+    expect(root.querySelector('.edge-leader')).toBeNull();
+  });
+
+  it('draws two self-loops on one side apart from each other', () => {
+    const a = store.addNode('regular', 200, 200);
+    const l1 = store.addEdge(a.id, a.id, 'right', 'right');
+    const l2 = store.addEdge(a.id, a.id, 'right', 'right');
+    fixture.detectChanges();
+    const g1 = fixture.componentInstance.geometries().get(l1.id)!;
+    const g2 = fixture.componentInstance.geometries().get(l2.id)!;
+    expect(g1.d).not.toBe(g2.d);
+    expect(g1.label.x).toBeGreaterThan(a.x + a.w);
+    expect(Math.abs(g2.label.x - g1.label.x)).toBeGreaterThan(24);
+    const paths = [...root.querySelectorAll('.edge-line')].map(p => p.getAttribute('d'));
+    expect(new Set(paths).size).toBe(2);
+  });
+
+  it('switches routing from the context menu', () => {
+    const { b } = selectedPair();
+    const c = store.addNode('regular', 400, 300);
+    const e2 = store.addEdge(b.id, c.id);
+    mouse('contextmenu', root.querySelectorAll('path.edge-hit')[0], { x: 100, y: 20 });
+    fixture.componentInstance.runMenuAction('routing-orthogonal');
+    fixture.detectChanges();
+    expect(store.edges()[0].routing).toBe('orthogonal');
+    expect(store.edgeById(e2.id)!.routing).toBeUndefined();
+    const d = root.querySelector('.edge-line')!.getAttribute('d')!;
+    expect(d).not.toContain('Q');
+    expect(d).not.toContain('C');
+  });
+});
+
+describe('CanvasComponent navigation', () => {
+  let store: ModelEditorStore;
+  let fixture: ReturnType<typeof TestBed.createComponent<CanvasComponent>>;
+  let root: HTMLElement;
+  let c: CanvasComponent;
+
+  beforeEach(async () => {
+    localStorage.clear();
+    await TestBed.configureTestingModule({
+      imports: [CanvasComponent],
+      providers: [ModelEditorStore],
+    }).compileComponents();
+    fixture = TestBed.createComponent(CanvasComponent);
+    store = TestBed.inject(ModelEditorStore);
+    c = fixture.componentInstance;
+    root = fixture.nativeElement;
+    document.body.appendChild(root);
+    fixture.detectChanges();
+    // jsdom has no layout: give the canvas a size.
+    const svg = root.querySelector('svg.canvas-svg') as SVGSVGElement;
+    svg.getBoundingClientRect = () =>
+      ({ x: 0, y: 0, left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600, toJSON: () => ({}) });
+    c.canvasSize.set({ w: 800, h: 600 });
+  });
+
+  afterEach(() => root.remove());
+
+  const key = (k: string, extra: KeyboardEventInit = {}) =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...extra }));
+  const focusCanvas = () => root.querySelector<HTMLElement>('.canvas-wrap')!.focus();
+  const visible = (n: { x: number; y: number; w: number; h: number }) => {
+    const l = n.x * c.zoom() + c.panX(), t = n.y * c.zoom() + c.panY();
+    return l >= 0 && t >= 0 && l + n.w * c.zoom() <= 800 && t + n.h * c.zoom() <= 600;
+  };
+
+  it('zooms to fit the model and to the selection', () => {
+    const a = store.addNode('regular', -300, -200);
+    const b = store.addNode('regular', 1200, 700);
+    const d = store.addNode('regular', 1600, 1000);
+    key('!', { shiftKey: true, code: 'Digit1' });
+    expect([a, b, d].every(n => visible(store.nodeById(n.id)!))).toBe(true);
+
+    store.selectNodes([a.id, b.id]);
+    const fitAll = c.zoom();
+    key('@', { shiftKey: true, code: 'Digit2' });
+    expect(visible(store.nodeById(a.id)!) && visible(store.nodeById(b.id)!)).toBe(true);
+    expect(c.zoom()).toBeGreaterThan(fitAll);
+  });
+
+  it('finds states by name with Ctrl+F, steps through hits, and says when nothing matches', async () => {
+    const pay = store.addNode('regular', 2000, 2000);
+    store.updateNode(pay.id, { label: 'Payment' });
+    const pay2 = store.addNode('regular', 0, 0);
+    store.updateNode(pay2.id, { label: 'Pay later' });
+    store.addNode('regular', 300, 0);
+    fixture.detectChanges();
+    focusCanvas();
+    key('f', { ctrlKey: true });
+    fixture.detectChanges();
+    const input = root.querySelector<HTMLInputElement>('tm-canvas-search input')!;
+    input.value = 'pay';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    // Reading order: "Pay later" (top-left) first.
+    expect(store.selectedNode()?.id).toBe(pay2.id);
+    expect(root.querySelector('tm-canvas-search [role="status"]')!.textContent).toBe('1 of 2');
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    fixture.detectChanges();
+    expect(store.selectedNode()?.id).toBe(pay.id);
+    expect(visible(store.nodeById(pay.id)!)).toBe(true);
+
+    input.value = 'zzz';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(root.querySelector('tm-canvas-search [role="status"]')!.textContent).toBe('No matches');
+    expect(store.selectedNode()?.id).toBe(pay.id);
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(root.querySelector('tm-canvas-search')).toBeNull();
+  });
+
+  it('shows a minimap that pans the view, and remembers when it is hidden', () => {
+    store.addNode('regular', 0, 0);
+    store.addNode('regular', 1600, 1200);
+    fixture.detectChanges();
+    const map = root.querySelector('tm-canvas-minimap svg')!;
+    expect(root.querySelectorAll('.minimap__state').length).toBe(2);
+    map.getBoundingClientRect = () =>
+      ({ x: 0, y: 0, left: 0, top: 0, width: 180, height: 120, right: 180, bottom: 120, toJSON: () => ({}) });
+    const before = [c.panX(), c.panY()];
+    map.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 170, clientY: 110 }));
+    expect([c.panX(), c.panY()]).not.toEqual(before);
+
+    c.toggleMinimap();
+    fixture.detectChanges();
+    expect(root.querySelector('tm-canvas-minimap')).toBeNull();
+    expect(localStorage.getItem('tm:editor-minimap')).toBe('false');
+  });
+
+  it('collapses a group into a box that transitions attach to, and expands it again', () => {
+    const inside = [0, 1, 2, 3].map(i => store.addNode('regular', i * 160, 0));
+    const outside = store.addNode('regular', 0, 400);
+    const inner = store.addEdge(inside[0].id, inside[1].id);
+    const cross = store.addEdge(outside.id, inside[2].id);
+    store.selectNodes(inside.map(n => n.id));
+    const g = store.groupSelection('Auth')!;
+    fixture.detectChanges();
+
+    store.collapseGroup(g.id);
+    fixture.detectChanges();
+    expect(root.querySelectorAll('g.node-group').length).toBe(1);
+    expect(root.querySelector('.group-box__count')!.textContent!.trim()).toBe('4 states');
+    expect(c.geometries().has(inner.id)).toBe(false);
+    const box = store.groupById(g.id)!;
+    expect(c.geometries().get(cross.id)!.tgt.y).toBeLessThanOrEqual(box.y + 56 + 3);
+
+    // Saved with the layout.
+    expect(store.toPersisted('m').groups![0]).toMatchObject({ collapsed: true });
+
+    // Revealing a hidden state (search, validation) expands the group.
+    c.revealElement(inside[3].id);
+    fixture.detectChanges();
+    expect(store.groupById(g.id)!.collapsed).toBeUndefined();
+    expect(root.querySelectorAll('g.node-group').length).toBe(5);
+    expect(store.nodes().map(n => [n.x, n.y])).toEqual([[0, 0], [160, 0], [320, 0], [480, 0], [0, 400]]);
+  });
+
+  it('snaps a dragged state to its neighbour with a guide, and not while Alt is held', () => {
+    const a = store.addNode('regular', 0, 0);
+    store.addNode('regular', 400, 200);
+    fixture.detectChanges();
+    const el = () => root.querySelector<SVGGElement>(`[data-node-id="${a.id}"]`)!;
+    const at = (x: number, y: number, extra = {}) =>
+      ({ bubbles: true, button: 0, clientX: x + c.panX(), clientY: y + c.panY(), ...extra });
+
+    el().dispatchEvent(new MouseEvent('mousedown', at(10, 10)));
+    document.dispatchEvent(new MouseEvent('mousemove', at(13, 207)));
+    fixture.detectChanges();
+    expect(store.nodeById(a.id)!.y).toBe(200);
+    expect(root.querySelectorAll('.snap-guide').length).toBeGreaterThan(0);
+    document.dispatchEvent(new MouseEvent('mouseup', at(13, 207)));
+    fixture.detectChanges();
+    expect(root.querySelectorAll('.snap-guide').length).toBe(0);
+
+    el().dispatchEvent(new MouseEvent('mousedown', at(10, 210)));
+    document.dispatchEvent(new MouseEvent('mousemove', at(13, 215, { altKey: true })));
+    expect(store.nodeById(a.id)!.y).toBe(205);
+    document.dispatchEvent(new MouseEvent('mouseup', at(13, 215)));
+  });
+
+  it('moves between states with Tab in reading order and between transitions with Ctrl+Tab', async () => {
+    const b = store.addNode('regular', 400, 0);
+    const a = store.addNode('regular', 0, 0);
+    const d = store.addNode('regular', 0, 300);
+    const e1 = store.addEdge(a.id, b.id);
+    fixture.detectChanges();
+    focusCanvas();
+    key('Tab');
+    expect(store.selectedNode()?.id).toBe(a.id);
+    key('Tab');
+    expect(store.selectedNode()?.id).toBe(b.id);
+    key('Tab', { shiftKey: true });
+    expect(store.selectedNode()?.id).toBe(a.id);
+    await new Promise(r => setTimeout(r));
+    expect(document.activeElement?.getAttribute('data-node-id')).toBe(a.id);
+    key('Tab'); key('Tab');
+    expect(store.selectedNode()?.id).toBe(d.id);
+    key('Tab', { ctrlKey: true });
+    expect(store.selectedEdge()?.id).toBe(e1.id);
+  });
+
+  it('moves the selection with arrows as one undo step, renames with F2, zooms with + and -', () => {
+    const a = store.addNode('regular', 0, 0);
+    store.select(a.id, 'node');
+    fixture.detectChanges();
+    focusCanvas();
+    key('ArrowRight');
+    key('ArrowRight');
+    key('ArrowDown', { shiftKey: true });
+    expect([store.nodeById(a.id)!.x, store.nodeById(a.id)!.y]).toEqual([16, 80]);
+    store.undo();
+    expect([store.nodeById(a.id)!.x, store.nodeById(a.id)!.y]).toEqual([0, 0]);
+
+    const z = c.zoom();
+    key('+');
+    expect(c.zoom()).toBeGreaterThan(z);
+    key('-');
+    expect(c.zoom()).toBeCloseTo(z);
+
+    focusCanvas();
+    key('F2');
+    fixture.detectChanges();
+    expect(root.querySelector('textarea.node-edit-input')).not.toBeNull();
+  });
+
+  it('lists every shortcut in the help on ?', () => {
+    key('?');
+    fixture.detectChanges();
+    const rows = root.querySelectorAll('.shortcuts tr');
+    expect(rows.length).toBe(c.helpRows.length);
+    expect(root.querySelector('.shortcuts')!.textContent).toContain('Zoom to fit the model');
+    key('Escape');
+    fixture.detectChanges();
+    expect(root.querySelector('.shortcuts')).toBeNull();
+  });
+
+  it('leaves Tab and arrows alone when the canvas does not have focus', () => {
+    const a = store.addNode('regular', 0, 0);
+    store.select(a.id, 'node');
+    (document.activeElement as HTMLElement | null)?.blur();
+    key('ArrowRight');
+    expect(store.nodeById(a.id)!.x).toBe(0);
+  });
+});
+
+describe('CanvasComponent path highlight', () => {
+  it('marks the path, dims the rest, numbers steps, announces it, and clears on Esc', async () => {
+    await TestBed.configureTestingModule({
+      imports: [CanvasComponent],
+      providers: [ModelEditorStore],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(CanvasComponent);
+    const store = TestBed.inject(ModelEditorStore);
+    const a = store.addNode('initial', 0, 0);
+    store.updateNode(a.id, { label: 'Start' });
+    const b = store.addNode('regular', 300, 0);
+    const off = store.addNode('regular', 0, 300);
+    const e = store.addEdge(a.id, b.id);
+    store.addEdge(a.id, off.id);
+    const t = store.addTest(a.id, 'Login works')!;
+    store.updateTest(a.id, t.id, {
+      path: [
+        { targetId: a.id, kind: 'state' },
+        { targetId: e.id, kind: 'transition', stepOrder: 1 },
+        { targetId: b.id, kind: 'state', stepOrder: 1 },
+      ],
+    });
+    store.showPath(t.id);
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+
+    const node = (id: string) => root.querySelector(`[data-node-id="${id}"]`)!;
+    expect(node(b.id).classList).toContain('node-group--on-path');
+    expect(node(off.id).classList).toContain('node-group--dimmed');
+    expect(node(b.id).querySelector('.path-badge text')!.textContent).toBe('1');
+    expect(root.querySelectorAll('.edge-group--on-path').length).toBe(1);
+    expect(root.querySelectorAll('.edge-group--dimmed').length).toBe(1);
+    expect(root.querySelector('.path-banner')!.textContent).toContain('Path of “Login works” — 1 step');
+    expect(node(b.id).getAttribute('aria-label')).toContain('path step 1');
+    const hit = [...root.querySelectorAll('path.edge-hit')].find(p => p.getAttribute('aria-label')?.includes('path step 1'));
+    expect(hit).toBeTruthy();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    expect(root.querySelector('.path-banner')).toBeNull();
+    expect(root.querySelector('.node-group--dimmed')).toBeNull();
+  });
+});
+
+describe('CanvasComponent present mode (read-only)', () => {
+  it('allows no edit but keeps selection, zoom and search', async () => {
+    await TestBed.configureTestingModule({
+      imports: [CanvasComponent],
+      providers: [ModelEditorStore],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(CanvasComponent);
+    const store = TestBed.inject(ModelEditorStore);
+    fixture.componentRef.setInput('readonly', true);
+    const a = store.addNode('regular', 0, 0);
+    const b = store.addNode('regular', 300, 0);
+    const e = store.addEdge(a.id, b.id);
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    document.body.appendChild(root);
+    const c = fixture.componentInstance;
+    const node = root.querySelector<SVGGElement>(`[data-node-id="${a.id}"]`)!;
+
+    // Editing controls are gone.
+    expect(getComputedStyle(root.querySelector('.quickbar')!).display).toBe('none');
+    // Dragging a state pans instead of moving it.
+    const pan = c.panX();
+    node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 50, clientY: 20 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 150, clientY: 20 }));
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 150, clientY: 20 }));
+    expect(store.nodeById(a.id)!.x).toBe(0);
+    expect(c.panX()).toBe(pan + 100);
+    // …but a click still selects.
+    expect(store.selectedNode()?.id).toBe(a.id);
+
+    // No delete, rename, context menu, connector dots or transition handles.
+    node.focus();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }));
+    node.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    node.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    fixture.detectChanges();
+    expect(store.nodes().length).toBe(2);
+    expect(root.querySelector('textarea.node-edit-input')).toBeNull();
+    expect(c.contextMenu()).toBeNull();
+    expect(root.querySelector('.connector-dot')).toBeNull();
+    store.select(e.id, 'edge');
+    fixture.detectChanges();
+    expect(root.querySelector('.edge-handle-hit, .edge-bend__hit')).toBeNull();
+
+    // Navigation still works.
+    const z = c.zoom();
+    c.zoomIn();
+    expect(c.zoom()).toBeGreaterThan(z);
+    c.openSearch();
+    fixture.detectChanges();
+    expect(root.querySelector('tm-canvas-search')).not.toBeNull();
+    root.remove();
+  });
+});
+
+describe('CanvasComponent simulation marks', () => {
+  it('marks the current state with text and the enabled and blocked transitions', async () => {
+    await TestBed.configureTestingModule({ imports: [CanvasComponent], providers: [ModelEditorStore] }).compileComponents();
+    const fixture = TestBed.createComponent(CanvasComponent);
+    const store = TestBed.inject(ModelEditorStore);
+    const a = store.addNode('initial', 0, 0);
+    const b = store.addNode('regular', 300, 0);
+    const go = store.addEdge(a.id, b.id);
+    const no = store.addEdge(a.id, a.id);
+    store.simulation.set({ currentId: a.id, enabled: new Set([go.id]), blocked: new Set([no.id]) });
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    expect(root.querySelector(`[data-node-id="${a.id}"] .sim-badge text`)!.textContent).toBe('▶ now');
+    expect(root.querySelectorAll('.edge-group--sim-enabled').length).toBe(1);
+    expect(root.querySelectorAll('.edge-group--sim-blocked').length).toBe(1);
+  });
+});

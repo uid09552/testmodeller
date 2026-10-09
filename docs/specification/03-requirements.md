@@ -68,7 +68,7 @@ See [08-usermanagement.md](08-usermanagement.md).
 - NFR-001 Generate tests for a 200-state model in under 2 s.
 - NFR-002 API p95 latency under 200 ms excluding AI calls.
 - NFR-003 LLM provider configurable; no data sent without configuration.
-- NFR-004 WCAG 2.1 AA for UI (editor offers keyboard alternative).
+- NFR-004 WCAG 2.1 AA for UI (editor offers keyboard alternative: the table view and the canvas keyboard shortcuts, see 06-ui.md).
 - NFR-005 All API input validated; secrets never logged.
 - NFR-006 Optimistic concurrency via `version` on updates.
 - NFR-007 Tenant separation is enforced server-side; a request can never read or

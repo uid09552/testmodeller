@@ -2,7 +2,7 @@ import {
   ChangeDetectionStrategy, Component, computed, effect, HostListener, inject, signal, untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { OrgApi, StaleReason } from '../../../core/api/org-api';
 import { readJson, writeJson } from '../../../core/persistence/local-store';
 import { singleLine } from '../../models/state/node-fit';
@@ -32,7 +32,7 @@ const DEFAULT_SORT: SortState = { key: 'ref', dir: 'asc' };
 
 @Component({
   selector: 'tm-test-case-list-page',
-  imports: [TestCaseDialogComponent, ImportResultsDialogComponent],
+  imports: [TestCaseDialogComponent, ImportResultsDialogComponent, RouterLink],
   templateUrl: './test-case-list-page.html',
   styleUrl: './test-case-list-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

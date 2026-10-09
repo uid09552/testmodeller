@@ -5,7 +5,7 @@
 import { computed, Injectable, signal } from '@angular/core';
 import { fitNodeSize, resetTextMeasure, singleLine } from './node-fit';
 import type { StaleReason, StaleTest } from '../../../core/api/org-api';
-import type { ResultStatus } from '../../../core/api/api.types';
+import type { ResultStatus, Variable } from '../../../core/api/api.types';
 
 export type StateKind = 'initial' | 'regular' | 'decision' | 'final';
 
@@ -84,7 +84,18 @@ export interface StateTest {
   backlogUrl?: string;
   /** Latest imported result; read-only, never saved from the editor. */
   lastResult?: LastResult;
+  /**
+   * Where the stored test case is assigned in this model, read-only: the
+   * states and transitions it walks, with step numbers when it has them.
+   */
+  path?: PathStep[];
 }
+
+/** One assignment of a test case, for highlighting its path. */
+export interface PathStep { targetId: string; kind: 'state' | 'transition'; stepOrder?: number }
+
+/** A highlighted test path: element id -> its step numbers (empty when unnumbered). */
+export interface PathHighlight { testId: string; name: string; steps: Map<string, number[]>; count: number }
 
 /** What the editor keeps of a test case's latest imported result. */
 export interface LastResult {
@@ -215,11 +226,19 @@ export interface CanvasEdge {
   label: string;
   guard?: string;
   action?: string;
+  /** Expected result of taking the transition (used as a generated step's "Then"). */
+  expected?: string;
   curve: number; // perpendicular bezier offset (0 = straight)
   /** Connector dots this transition joins. Absent on edges stored before
    *  anchors existed, which fall back to centre-to-centre geometry. */
   fromAnchor?: Anchor;
   toAnchor?: Anchor;
+  /** Bend points the transition passes through, in order (canvas coordinates). */
+  waypoints?: { x: number; y: number }[];
+  /** Curved (default) or right-angle segments. */
+  routing?: 'curved' | 'orthogonal';
+  /** The label's offset from its default position. */
+  labelOffset?: { dx: number; dy: number };
 }
 
 /**
@@ -237,6 +256,10 @@ export interface CanvasGroup {
   color: string;
   /** Fill opacity, 0–1. Defaults to 0.1. */
   opacity: number;
+  /** Folded into a single box; `members` is fixed while it is. */
+  collapsed?: boolean;
+  /** The states folded away, snapshotted when collapsing. */
+  members?: string[];
   x: number;
   y: number;
   w: number;
@@ -246,6 +269,17 @@ export interface CanvasGroup {
 export type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
 export const GROUP_MIN_W = 120;
+/** Size of a collapsed group's box. */
+export const COLLAPSED_W = 200;
+export const COLLAPSED_H = 56;
+
+/** A collapsed group's box, as a stand-in state for drawing transitions to it. */
+export function collapsedNode(g: CanvasGroup): CanvasNode {
+  return {
+    id: g.id, label: g.label, kind: 'regular', x: g.x, y: g.y,
+    w: COLLAPSED_W, h: COLLAPSED_H, shape: 'rect', color: null, tests: [],
+  };
+}
 export const GROUP_MIN_H = 100;
 
 export const GROUP_PAD = 26;
@@ -262,6 +296,9 @@ export type SelType = 'node' | 'edge' | 'group';
 
 export type BottomTab = 'scenario' | 'testcases' | 'validation';
 export interface Selection { id: string; type: SelType }
+
+/** A search result on the canvas. */
+export interface SearchHit { id: string; type: 'node' | 'edge'; label: string; detail?: string }
 
 export interface ValidationIssue {
   code: string;
@@ -313,6 +350,11 @@ export class ModelEditorStore {
   readonly scenarioDesc   = signal('');
   readonly modelStatus    = signal<ModelStatus>('draft');
   readonly dirty          = signal(false);
+  /**
+   * The model's variables, as stored. The editor cannot edit them yet, but must
+   * send them back on every save: a save replaces the whole model.
+   */
+  readonly variables      = signal<Variable[]>([]);
 
   // ── Graph ─────────────────────────────────────────────────────────────────
   readonly nodes  = signal<CanvasNode[]>([]);
@@ -334,6 +376,39 @@ export class ModelEditorStore {
   }
 
   /** Select the state or transition an issue is about and reveal it. */
+  // ── Test path highlight ───────────────────────────────────────────────────
+  readonly highlight = signal<PathHighlight | null>(null);
+
+  /**
+   * Highlights where test `testId` goes: its assigned states and transitions
+   * with their step numbers. A test the database has not seen yet only has
+   * the state it sits on. Brings the first step into view.
+   */
+  showPath(testId: string): boolean {
+    const host = this.nodes().find(n => (n.tests ?? []).some(t => t.id === testId));
+    const test = host?.tests.find(t => t.id === testId);
+    if (!host || !test) return false;
+    const path = test.path?.length ? test.path : [{ targetId: host.id, kind: 'state' as const }];
+    const steps = new Map<string, number[]>();
+    for (const p of path) {
+      const list = steps.get(p.targetId) ?? [];
+      if (p.stepOrder !== undefined && !list.includes(p.stepOrder)) list.push(p.stepOrder);
+      steps.set(p.targetId, list.sort((a, b) => a - b));
+    }
+    const count = Math.max(0, ...path.map(p => p.stepOrder ?? 0));
+    this.highlight.set({ testId, name: test.name, steps, count });
+    const first = path.find(p => p.stepOrder === 1) ?? path[0];
+    this.revealRequest.update(r => ({ id: first.targetId, n: (r?.n ?? 0) + 1 }));
+    return true;
+  }
+
+  clearHighlight(): void { this.highlight.set(null); }
+
+  /** Step numbers of an element in the highlighted path, or null when it is not on it. */
+  pathSteps(id: string): number[] | null {
+    return this.highlight()?.steps.get(id) ?? null;
+  }
+
   revealIssue(issue: ValidationIssue): void {
     const id = issue.elementId;
     if (!id) return;
@@ -609,6 +684,59 @@ export class ModelEditorStore {
     this.dirty.set(true);
   }
 
+  // ── Transition routing (presentation only) ──────────────────────────────
+  // Single-shot operations take their own undo point; drags call
+  // `checkpoint()` once on mouse-down and then use the `*Live` variants.
+
+  /** Bends a transition: `curve` is the perpendicular offset of its control point. */
+  setEdgeCurve(id: string, curve: number): void { this.pushUndo(); this.setEdgeCurveLive(id, curve); }
+  setEdgeCurveLive(id: string, curve: number): void { this.updateEdge(id, { curve }); }
+
+  /** Inserts a waypoint at `index` (0 = right after the source). */
+  addWaypoint(id: string, index: number, p: { x: number; y: number }): void {
+    const e = this.edgeById(id);
+    if (!e) return;
+    this.pushUndo();
+    const wps = [...(e.waypoints ?? [])];
+    wps.splice(Math.max(0, Math.min(index, wps.length)), 0, { x: Math.round(p.x), y: Math.round(p.y) });
+    this.updateEdge(id, { waypoints: wps });
+  }
+
+  moveWaypointLive(id: string, index: number, p: { x: number; y: number }): void {
+    const e = this.edgeById(id);
+    if (!e?.waypoints?.[index]) return;
+    const wps = e.waypoints.map((w, i) => i === index ? { x: Math.round(p.x), y: Math.round(p.y) } : w);
+    this.updateEdge(id, { waypoints: wps });
+  }
+
+  removeWaypoint(id: string, index: number): void {
+    const e = this.edgeById(id);
+    if (!e?.waypoints?.[index]) return;
+    this.pushUndo();
+    const wps = e.waypoints.filter((_, i) => i !== index);
+    this.updateEdge(id, { waypoints: wps.length ? wps : undefined });
+  }
+
+  setRouting(id: string, routing: 'curved' | 'orthogonal'): void {
+    this.pushUndo();
+    this.updateEdge(id, { routing: routing === 'curved' ? undefined : routing });
+  }
+
+  /** Removes every bend: no curve, no waypoints. */
+  straighten(id: string): void {
+    this.pushUndo();
+    this.updateEdge(id, { curve: 0, waypoints: undefined });
+  }
+
+  setLabelOffsetLive(id: string, dx: number, dy: number): void {
+    this.updateEdge(id, { labelOffset: { dx: Math.round(dx), dy: Math.round(dy) } });
+  }
+
+  resetLabelOffset(id: string): void {
+    this.pushUndo();
+    this.updateEdge(id, { labelOffset: undefined });
+  }
+
   removeEdge(id: string): void {
     this.pushUndo();
     this.edges.update(es => es.filter(e => e.id !== id));
@@ -642,6 +770,23 @@ export class ModelEditorStore {
     this.dirty.set(true);
     return test;
   }
+
+  /**
+   * Adds a test case that already exists in the database (e.g. a saved
+   * simulation), with the next display number. Not an undo step: undoing it
+   * would not delete the stored test case.
+   */
+  adoptTest(nodeId: string, test: StateTest): void {
+    const seq = this.testSeq();
+    this.testSeq.set(seq + 1);
+    this.nodes.update(ns => ns.map(n =>
+      n.id === nodeId ? { ...n, tests: [...n.tests, { ...test, seq }] } : n,
+    ));
+  }
+
+  // ── Simulation marks on the canvas ────────────────────────────────────────
+  /** Current state and its enabled / blocked transitions, while simulating. */
+  readonly simulation = signal<{ currentId: string; enabled: Set<string>; blocked: Set<string> } | null>(null);
 
   updateTest(nodeId: string, testId: string, changes: Partial<Omit<StateTest, 'id'>>): void {
     this.nodes.update(ns => ns.map(n =>
@@ -812,6 +957,10 @@ export class ModelEditorStore {
 
   /** States whose centre lies inside the group's rectangle. */
   groupMembers(g: CanvasGroup): CanvasNode[] {
+    if (g.collapsed && g.members) {
+      const ids = new Set(g.members);
+      return this.nodes().filter(n => ids.has(n.id));
+    }
     return this.nodes().filter(n => {
       const cx = n.x + n.w / 2;
       const cy = n.y + n.h / 2;
@@ -820,6 +969,70 @@ export class ModelEditorStore {
   }
 
   groupMemberCount(g: CanvasGroup): number { return this.groupMembers(g).length; }
+
+  // ── Search ────────────────────────────────────────────────────────────────
+  /**
+   * States by name and transitions by event or guard, case-insensitively:
+   * states first, each kind in reading order.
+   */
+  searchElements(query: string): SearchHit[] {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const byPos = <T extends { y: number; x: number }>(a: T, b: T) =>
+      Math.round(a.y / 40) - Math.round(b.y / 40) || a.x - b.x;
+    const states = this.nodes()
+      .filter(n => singleLine(n.label).toLowerCase().includes(q))
+      .sort(byPos)
+      .map(n => ({ id: n.id, type: 'node' as const, label: singleLine(n.label) }));
+    const pos = (id: string) => this.nodeById(id) ?? { x: 0, y: 0 };
+    const edges = this.edges()
+      .filter(e => e.label.toLowerCase().includes(q) || (e.guard ?? '').toLowerCase().includes(q))
+      .sort((a, b) => byPos(pos(a.fromId), pos(b.fromId)))
+      .map(e => ({
+        id: e.id, type: 'edge' as const, label: e.label,
+        detail: `${singleLine(this.nodeById(e.fromId)?.label ?? '?')} → ${singleLine(this.nodeById(e.toId)?.label ?? '?')}`,
+      }));
+    return [...states, ...edges];
+  }
+
+  // ── Collapsed groups ──────────────────────────────────────────────────────
+  /** Folds a group into one box; its states and inner transitions are hidden. */
+  collapseGroup(id: string): void {
+    const g = this.groupById(id);
+    if (!g || g.collapsed) return;
+    this.pushUndo();
+    const members = this.groupMembers(g).map(n => n.id);
+    this.groups.update(gs => gs.map(x => x.id === id ? { ...x, collapsed: true, members } : x));
+    this.selection.update(sel => sel.filter(s => !members.includes(s.id)));
+    this.dirty.set(true);
+  }
+
+  expandGroup(id: string): void {
+    const g = this.groupById(id);
+    if (!g?.collapsed) return;
+    this.pushUndo();
+    this.groups.update(gs => gs.map(x => {
+      if (x.id !== id) return x;
+      const { collapsed: _c, members: _m, ...rest } = x;
+      return rest;
+    }));
+    this.dirty.set(true);
+  }
+
+  /** State id -> the collapsed group hiding it. */
+  readonly hiddenBy = computed(() => {
+    const out = new Map<string, CanvasGroup>();
+    for (const g of this.groups()) {
+      if (g.collapsed) for (const id of g.members ?? []) out.set(id, g);
+    }
+    return out;
+  });
+
+  /** Expands whatever collapsed group hides `id`, so it can be shown. */
+  expandToShow(id: string): void {
+    const g = this.hiddenBy().get(id);
+    if (g) this.expandGroup(g.id);
+  }
 
   /** Shrink-wrap a group around the states currently inside it. */
   fitGroup(id: string): void {
@@ -926,6 +1139,13 @@ export class ModelEditorStore {
     const ids = new Set(this.groupMembers(g).map(n => n.id));
     this.nodes.update(ns => ns.map(n =>
       ids.has(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n,
+    ));
+    // A transition wholly inside the group is part of its content: its bend
+    // points move with it. Others keep theirs, as when a single state moves.
+    this.edges.update(es => es.map(e =>
+      e.waypoints && ids.has(e.fromId) && ids.has(e.toId)
+        ? { ...e, waypoints: e.waypoints.map(w => ({ x: w.x + dx, y: w.y + dy })) }
+        : e,
     ));
     this.groups.update(gs => gs.map(x =>
       x.id === id ? { ...x, x: x.x + dx, y: x.y + dy } : x,
@@ -1133,8 +1353,9 @@ export class ModelEditorStore {
   loadFrom(m: {
     name: string; description: string; scenarioDesc: string; status: ModelStatus;
     nodes: CanvasNode[]; edges: CanvasEdge[]; testSeq: number;
-    groups?: CanvasGroup[];
+    groups?: CanvasGroup[]; variables?: Variable[];
   }): void {
+    this.variables.set(m.variables ?? []);
     this.name.set(m.name);
     this.description.set(m.description);
     this.scenarioDesc.set(m.scenarioDesc);
@@ -1196,11 +1417,15 @@ export class ModelEditorStore {
       edges: this.edges(),
       groups: this.groups(),
       testSeq: this.testSeq(),
+      variables: this.variables(),
     };
   }
 
   /** Empty the editor (used when opening a brand-new model). */
   reset(): void {
+    this.simulation.set(null);
+    this.highlight.set(null);
+    this.variables.set([]);
     this.transitionCoverage.set(null);
     this.staleTests.set({});
     this.nodes.set([]);

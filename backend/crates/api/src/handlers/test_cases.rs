@@ -359,6 +359,46 @@ async fn coverage_of(
     Ok(dto)
 }
 
+/// `POST /models/{modelId}/simulate`: one step on the graph in the body; nothing is stored.
+pub async fn simulate(
+    ApiPath(_id): ApiPath<Uuid>,
+    ApiJson(req): ApiJson<SimulationRequest>,
+) -> ApiResult<Json<SimulationStepDto>> {
+    let input = req.graph;
+    let graph = ModelInput::graph(input.variables, input.states, input.transitions)?;
+    let env = req
+        .env
+        .as_ref()
+        .map(|e| env_from_json(&graph.variables, e))
+        .transpose()?;
+    let step =
+        tm_generation::simulate(&graph, req.state_id, env, req.take).map_err(|e| match e {
+            tm_generation::SimError::InvalidModel(issues) => {
+                ApiError::unprocessable("the model has validation errors; fix them to simulate")
+                    .with_errors(issues.iter().map(issue_error).collect())
+            }
+            other => ApiError::unprocessable(other.to_string()),
+        })?;
+    Ok(Json(SimulationStepDto {
+        state_id: step.state_id,
+        env: step
+            .env
+            .iter()
+            .map(|(k, v)| (k.clone(), value_to_json(v)))
+            .collect(),
+        r#final: step.is_final,
+        transitions: step
+            .transitions
+            .into_iter()
+            .map(|t| SimTransitionDto {
+                transition_id: t.transition_id,
+                enabled: t.enabled,
+                reason: t.reason,
+            })
+            .collect(),
+    }))
+}
+
 /// `GET /models/{modelId}/stale-tests`: generated test cases whose path no longer fits
 /// the model. Read-only. See docs/specification/04-test-generation.md#stale-tests.
 pub async fn stale_tests(

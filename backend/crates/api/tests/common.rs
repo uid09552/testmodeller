@@ -66,6 +66,30 @@ impl App {
         (status, String::from_utf8_lossy(&bytes).into_owned())
     }
 
+    /// JSON request with an `If-Match` version.
+    pub async fn send_if_match(
+        &self,
+        method: &str,
+        path: &str,
+        version: i64,
+        body: Value,
+    ) -> (StatusCode, Value) {
+        let req = Request::builder()
+            .method(method)
+            .uri(format!("/api/v1{path}"))
+            .header("content-type", "application/json")
+            .header("if-match", version.to_string())
+            .body(Body::from(body.to_string()))
+            .unwrap();
+        let res = self.router.clone().oneshot(req).await.unwrap();
+        let status = res.status();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
     pub async fn send_raw(
         &self,
         method: &str,

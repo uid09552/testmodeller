@@ -1,0 +1,22 @@
+:host { display: block; height: 100%; overflow: auto; background: var(--clr-surface-0); }
+.mt {
+  padding: 12px 16px; font-size: var(--text-sm);
+  &__section { margin-bottom: 20px; }
+  &__head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  &__title { font-size: var(--text-sm); font-weight: 700; margin: 0; }
+  &__add {
+    padding: 3px 9px; font: inherit; font-size: var(--text-xs); cursor: pointer;
+    border: 1px solid var(--clr-surface-200); border-radius: var(--radius-sm); background: var(--clr-surface-0);
+  }
+  &__empty, &__help { color: var(--clr-text-400); font-size: var(--text-xs); }
+  &__grid {
+    width: 100%; border-collapse: collapse;
+    th, td { border: 1px solid var(--clr-surface-200); padding: 5px 8px; text-align: left; }
+    th { background: var(--clr-surface-50); font-size: var(--text-xs); font-weight: 600; }
+    td:focus { outline: 2px solid var(--clr-brand-500); outline-offset: -2px; }
+  }
+  &__cell--editable { cursor: text; }
+  &__editor { width: 100%; font: inherit; padding: 2px 4px; }
+  &__issue { font-size: var(--text-xs); color: #b45309; }
+  &__row--pending { background: #fef2f2; }
+}

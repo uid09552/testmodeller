@@ -29,7 +29,7 @@ All entities: `id` (UUID), `name`, `description`, `createdAt`, `updatedAt`, `ver
 - **Project**
 - **Component**: `projectId`
 - **Feature**: `componentId`, `scenarioDescription` (markdown text describing the scenarios), `tags[]`
-- **Model**: `featureId`, `variables[]`, `status` (draft|ready); a state machine formerly called "scenario"
+- **Model**: `featureId`, `variables[]`, `status` (draft|ready); a state machine formerly called "scenario"; `layout?`: the editor's presentation (opaque to the backend, kept in versions, duplicates and JSON export), never used by validation, generation or coverage
 - **State**: `modelId`, `kind` (normal|initial|final), `position {x,y}`
 - **Transition** (model step): `modelId`, `from`, `to`, `event`, `guard?`, `action?`, `expected?`
 - **TestCase**: `featureId`, `steps[]`, `status`, `priority`, `tags[]`, `origin` (manual|generated|ai), `generatedFromModelId?`, `implementationUrl?`, `backlogUrl?` (http(s), max 2048 chars). A *requirement* is a backlog item identified by its normalised `backlogUrl`; there is no separate requirement entity.

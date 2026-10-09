@@ -199,6 +199,8 @@ pub struct Model {
     pub state_test_case_counts: std::collections::HashMap<Uuid, i64>,
     /// Distinct assigned test cases per transition id.
     pub transition_test_case_counts: std::collections::HashMap<Uuid, i64>,
+    /// The editor's layout, opaque here (ADR 0010).
+    pub layout: Option<serde_json::Value>,
 }
 
 /// Entry of a model's version history.
@@ -224,6 +226,9 @@ pub struct ModelSnapshot {
     pub status: ModelStatus,
     /// Graph at that version.
     pub graph: ModelGraph,
+    /// Editor layout at that version; absent in snapshots taken before layout existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<serde_json::Value>,
 }
 
 /// One step of a test case.

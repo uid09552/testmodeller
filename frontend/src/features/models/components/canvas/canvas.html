@@ -1,13 +1,13 @@
 <!-- ── Toolbar ──────────────────────────────────────────────────────────── -->
 <div class="canvas-toolbar" role="toolbar" aria-label="Canvas toolbar">
 
-  <input class="toolbar__model-name" [value]="store.name()"
+  <input class="toolbar__model-name" [value]="store.name()" [readOnly]="readonly()"
          (change)="store.setName($any($event.target).value)"
          aria-label="Model name" placeholder="Model name" />
 
-  <div class="toolbar__sep" aria-hidden="true"></div>
+  <div class="toolbar__sep edit-only" aria-hidden="true"></div>
 
-  <div class="toolbar__group">
+  <div class="toolbar__group edit-only">
     <button class="tb-btn" title="Add initial state" (click)="addNode('initial')">
       <span class="ctx-dot ctx-dot--initial" aria-hidden="true"></span> Initial
     </button>
@@ -22,9 +22,9 @@
     </button>
   </div>
 
-  <div class="toolbar__sep" aria-hidden="true"></div>
+  <div class="toolbar__sep edit-only" aria-hidden="true"></div>
 
-  <div class="toolbar__group">
+  <div class="toolbar__group edit-only">
     <button class="tb-btn tb-btn--icon" title="Undo (Ctrl+Z)" [disabled]="!store.canUndo()" (click)="store.undo()" aria-label="Undo">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
     </button>
@@ -50,13 +50,39 @@
     <button class="tb-btn tb-btn--icon" title="Reset view" (click)="resetView()" aria-label="Reset view">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
     </button>
+    <button class="tb-btn tb-btn--icon" title="Zoom to fit (Shift+1)" (click)="zoomToFit()" aria-label="Zoom to fit">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
+    <button class="tb-btn tb-btn--icon" title="Zoom to selection (Shift+2)" (click)="zoomToSelection()"
+            [disabled]="store.selectionCount() === 0" aria-label="Zoom to selection">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M3 7V3h4M21 7V3h-4M3 17v4h4M21 17v4h-4"/></svg>
+    </button>
+  </div>
+
+  <div class="toolbar__sep" aria-hidden="true"></div>
+
+  <div class="toolbar__group">
+    <button class="tb-btn tb-btn--icon" title="Find a state or transition (Ctrl+F)" (click)="openSearch()"
+            [class.tb-btn--on]="searchOpen()" aria-label="Find a state or transition">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+    </button>
+    <button class="tb-btn tb-btn--icon" title="Snap to grid and to other states (hold Alt to place freely)"
+            (click)="toggleSnap()" [class.tb-btn--on]="snapOn()" [attr.aria-pressed]="snapOn()" aria-label="Snapping">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+    </button>
+    <button class="tb-btn tb-btn--icon" title="Show or hide the overview map" (click)="toggleMinimap()"
+            [class.tb-btn--on]="minimapOn()" [attr.aria-pressed]="minimapOn()" aria-label="Overview map">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="12" y="12" width="7" height="7" rx="1"/></svg>
+    </button>
+    <button class="tb-btn tb-btn--icon" title="Keyboard shortcuts (?)" (click)="helpOpen.set(!helpOpen())"
+            [class.tb-btn--on]="helpOpen()" aria-label="Keyboard shortcuts">?</button>
   </div>
 
   <div class="toolbar__sep" aria-hidden="true"></div>
 
   <!-- Select / pan, as a segmented pair: they are modes, not actions, so the
        active one stays lit. -->
-  <div class="toolbar__group tb-tools" role="radiogroup" aria-label="Canvas tool">
+  <div class="toolbar__group tb-tools edit-only" role="radiogroup" aria-label="Canvas tool">
     <button class="tb-btn tb-btn--icon" [class.tb-btn--on]="tool() === 'select'"
             role="radio" [attr.aria-checked]="tool() === 'select'"
             title="Select and move (V)" aria-label="Select and move"
@@ -85,7 +111,7 @@
 
   <div class="toolbar__sep" aria-hidden="true"></div>
 
-  <button class="tb-btn" title="Tidy the diagram into layers"
+  <button class="tb-btn edit-only" title="Tidy the diagram into layers"
           [disabled]="store.nodes().length === 0" (click)="alignDiagram()">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
          stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -147,7 +173,31 @@
      (dragover)="onCanvasDragOver($event)"
      (dragleave)="onCanvasDragLeave()"
      (drop)="onCanvasDrop($event)"
-     [style.cursor]="canvasCursor()">
+     [style.cursor]="canvasCursor()"
+     tabindex="0"
+     aria-label="Model canvas. Tab moves between states, arrow keys move the selection, ? lists all shortcuts.">
+
+  @if (store.highlight(); as hl) {
+    <div class="path-banner" role="status">
+      Path of “{{ hl.name }}”{{ hl.count ? ' — ' + hl.count + (hl.count === 1 ? ' step' : ' steps') : '' }}
+      <button type="button" (click)="store.clearHighlight()">Clear (Esc)</button>
+    </div>
+  }
+
+  @if (searchOpen()) {
+    <tm-canvas-search class="canvas-overlay canvas-overlay--search"
+                      (show)="showHit($event)" (closed)="closeSearch()" />
+  }
+
+  @if (minimapOn()) {
+    <tm-canvas-minimap class="canvas-overlay canvas-overlay--minimap"
+                       [boxes]="minimapBoxes()" [view]="currentView()" [viewSize]="canvasSize()"
+                       (panTo)="panToPoint($event)" />
+  }
+
+  @if (helpOpen()) {
+    <tm-canvas-help class="canvas-overlay canvas-overlay--search" (closed)="helpOpen.set(false)" />
+  }
 
   <svg #svgCanvas class="canvas-svg"
        (mousedown)="onBgMouseDown($event)"
@@ -179,6 +229,31 @@
            Fill is the group colour at its own opacity (10% by default).
            Membership is spatial: whatever sits inside the rect belongs. -->
       @for (group of store.groups(); track group.id) {
+        @if (group.collapsed) {
+          <!-- Collapsed: one box; double-click or the + tool expands it. -->
+          <g class="group-box" [class.group-panel--selected]="isSelected(group.id)"
+             role="button" tabindex="0"
+             [attr.aria-label]="'Collapsed group ' + group.label + ', ' + (group.members?.length ?? 0) + ' states. Press Enter to expand.'"
+             (keydown.enter)="store.expandGroup(group.id)"
+             (dblclick)="$event.stopPropagation(); store.expandGroup(group.id)">
+            <rect class="group-box__bg" [attr.x]="group.x" [attr.y]="group.y"
+                  [attr.width]="collapsedW" [attr.height]="collapsedH" rx="10" ry="10"
+                  [style.stroke]="group.color"
+                  (mousedown)="onGroupMouseDown($event, group)"
+                  (contextmenu)="openContextMenu($event, 'group', group.id)" />
+            <text class="group-box__label" [attr.x]="group.x + 14" [attr.y]="group.y + 24"
+                  [style.fill]="group.color">{{ group.label }}</text>
+            <text class="group-box__count" [attr.x]="group.x + 14" [attr.y]="group.y + 42">
+              {{ group.members?.length ?? 0 }} states
+            </text>
+            <g class="group-tool" [attr.transform]="'translate(' + (group.x + collapsedW - 30) + ',' + (group.y + 6) + ')'"
+               (mousedown)="$event.stopPropagation(); store.expandGroup(group.id)">
+              <rect class="group-tool__bg" width="24" height="22" rx="5" />
+              <path class="group-tool__icon" d="M12 7v8M8 11h8" />
+              <title>Expand group</title>
+            </g>
+          </g>
+        } @else {
         <g class="group-panel" [class.group-panel--selected]="isSelected(group.id)">
           <rect class="group-panel__bg"
                 [attr.x]="group.x" [attr.y]="group.y"
@@ -202,7 +277,7 @@
           @if (isSelected(group.id)) {
             <!-- Eight resize handles -->
             @for (hd of groupHandles; track hd.h) {
-              <rect class="group-handle"
+              <rect class="group-handle edit-only"
                     [attr.x]="group.x + group.w * hd.fx - 5"
                     [attr.y]="group.y + group.h * hd.fy - 5"
                     width="10" height="10" rx="2"
@@ -212,7 +287,7 @@
             }
 
             <!-- Fit / delete, at the panel's top-right -->
-            <g class="group-tools" [attr.transform]="'translate(' + (group.x + group.w - 58) + ',' + (group.y + 6) + ')'">
+            <g class="group-tools edit-only" [attr.transform]="'translate(' + (group.x + group.w - 58) + ',' + (group.y + 6) + ')'">
               <g class="group-tool" (mousedown)="$event.stopPropagation(); fitGroup(group.id)">
                 <rect class="group-tool__bg" width="24" height="22" rx="5" />
                 <path class="group-tool__icon"
@@ -230,6 +305,7 @@
             </g>
           }
         </g>
+        }
       }
 
       <!-- ── Transition hit layer ─────────────────────────────────── -->
@@ -238,22 +314,27 @@
            means clicking a state still grabs the state, not an edge that
            happens to terminate on its border. -->
       @for (edge of store.edges(); track edge.id) {
+        @if (geometries().get(edge.id); as g) {
         <path class="edge-hit"
-              [attr.d]="edgePath(edge)"
+              [attr.d]="g.d"
               (click)="onEdgeClick($event, edge)"
               (dblclick)="onEdgeDblClick($event, edge)"
               (contextmenu)="openContextMenu($event, 'edge', edge.id)"
               role="button"
               [attr.aria-label]="edgeAriaLabel(edge)"
               [attr.aria-pressed]="isSelected(edge.id)" />
+        }
       }
 
       <!-- ── Nodes ──────────────────────────────────────────────── -->
-      @for (node of store.nodes(); track node.id) {
-        <g class="node-group"
+      @for (node of visibleNodes(); track node.id) {
+        <g class="node-group" [attr.data-node-id]="node.id"
            [class.node-group--selected]="isSelected(node.id)"
            [class.node-group--issue]="isIssue(node.id)"
            [class.node-group--uncovered]="store.isUncoveredState(node.id)"
+           [class.node-group--on-path]="store.highlight() && store.pathSteps(node.id)"
+           [class.node-group--sim-current]="store.simulation()?.currentId === node.id"
+           [class.node-group--dimmed]="store.highlight() && !store.pathSteps(node.id)"
            (click)="onNodeClick($event, node)"
            [attr.transform]="'translate(' + node.x + ',' + node.y + ')'"
            (mousedown)="onNodeMouseDown($event, node)"
@@ -323,6 +404,22 @@
                         (keydown)="onEditKeydown($event)"
                         xmlns="http://www.w3.org/1999/xhtml"></textarea>
             </foreignObject>
+          }
+
+          <!-- Simulation: the current state, marked with text as well as colour. -->
+          @if (store.simulation()?.currentId === node.id) {
+            <g class="sim-badge" [attr.transform]="'translate(' + (node.w - 34) + ',-10)'">
+              <rect width="40" height="18" rx="9" />
+              <text x="20" y="13">▶ now</text>
+            </g>
+          }
+
+          <!-- On a highlighted test path: its step numbers. -->
+          @if (store.pathSteps(node.id)?.length) {
+            <g class="path-badge" [attr.transform]="'translate(-6,-6)'">
+              <rect [attr.width]="12 + stepText(node.id).length * 6.5" height="18" rx="9" />
+              <text x="6" y="13">{{ stepText(node.id) }}</text>
+            </g>
           }
 
           <!-- Uncovered under the coverage overlay: a dashed outline and a "0"
@@ -398,7 +495,7 @@
           <!-- ── Connector dots: the anchor points transitions attach to ── -->
           <!-- Shown on hover, and on every candidate target while drawing so
                the dot that would be used is visible before releasing. -->
-          @if (tool() === 'select'
+          @if (tool() === 'select' && !readonly()
                && ((hoveredNodeId() === node.id && !drawing()) || dropAnchor(node))) {
             @for (a of anchors; track a) {
               <circle class="connector-dot"
@@ -425,58 +522,12 @@
 
       <!-- ── Transitions (visual) ─────────────────────────────────── -->
       <!-- Drawn AFTER the states so transitions paint on top: SVG has no
-           z-index, so document order is paint order. These are presentation
-           only (pointer-events: none) except the endpoint handles, which must
-           stay grabbable above the states. -->
-      @for (edge of store.edges(); track edge.id) {
-        <g class="edge-group edge-group--visual"
-           [class.edge-group--uncovered]="store.isUncoveredTransition(edge.id)"
-           [class.edge-group--selected]="isSelected(edge.id)">
-          <path class="edge-line" [attr.d]="edgePath(edge)"
-                [attr.marker-end]="isSelected(edge.id) ? 'url(#arrow-selected)' : 'url(#arrow)'" />
-          <g class="edge-label-group">
-            <rect class="edge-label-bg"
-                  [attr.x]="edgeLabelPt(edge).x - 36"
-                  [attr.y]="edgeLabelPt(edge).y - 10"
-                  width="72" height="18" rx="9" />
-            <text class="edge-label"
-                  [attr.x]="edgeLabelPt(edge).x"
-                  [attr.y]="edgeLabelPt(edge).y + 4">
-              {{ edge.label }}
-            </text>
-          </g>
+           z-index, so document order is paint order. -->
+      <g tmCanvasEdges [geometries]="geometries()" [readonly]="readonly()" (grab)="onEdgeGrab($event)"></g>
 
-          @if (edge.guard) {
-            <text class="edge-guard"
-                  [attr.x]="edgeLabelPt(edge).x"
-                  [attr.y]="edgeLabelPt(edge).y + 20">
-              [{{ edge.guard }}]
-            </text>
-          }
-
-          <!-- Drag handles: grab either end to re-attach it to another dot.
-               A 16px transparent circle catches the drag; the 6px dot on top
-               ignores pointer events so the generous zone owns the input. -->
-          @if (isSelected(edge.id)) {
-            @if (edgeEndpoint(edge, 'from'); as p) {
-              <g class="edge-handle-group">
-                <circle class="edge-handle-hit" [attr.cx]="p.x" [attr.cy]="p.y" r="16"
-                        (mousedown)="onEndpointMouseDown($event, edge, 'from')"
-                        title="Drag to move the source" />
-                <circle class="edge-handle" [attr.cx]="p.x" [attr.cy]="p.y" r="6" />
-              </g>
-            }
-            @if (edgeEndpoint(edge, 'to'); as p) {
-              <g class="edge-handle-group">
-                <circle class="edge-handle-hit" [attr.cx]="p.x" [attr.cy]="p.y" r="16"
-                        (mousedown)="onEndpointMouseDown($event, edge, 'to')"
-                        title="Drag to move the target" />
-                <circle class="edge-handle edge-handle--target"
-                        [attr.cx]="p.x" [attr.cy]="p.y" r="6" />
-              </g>
-            }
-          }
-        </g>
+      <!-- ── Alignment guides while dragging ─────────────────────── -->
+      @for (g of guides(); track $index) {
+        <line class="snap-guide" [attr.x1]="g.x1" [attr.y1]="g.y1" [attr.x2]="g.x2" [attr.y2]="g.y2" />
       }
 
       <!-- ── Drawing ghost edge ──────────────────────────────────── -->
@@ -503,7 +554,7 @@
   </svg>
 
   <!-- ── Quick bar: drag a shape onto the canvas to add it ── -->
-  <div class="quickbar" role="toolbar" aria-label="Shape palette">
+  <div class="quickbar edit-only" role="toolbar" aria-label="Shape palette">
     <span class="quickbar__hint" aria-hidden="true">Drag</span>
 
     @for (item of palette; track item.kind) {
@@ -564,7 +615,7 @@
 
   <!-- ── Selection bar: mass operations on a multi-selection ── -->
   @if (store.hasMultiSelection()) {
-    <div class="selbar" role="toolbar" aria-label="Selection actions">
+    <div class="selbar edit-only" role="toolbar" aria-label="Selection actions">
       <span class="selbar__count">{{ store.selectionCount() }} selected</span>
 
       <div class="selbar__sep"></div>
@@ -711,6 +762,39 @@
           Reverse Direction
         </button>
         <div class="ctx-sep"></div>
+        @if (store.edgeById(menu.targetId!); as me) {
+          @if (me.fromId !== me.toId) {
+            <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('add-bend-point')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20 12 6l9 14"/><circle cx="12" cy="6" r="2"/></svg>
+              Add Bend Point
+              <span class="ctx-shortcut">Alt+Click</span>
+            </button>
+          }
+          @if (me.routing === 'orthogonal') {
+            <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('routing-curved')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20C3 9 21 15 21 4"/></svg>
+              Curved Routing
+            </button>
+          } @else if (me.fromId !== me.toId) {
+            <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('routing-orthogonal')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h9V4h9"/></svg>
+              Right-Angle Routing
+            </button>
+          }
+          @if (me.curve || me.waypoints?.length) {
+            <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('straighten')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="20" x2="21" y2="4"/></svg>
+              Straighten
+            </button>
+          }
+          @if (me.labelOffset) {
+            <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('reset-label')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+              Reset Label Position
+            </button>
+          }
+        }
+        <div class="ctx-sep"></div>
         <button class="ctx-item ctx-item--danger" role="menuitem" (mousedown)="runMenuAction('delete-edge')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           Delete Transition
@@ -723,6 +807,17 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="3" stroke-dasharray="3 3"/><rect x="6" y="6" width="5" height="5" rx="1"/><rect x="13" y="13" width="5" height="5" rx="1"/></svg>
           Select Members
         </button>
+        @if (store.groupById(menu.targetId!)?.collapsed) {
+          <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('group-expand')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
+            Expand Group
+          </button>
+        } @else {
+          <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('group-collapse')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8"/></svg>
+            Collapse Group
+          </button>
+        }
         <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('group-fit')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/></svg>
           Fit to Contents

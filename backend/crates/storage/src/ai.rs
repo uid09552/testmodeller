@@ -252,6 +252,7 @@ impl Store {
                     description.as_deref(),
                     ModelStatus::Draft,
                     &graph,
+                    None,
                 )
                 .await?
             }

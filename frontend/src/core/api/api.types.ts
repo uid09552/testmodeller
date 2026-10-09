@@ -145,13 +145,26 @@ export interface ElementsPayload {
   transitions: TransitionInput[];
 }
 
+/** A model variable (`Variable` in openapi.yaml). The editor carries these through unchanged. */
+export interface Variable {
+  name: string;
+  type: 'boolean' | 'integer' | 'string';
+  initial?: unknown;
+}
+
+/** The editor's layout (`ModelLayout`, ADR 0010): opaque to the backend. */
+export type ModelLayoutDoc = Record<string, unknown>;
+
 /** Payload of a `model` proposal, and the body of a model save. */
 export interface ModelInput {
   name: string;
   description?: string;
   status?: ApiModelStatus;
+  variables?: Variable[];
   states?: StateInput[];
   transitions?: TransitionInput[];
+  /** Absent keeps the stored layout; `null` clears it. */
+  layout?: ModelLayoutDoc | null;
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────

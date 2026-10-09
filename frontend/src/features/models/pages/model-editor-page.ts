@@ -9,6 +9,8 @@ import { PropertiesPanelComponent } from '../components/properties-panel/propert
 import { TestCasesPanelComponent } from '../components/test-cases-panel/test-cases-panel';
 import { BottomPanelComponent } from '../components/bottom-panel/bottom-panel';
 import { AiChatComponent } from '../components/ai-chat/ai-chat';
+import { SimulationPanelComponent } from '../components/simulation-panel/simulation-panel';
+import { ModelTableComponent } from '../components/model-table/model-table';
 import { AiChatStore } from '../state/ai-chat.store';
 import { ModelEditorStore } from '../state/model-editor.store';
 import { OrgApi } from '../../../core/api/org-api';
@@ -21,13 +23,14 @@ function clamp(v: number, min: number, max: number): number {
 }
 
 /** The panes of the editor's right column, in the order they are shown. */
-export type SideTab = 'tests' | 'properties' | 'chat';
+export type SideTab = 'tests' | 'properties' | 'chat' | 'simulate';
+export type EditorMode = 'edit' | 'present' | 'table';
 
 @Component({
   selector: 'tm-model-editor-page',
   imports: [
     RouterLink, CanvasComponent, TestCasesPanelComponent, PropertiesPanelComponent,
-    BottomPanelComponent, AiChatComponent,
+    BottomPanelComponent, AiChatComponent, SimulationPanelComponent, ModelTableComponent,
   ],
   // Each editor instance gets its own stores. The chat store is here, not in
   // the panel, so the transcript survives switching the right-panel tab.
@@ -54,6 +57,28 @@ export class ModelEditorPageComponent implements OnInit {
    * cases are the default: they are what the tool is for.
    */
   readonly sideTab = signal<SideTab>('tests');
+
+  // ── View mode (?view=present|table) ──────────────────────────────────────
+  private readonly queryParams = toSignal(this.route.queryParamMap, { requireSync: true });
+  /** Edit on the canvas, present read-only, or edit as tables (NFR-004). */
+  readonly mode = computed<EditorMode>(() => {
+    const v = this.queryParams().get('view');
+    return v === 'present' || v === 'table' ? v : 'edit';
+  });
+
+  setMode(mode: EditorMode): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { view: mode === 'edit' ? null : mode },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.mode() === 'present') this.setMode('edit');
+  }
 
   showTab(tab: SideTab): void {
     this.sideTab.set(tab);
@@ -144,6 +169,8 @@ export class ModelEditorPageComponent implements OnInit {
   readonly saveError   = this.remote.error;
   /** The id this editor persists under; null while loading, so autosave is off. */
   private readonly modelId = signal<string | null>(null);
+  /** For the simulation panel. */
+  readonly openModelId = this.modelId.asReadonly();
 
   /** Route id the editor is currently showing, so a re-run is a no-op. */
   private readonly loadedRouteId = signal<string | null | undefined>(undefined);
@@ -275,6 +302,9 @@ export class ModelEditorPageComponent implements OnInit {
       if (this.loadedRouteId() !== routeId || !loaded) return;   // moved on, or failed
       this.store.loadFrom(loaded);
       this.modelId.set(routeId);
+      // `?highlight=<testCaseId>` from the Test Cases page or the matrix.
+      const highlight = this.route.snapshot.queryParamMap.get('highlight');
+      if (highlight) this.store.showPath(highlight);
     });
   }
 

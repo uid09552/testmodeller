@@ -1,0 +1,67 @@
+// Transitions above the states. Moved out of canvas.scss (style budget).
+
+.edge-group {
+  pointer-events: none;
+
+  &--selected {
+    .edge-line { stroke: var(--clr-brand-500); stroke-width: 2; }
+    .edge-label { fill: var(--clr-brand-500); font-weight: 600; }
+    .edge-label-bg { fill: var(--clr-brand-50); stroke: var(--clr-brand-400); }
+  }
+
+  &--uncovered .edge-line { stroke: var(--clr-warning); stroke-dasharray: 6 4; }
+}
+
+.edge-line {
+  fill: none;
+  stroke: var(--clr-edge);
+  stroke-width: 1.5;
+  transition: stroke var(--transition-fast);
+}
+
+.edge-leader {
+  stroke: var(--clr-text-400);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.edge-label-group { pointer-events: all; cursor: move; }
+.edge-label-group--fixed { pointer-events: none; }
+
+.edge-label-bg {
+  fill: var(--clr-surface-0);
+  stroke: var(--clr-surface-200);
+  stroke-width: 1;
+}
+
+.edge-label, .edge-guard { text-anchor: middle; pointer-events: none; }
+.edge-label { font-family: var(--font-sans); font-size: 11px; fill: var(--clr-text-600); }
+.edge-guard { font-family: monospace; font-size: 10px; fill: var(--clr-text-400); }
+
+// Ends: a 16px transparent circle catches the drag; the 6px dot shows it.
+.edge-handle-hit { fill: transparent; pointer-events: all; cursor: grab; &:active { cursor: grabbing; } }
+.edge-handle {
+  fill: var(--clr-surface-0);
+  stroke: var(--clr-brand-500);
+  stroke-width: 2.5;
+  .edge-handle-group:hover & { r: 8; fill: var(--clr-brand-50); }
+  &--target { fill: var(--clr-brand-500); stroke: var(--clr-surface-0); }
+}
+
+// Bend handle (diamond) and waypoints (round): different shapes, not only colours.
+.edge-bend__hit, .edge-waypoint__hit { fill: transparent; pointer-events: all; cursor: move; }
+.edge-bend__dot { fill: var(--clr-surface-0); stroke: var(--clr-brand-500); stroke-width: 2; }
+.edge-waypoint__dot { fill: var(--clr-brand-500); stroke: var(--clr-surface-0); stroke-width: 2; }
+.edge-bend:hover .edge-bend__dot, .edge-waypoint:hover .edge-waypoint__dot { stroke-width: 3; }
+
+// Highlighted test path: thicker on-path lines, dashed and faded off-path (not colour alone).
+.edge-group--on-path .edge-line { stroke: var(--clr-brand-600); stroke-width: 3; }
+.edge-group--dimmed { opacity: .3; .edge-line { stroke-dasharray: 3 4; } }
+.path-badge {
+  rect { fill: var(--clr-brand-600); }
+  text { fill: #fff; font-size: 10px; font-weight: 700; }
+}
+
+// Simulation: transitions available now are bold; blocked ones dashed and faded.
+.edge-group--sim-enabled .edge-line { stroke: #15803d; stroke-width: 3; }
+.edge-group--sim-blocked { opacity: .5; .edge-line { stroke-dasharray: 2 4; } }

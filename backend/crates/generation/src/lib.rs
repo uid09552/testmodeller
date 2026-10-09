@@ -14,7 +14,9 @@ use tm_domain::{
 };
 use uuid::Uuid;
 
+mod simulation;
 mod staleness;
+pub use simulation::{simulate, SimError, SimStep, SimTransition};
 pub use staleness::{check_path, StaleCode, StaleReason};
 
 /// Upper bound on search nodes per query, protecting against state explosion through variables.
@@ -187,7 +189,8 @@ enum Target {
 
 enum Step {
     Taken(Env),
-    Blocked,
+    /// Why the transition cannot be taken (shown by simulation).
+    Blocked(String),
 }
 
 impl<'a> Machine<'a> {
@@ -243,14 +246,21 @@ impl<'a> Machine<'a> {
 
     fn step(&self, env: &Env, t: usize) -> Step {
         let tr = &self.transitions[t];
+        let source = &self.graph.transitions[t];
         if let Some(g) = &tr.guard {
-            if !matches!(expr::eval_guard(g, env), Ok(true)) {
-                return Step::Blocked;
+            let text = source.guard.as_deref().unwrap_or_default();
+            match expr::eval_guard(g, env) {
+                Ok(true) => {}
+                Ok(false) => return Step::Blocked(format!("guard `{text}` is false")),
+                Err(e) => return Step::Blocked(format!("guard `{text}` cannot be evaluated: {e}")),
             }
         }
         match expr::apply_action(&tr.action, env) {
             Ok(env) => Step::Taken(env),
-            Err(_) => Step::Blocked,
+            Err(e) => Step::Blocked(format!(
+                "action `{}` cannot be applied: {e}",
+                source.action.as_deref().unwrap_or_default()
+            )),
         }
     }
 
@@ -258,7 +268,7 @@ impl<'a> Machine<'a> {
         self.graph.states[node.state].kind == StateKind::Final
             || self.out[node.state]
                 .iter()
-                .all(|&t| matches!(self.step(&node.env, t), Step::Blocked))
+                .all(|&t| matches!(self.step(&node.env, t), Step::Blocked(_)))
     }
 
     /// Shortest transition sequence from `start` to a node satisfying `goal`. The goal receives
@@ -484,7 +494,7 @@ impl<'a> Machine<'a> {
                         };
                         stack.push((next, next_path));
                     }
-                    Step::Blocked => {
+                    Step::Blocked(_) => {
                         if skipped.len() < MAX_SKIPPED_REPORTS {
                             skipped.push(SkippedPath {
                                 transition_ids: next_path

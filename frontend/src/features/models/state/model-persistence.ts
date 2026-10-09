@@ -2,9 +2,9 @@
  * Loads the open model from the database and stores it there again, a couple
  * of seconds after it changes (ADR 0008).
  *
- * The database is the only copy: nothing is kept in the browser. What the
- * contract cannot express — shapes, colours, sizes, groups, edge curves — is
- * therefore not kept across a reload (see model-mapping).
+ * The database is the only copy: nothing is kept in the browser. Shapes,
+ * colours, sizes, groups and edge curves are saved in the model's `layout`
+ * (ADR 0010), so a presentation-only edit is saved like any other.
  *
  * Provided per editor, next to `ModelEditorStore`.
  */
@@ -14,6 +14,7 @@ import { OrgApi } from '../../../core/api/org-api';
 import {
   fromRemote, PersistedModel, remoteFingerprint, testToInput, toModelInput,
 } from './model-mapping';
+import type { StateTest } from './model-editor.store';
 
 /** How long after the last change a save starts. */
 export const SAVE_DEBOUNCE_MS = 2000;
@@ -150,7 +151,7 @@ export class ModelPersistenceService {
     if (!this.rec || model.id !== this.modelId) return;
     this.latest = model;
     if (this.rec.lastHash === remoteFingerprint(model)) {
-      // Only presentation changed (a colour, a curve): nothing to send.
+      // Nothing the model or its layout holds changed (e.g. a selection).
       if (this.state() === 'pending') this.state.set('saved');
       return;
     }
@@ -193,6 +194,18 @@ export class ModelPersistenceService {
   /** After a conflict: take the other version. Resolves to it, for the editor. */
   async takeTheirs(): Promise<PersistedModel | null> {
     return this.modelId ? this.open(this.modelId) : null;
+  }
+
+  /**
+   * Registers a test case created in the database by someone other than this
+   * service (a saved simulation), so the next save neither creates it again
+   * nor deletes it.
+   */
+  adoptTest(test: StateTest, nodeId: string, saved: { id: string; version: number }): void {
+    if (!this.rec || !this.modelId) return;
+    this.rec.tests[test.id] = {
+      id: saved.id, version: saved.version, hash: hashOf(testToInput(test, this.modelId, nodeId)),
+    };
   }
 
   /** Deletes the stored copy of the open model. */

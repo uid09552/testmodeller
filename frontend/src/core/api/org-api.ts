@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { toApiError } from './api-error';
 import {
-  ModelInput, StateInput, TestCase, TestCaseInput, TransitionInput,
+  ModelInput, ModelLayoutDoc, StateInput, TestCase, TestCaseInput, TransitionInput, Variable,
 } from './api.types';
 
 const BASE = '/api/v1';
@@ -39,6 +39,20 @@ export interface StaleReason {
 }
 export interface StaleTest { testCaseId: string; reasons: StaleReason[] }
 
+/** `SimulationRequest` / `SimulationStep` in openapi.yaml. */
+export interface SimulationRequest {
+  graph: ModelInput;
+  stateId?: string;
+  env?: Record<string, unknown>;
+  take?: string;
+}
+export interface SimulationStep {
+  stateId: string;
+  env: Record<string, unknown>;
+  final: boolean;
+  transitions: { transitionId: string; enabled: boolean; reason?: string }[];
+}
+
 /** `Coverage` in openapi.yaml. */
 export interface Coverage {
   states: { covered: number; total: number };
@@ -49,8 +63,10 @@ export interface Coverage {
 export interface Model extends ModelSummary {
   description?: string;
   status?: string;
+  variables?: Variable[];
   states: StateInput[];
   transitions: TransitionInput[];
+  layout?: ModelLayoutDoc;
 }
 
 /**
@@ -194,6 +210,12 @@ export class OrgApi {
   async modelCoverage(modelId: string): Promise<Coverage> {
     return this.call(() => firstValueFrom(
       this.http.get<Coverage>(`${BASE}/models/${modelId}/coverage`)));
+  }
+
+  /** `POST /models/{id}/simulate`: one step on the graph sent; nothing is stored. */
+  async simulate(modelId: string, req: SimulationRequest): Promise<SimulationStep> {
+    return this.call(() => firstValueFrom(
+      this.http.post<SimulationStep>(`${BASE}/models/${modelId}/simulate`, req)));
   }
 
   /** `GET /models/{id}/stale-tests`: generated test cases that no longer fit the model. */

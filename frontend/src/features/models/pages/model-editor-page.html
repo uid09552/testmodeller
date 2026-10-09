@@ -16,6 +16,18 @@
 
   <span class="editor-breadcrumb__spacer"></span>
 
+  <div class="mode-switch" role="group" aria-label="View">
+    <button type="button" class="mode-switch__btn" [class.mode-switch__btn--on]="mode() === 'edit'"
+            [attr.aria-pressed]="mode() === 'edit'" (click)="setMode('edit')">Canvas</button>
+    <button type="button" class="mode-switch__btn" [class.mode-switch__btn--on]="mode() === 'table'"
+            [attr.aria-pressed]="mode() === 'table'" (click)="setMode('table')">Table</button>
+    <button type="button" class="mode-switch__btn" [class.mode-switch__btn--on]="mode() === 'present'"
+            [attr.aria-pressed]="mode() === 'present'" (click)="setMode('present')"
+            title="Read-only view for reviews; Esc returns">Present</button>
+  </div>
+
+  @if (mode() !== 'present') {
+
   @if (saveError(); as err) {
     <span class="editor-breadcrumb__saved" role="alert">{{ err }}</span>
     @if (saveState() === 'conflict') {
@@ -84,22 +96,32 @@
     </svg>
     Delete
   </button>
+  }
 </nav>
 
 <!-- ── Editor grid ───────────────────────────────────────────────────────────── -->
 <div class="editor-layout"
-     [class.editor-layout--props-collapsed]="propsCollapsed()"
-     [class.editor-layout--bottom-collapsed]="bottomCollapsed()"
+     [class.editor-layout--props-collapsed]="propsCollapsed() || mode() === 'present'"
+     [class.editor-layout--bottom-collapsed]="bottomCollapsed() || mode() === 'present'"
      [style.--props-w]="propsWidthPx()"
      [style.--bottom-h]="bottomHeightPx()">
   <!-- Canvas (toolbar + SVG) -->
   <div class="editor-canvas">
-    <tm-canvas (revealProperties)="showTab('properties')"
-               (revealTests)="revealTests()" />
+    @if (mode() === 'table') {
+      <tm-model-table />
+    } @else {
+      <tm-canvas [readonly]="mode() === 'present'"
+                 (revealProperties)="showTab('properties')"
+                 (revealTests)="revealTests()" />
+    }
+    @if (mode() === 'present') {
+      <button type="button" class="present-exit" (click)="setMode('edit')">Edit (Esc)</button>
+    }
   </div>
 
   <!-- Right column: Properties and the AI assistant (06-ui.md). It spans the
        bottom panel's row too, so the test cases sit high and stay in full. -->
+  @if (mode() !== 'present') {
   <aside class="editor-side" aria-label="Model side panel">
     <div class="side-tabs" role="tablist" aria-label="Side panel">
       <button class="side-tab" [class.side-tab--on]="sideTab() === 'tests'"
@@ -115,6 +137,11 @@
               (click)="showTab('properties')">
         Properties
       </button>
+      <button class="side-tab" [class.side-tab--on]="sideTab() === 'simulate'"
+              role="tab" [attr.aria-selected]="sideTab() === 'simulate'"
+              (click)="showTab('simulate')">
+        Simulate
+      </button>
       <button class="side-tab" [class.side-tab--on]="sideTab() === 'chat'"
               role="tab" [attr.aria-selected]="sideTab() === 'chat'"
               (click)="showTab('chat')">
@@ -129,6 +156,7 @@
       @case ('tests')      { <tm-test-cases-panel /> }
       @case ('properties') { <tm-properties-panel /> }
       @case ('chat')       { <tm-ai-chat /> }
+      @case ('simulate')   { <tm-simulation-panel [modelId]="openModelId()" [featureId]="featureId()" /> }
     }
   </aside>
 
@@ -136,9 +164,10 @@
   <div class="editor-bottom">
     <tm-bottom-panel />
   </div>
+  }
 
   <!-- ── Splitters ─────────────────────────────────────────────────────────── -->
-  @if (!propsCollapsed()) {
+  @if (!propsCollapsed() && mode() !== 'present') {
     <div class="splitter splitter--v"
          [style.right.px]="propsWidth()"
          (mousedown)="startResizeProps($event)"
@@ -150,7 +179,7 @@
     </div>
   }
 
-  @if (!bottomCollapsed()) {
+  @if (!bottomCollapsed() && mode() !== 'present') {
     <div class="splitter splitter--h"
          [style.bottom.px]="bottomHeight()"
          [style.right.px]="propsCollapsed() ? 0 : propsWidth()"

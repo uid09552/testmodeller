@@ -66,6 +66,8 @@ pub struct ImportModel {
     pub status: ModelStatus,
     /// Graph with source ids.
     pub graph: ModelGraph,
+    /// Editor layout, with source ids.
+    pub layout: Option<serde_json::Value>,
 }
 
 /// Test case to import, referencing source ids.
@@ -257,6 +259,10 @@ impl Store {
                         m.description.as_deref(),
                         m.status,
                         &graph,
+                        m.layout
+                            .as_ref()
+                            .map(|l| tm_domain::layout::remap_layout_ids(l, &map))
+                            .as_ref(),
                     )
                     .await?;
                     ids.insert(m.source_id, model_id);

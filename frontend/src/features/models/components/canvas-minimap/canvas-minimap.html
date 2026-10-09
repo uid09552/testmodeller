@@ -1,0 +1,12 @@
+<svg class="minimap" [attr.width]="w" [attr.height]="h" role="img"
+     aria-label="Overview of the model; click or drag to move the view"
+     (mousedown)="down($event)" (mousemove)="move($event)" (mouseup)="up()" (mouseleave)="up()">
+  @for (b of boxes(); track $index) {
+    <rect class="minimap__state"
+          [attr.x]="b.x * t().scale + t().ox" [attr.y]="b.y * t().scale + t().oy"
+          [attr.width]="b.w * t().scale" [attr.height]="b.h * t().scale" rx="1" />
+  }
+  @if (viewport(); as v) {
+    <rect class="minimap__view" [attr.x]="v.x" [attr.y]="v.y" [attr.width]="v.w" [attr.height]="v.h" />
+  }
+</svg>

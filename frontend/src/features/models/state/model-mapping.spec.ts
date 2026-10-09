@@ -197,7 +197,13 @@ describe('fromRemote', () => {
       MODEL, local.scenarioDesc, local,
     );
 
-    expect({ ...reloaded, id: local.id }).toEqual(local);
+    // The reload also brings where the test is assigned, read-only.
+    expect(reloaded.nodes[0].tests[0].path).toEqual([{ targetId: A, kind: 'state' }]);
+    const withoutPaths = {
+      ...reloaded,
+      nodes: reloaded.nodes.map(n => ({ ...n, tests: n.tests.map(({ path: _p, ...t }) => t) })),
+    };
+    expect({ ...withoutPaths, id: local.id }).toEqual({ ...local, variables: [] });
   });
 
   it('lets the database win over the overlay for what it holds', () => {
@@ -223,10 +229,11 @@ describe('fromRemote', () => {
     expect(reloaded.nodes[1].kind).toBe('final');
   });
 
-  it('builds a model the browser has never seen, with default presentation', () => {
+  it('builds a model with no stored layout with default presentation', () => {
     const input = toModelInput(model());
     const reloaded = fromRemote(
-      { ...input, states: input.states!, transitions: input.transitions! }, [], MODEL, '', null);
+      { ...input, states: input.states!, transitions: input.transitions!, layout: undefined },
+      [], MODEL, '', null);
 
     expect(reloaded.nodes[1].kind).toBe('regular');
     expect(reloaded.nodes[1].shape).toBe('rect');
@@ -254,11 +261,13 @@ describe('remoteFingerprint', () => {
     expect(remoteFingerprint(model({ scenarioDesc: 'changed' }))).not.toBe(before);
   });
 
-  it('ignores presentation, so restyling does not call the API', () => {
+  it('changes when only presentation changes, so restyling is saved (ADR 0010)', () => {
     const before = remoteFingerprint(model());
     const restyled = model();
-    restyled.nodes[0] = { ...restyled.nodes[0], color: '#ef4444', w: 120 };
-    restyled.edges[0] = { ...restyled.edges[0], curve: 80 };
-    expect(remoteFingerprint(restyled)).toBe(before);
+    restyled.nodes[0] = { ...restyled.nodes[0], color: '#ef4444' };
+    expect(remoteFingerprint(restyled)).not.toBe(before);
+    const bent = model();
+    bent.edges[0] = { ...bent.edges[0], curve: 80 };
+    expect(remoteFingerprint(bent)).not.toBe(before);
   });
 });

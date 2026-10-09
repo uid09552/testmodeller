@@ -1,0 +1,12 @@
+:host { display: block; }
+.minimap {
+  display: block;
+  background: var(--clr-surface-0);
+  border: 1px solid var(--clr-surface-200);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .08);
+  cursor: pointer;
+
+  &__state { fill: var(--clr-text-400); opacity: .55; }
+  &__view { fill: var(--clr-brand-500); fill-opacity: .08; stroke: var(--clr-brand-500); stroke-width: 1.5; }
+}

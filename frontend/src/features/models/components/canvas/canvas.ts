@@ -1,16 +1,33 @@
 import {
-  ChangeDetectionStrategy, ChangeDetectorRef, computed,
+  ChangeDetectionStrategy, ChangeDetectorRef, computed, afterNextRender, DestroyRef,
   Component, ElementRef, HostListener,
-  effect, inject, output, signal, untracked, viewChild,
+  effect, inject, input, output, signal, untracked, viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   CanvasEdge, CanvasNode, ModelEditorStore, NODE_H, NODE_W, StateKind,
   NodeShape, SIZE_FOR_SHAPE, SHAPE_FOR_KIND, NODE_COLORS,
   Anchor, ANCHORS, anchorPoint, nearestAnchor,
-  AlignMode, CanvasGroup, GROUP_COLORS, ResizeHandle, CoverageView, coverageLabel,
+  AlignMode, CanvasGroup, GROUP_COLORS, ResizeHandle, CoverageView, coverageLabel, collapsedNode,
+  COLLAPSED_W, COLLAPSED_H, SearchHit,
 } from '../../state/model-editor.store';
 import { LABEL_LINE_H, labelLines } from '../../state/node-fit';
+import {
+  curveThrough, EdgeGeometry, edgeGeometry, insertIndex, loopIndices,
+} from '../../state/edge-geometry';
+import { CanvasEdgesComponent, EdgeGrab } from '../canvas-edges/canvas-edges';
+import { CanvasSearchComponent } from '../canvas-search/canvas-search';
+import { CanvasMinimapComponent } from '../canvas-minimap/canvas-minimap';
+import { CanvasHelpComponent } from '../canvas-help/canvas-help';
+import { readJson, writeJson } from '../../../../core/persistence/local-store';
+import { boundsOf, Box, centreOn, fitTo, isVisible, View } from '../../state/viewport';
+import { GRID, HELP_ROWS, readingOrder, ShortcutId, SHORTCUTS } from '../../state/shortcuts';
+
+/** Shortcuts that change the model, off in present mode. */
+const EDIT_SHORTCUTS = new Set<ShortcutId>([
+  'undo', 'redo', 'group', 'delete', 'rename', 'move-left', 'move-right', 'move-up', 'move-down',
+]);
+import { Guide, snapPosition } from '../../state/snapping';
 
 /** Shapes offered in the quick bar as drag sources. */
 export const PALETTE: { kind: StateKind; label: string }[] = [
@@ -76,50 +93,36 @@ function toCanvas(e: MouseEvent, svg: SVGSVGElement, zoom: number, panX: number,
   return { x: (e.clientX - r.left - panX) / zoom, y: (e.clientY - r.top - panY) / zoom };
 }
 
-/**
- * Where a line from the node's centre toward (tx, ty) leaves the node's
- * outline. Ellipses and diamonds are solved analytically so arrowheads touch
- * the real edge; rectangles use their bounding box, which is the same thing.
- */
-function borderPt(n: CanvasNode, tx: number, ty: number) {
-  const cx = n.x + n.w / 2, cy = n.y + n.h / 2;
-  const dx = tx - cx, dy = ty - cy;
-  const len = Math.sqrt(dx * dx + dy * dy);
-  if (len < 0.001) return { x: cx, y: cy - n.h / 2 };
-  const ndx = dx / len, ndy = dy / len;
-
-  if (n.shape === 'circle') {
-    const rx = n.w / 2 + 2, ry = n.h / 2 + 2;
-    const k = 1 / Math.sqrt((ndx * ndx) / (rx * rx) + (ndy * ndy) / (ry * ry));
-    return { x: cx + ndx * k, y: cy + ndy * k };
-  }
-
-  if (n.shape === 'diamond') {
-    const a = n.w / 2 + 2, b = n.h / 2 + 2;
-    const k = 1 / (Math.abs(ndx) / a + Math.abs(ndy) / b);
-    return { x: cx + ndx * k, y: cy + ndy * k };
-  }
-
-  const hw = n.w / 2 + 2, hh = n.h / 2 + 2;
-  let t = Infinity;
-  if (Math.abs(ndx) > 0.001) { const tt = (ndx > 0 ? hw : -hw) / ndx; if (tt > 0) { const y = cy + tt * ndy; if (Math.abs(y - cy) <= hh) t = Math.min(t, tt); } }
-  if (Math.abs(ndy) > 0.001) { const tt = (ndy > 0 ? hh : -hh) / ndy; if (tt > 0) { const x = cx + tt * ndx; if (Math.abs(x - cx) <= hw) t = Math.min(t, tt); } }
-  if (!isFinite(t)) return { x: cx, y: cy };
-  return { x: cx + ndx * t, y: cy + ndy * t };
-}
 
 @Component({
   selector: 'tm-canvas',
-  imports: [FormsModule],
+  imports: [
+    FormsModule, CanvasEdgesComponent, CanvasSearchComponent, CanvasMinimapComponent, CanvasHelpComponent,
+  ],
   templateUrl: './canvas.html',
   styleUrl: './canvas.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[class.readonly]': 'readonly()' },
 })
 export class CanvasComponent {
   readonly store = inject(ModelEditorStore);
   private readonly cdr = inject(ChangeDetectorRef);
 
   constructor() {
+    const destroyRef = inject(DestroyRef);
+    afterNextRender(() => {
+      const svg = this.svgEl().nativeElement;
+      const measure = () => {
+        const r = svg.getBoundingClientRect();
+        this.canvasSize.set({ w: r.width, h: r.height });
+      };
+      measure();
+      if (typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(measure);
+        ro.observe(svg);
+        destroyRef.onDestroy(() => ro.disconnect());
+      }
+    });
     // Label widths depend on the web font, which may arrive after first paint.
     void document.fonts?.ready.then(() => this.store.refitNodes());
     // Bring an element into view when something else (e.g. a validation row) asks.
@@ -189,6 +192,7 @@ export class CanvasComponent {
   }
 
   onCanvasDragOver(e: DragEvent): void {
+    if (this.readonly()) return;
     if (!this.dragKind()) return;
     e.preventDefault();                       // required to allow the drop
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
@@ -199,6 +203,7 @@ export class CanvasComponent {
 
   /** Drop a palette shape onto the canvas at the cursor. */
   onCanvasDrop(e: DragEvent): void {
+    if (this.readonly()) return;
     e.preventDefault();
     const kind = this.dragKind()
       ?? (e.dataTransfer?.getData('text/plain') as StateKind | undefined)
@@ -282,14 +287,22 @@ export class CanvasComponent {
   }
 
   nodeAriaLabel(node: CanvasNode): string {
-    const base = node.kind + ' state: ' + node.label;
-    return this.store.isUncoveredState(node.id) ? base + ', not covered by any test case' : base;
+    let label = node.kind + ' state: ' + node.label;
+    if (this.store.isUncoveredState(node.id)) label += ', not covered by any test case';
+    const steps = this.store.pathSteps(node.id);
+    if (steps?.length) label += ', path step ' + steps.join(', ');
+    return label;
   }
 
+  /** "1, 3" for an element on the highlighted path. */
+  stepText(id: string): string { return (this.store.pathSteps(id) ?? []).join(', '); }
+
   edgeAriaLabel(edge: CanvasEdge): string {
-    const base = 'Transition: ' + edge.label;
-    return this.store.isUncoveredTransition(edge.id)
-      ? base + ', not covered by any test case' : base;
+    let label = 'Transition: ' + edge.label;
+    if (this.store.isUncoveredTransition(edge.id)) label += ', not covered by any test case';
+    const steps = this.store.pathSteps(edge.id);
+    if (steps?.length) label += ', path step ' + steps.join(', ');
+    return label;
   }
 
   /** The label wrapped as the sizing logic did, so it fits the state. */
@@ -375,11 +388,13 @@ export class CanvasComponent {
   openContextMenu(e: MouseEvent, type: 'canvas' | 'node' | 'edge' | 'group', targetId: string | null = null): void {
     e.preventDefault();
     e.stopPropagation();
+    // Every entry changes the model; present mode has none.
+    if (this.readonly()) return;
     const svg = this.svgEl().nativeElement;
     const pt = toCanvas(e, svg, this.zoom(), this.panX(), this.panY());
     // The menu is position:fixed, so clamp against the viewport. Menu is
     // ~224px wide; height varies by type (node menu is the tallest at ~310px).
-    const menuH = type === 'node' ? 310 : type === 'edge' ? 190 : type === 'group' ? 230 : 200;
+    const menuH = type === 'node' ? 310 : type === 'edge' ? 330 : type === 'group' ? 230 : 200;
     const vx = Math.min(e.clientX, window.innerWidth  - 232);
     const vy = Math.min(e.clientY, window.innerHeight - menuH - 8);
     this.contextMenu.set({
@@ -458,6 +473,21 @@ export class CanvasComponent {
       case 'delete-edge':
         this.store.removeEdge(m.targetId!);
         break;
+      case 'add-bend-point':
+        this.addBendPoint(m.targetId!, { x: m.canvasX, y: m.canvasY });
+        break;
+      case 'straighten':
+        this.store.straighten(m.targetId!);
+        break;
+      case 'routing-orthogonal':
+        this.store.setRouting(m.targetId!, 'orthogonal');
+        break;
+      case 'routing-curved':
+        this.store.setRouting(m.targetId!, 'curved');
+        break;
+      case 'reset-label':
+        this.store.resetLabelOffset(m.targetId!);
+        break;
       case 'add-state':
         this.store.addNode('regular', m.canvasX - NODE_W / 2, m.canvasY - NODE_H / 2);
         break;
@@ -488,6 +518,12 @@ export class CanvasComponent {
       case 'ungroup':
         this.store.ungroup(m.targetId!);
         break;
+      case 'group-collapse':
+        this.store.collapseGroup(m.targetId!);
+        break;
+      case 'group-expand':
+        this.store.expandGroup(m.targetId!);
+        break;
       case 'group-fit':
         this.store.fitGroup(m.targetId!);
         break;
@@ -498,20 +534,147 @@ export class CanvasComponent {
   }
 
   // ── Keyboard ──────────────────────────────────────────────────────────
+  // ── Keyboard (see state/shortcuts.ts) ──────────────────────────────────
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  readonly helpOpen = signal(false);
+  /** Present mode: the model can be looked at, navigated and highlighted, not changed. */
+  readonly readonly = input(false);
+  readonly searchOpen = signal(false);
+
+  // ── Snapping ──────────────────────────────────────────────────────────
+  /** Remembered per browser. Alt suspends it while dragging. */
+  readonly snapOn = signal(readJson<boolean>('editor-snap') ?? true);
+  /** Guide lines while a dragged state is lined up with a neighbour. */
+  readonly guides = signal<Guide[]>([]);
+
+  toggleSnap(): void {
+    this.snapOn.update(v => !v);
+    writeJson('editor-snap', this.snapOn());
+  }
+
+  // ── Minimap ───────────────────────────────────────────────────────────
+  /** Remembered per browser; a convenience, not part of the model. */
+  readonly minimapOn = signal(readJson<boolean>('editor-minimap') ?? true);
+  /** Size of the canvas on screen, kept current by a ResizeObserver. */
+  readonly canvasSize = signal({ w: 0, h: 0 });
+  readonly currentView = computed(() => ({ zoom: this.zoom(), panX: this.panX(), panY: this.panY() }));
+  readonly minimapBoxes = computed<Box[]>(() => [
+    ...this.visibleNodes(),
+    ...this.store.groups().filter(g => g.collapsed).map(collapsedNode),
+  ]);
+
+  toggleMinimap(): void {
+    this.minimapOn.update(v => !v);
+    writeJson('editor-minimap', this.minimapOn());
+  }
+
+  /** Centres the view on a canvas point (from the minimap). */
+  panToPoint(p: { x: number; y: number }): void {
+    const { w, h } = this.canvasSize();
+    if (!w) return;
+    this.applyView(centreOn({ x: p.x, y: p.y, w: 0, h: 0 }, w, h, this.zoom()));
+  }
+
+  openSearch(): void { this.searchOpen.set(true); }
+
+  closeSearch(): void {
+    this.searchOpen.set(false);
+    this.host.nativeElement.querySelector<HTMLElement>('.canvas-wrap')?.focus();
+  }
+
+  /** A search hit: select it and bring it into view. */
+  showHit(hit: SearchHit): void {
+    this.store.select(hit.id, hit.type);
+    this.revealElement(hit.id);
+  }
+  readonly helpRows = HELP_ROWS;
+  readonly collapsedW = COLLAPSED_W;
+  readonly collapsedH = COLLAPSED_H;
+  /** End of the current burst of arrow-key moves: one undo step per burst. */
+  private moveBurstUntil = 0;
+
+  /** True while keyboard focus is inside the canvas. */
+  private hasFocus(): boolean {
+    const active = document.activeElement;
+    return !!active && this.host.nativeElement.contains(active);
+  }
+
   @HostListener('document:keydown', ['$event'])
   onKeyDown(e: KeyboardEvent): void {
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); this.store.undo(); }
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); this.store.redo(); }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); this.store.selectAll(); }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'g') { e.preventDefault(); this.groupSelection(); }
-    // V / H, as in every other canvas tool.
-    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-      if (e.key === 'v' || e.key === 'V') this.setTool('select');
-      if (e.key === 'h' || e.key === 'H') this.setTool('pan');
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
+        || e.target instanceof HTMLSelectElement) return;
+    const hit = SHORTCUTS.find(s => s.match(e) && (!s.focus || this.hasFocus()));
+    if (!hit) return;
+    if (this.readonly() && EDIT_SHORTCUTS.has(hit.id)) return;
+    switch (hit.id) {
+      case 'undo': e.preventDefault(); this.store.undo(); break;
+      case 'redo': e.preventDefault(); this.store.redo(); break;
+      case 'select-all': e.preventDefault(); this.store.selectAll(); break;
+      case 'group': e.preventDefault(); this.groupSelection(); break;
+      case 'tool-select': this.setTool('select'); break;
+      case 'tool-pan': this.setTool('pan'); break;
+      case 'delete': if (this.editNodeId() === null) this.deleteSelected(); break;
+      case 'escape':
+        this.cancelEdit(); this.drawing.set(null); this.reconnecting.set(null);
+        this.marquee.set(null); this.closeContextMenu(); this.helpOpen.set(false);
+        this.store.clearHighlight();
+        break;
+      case 'zoom-fit': e.preventDefault(); this.zoomToFit(); break;
+      case 'zoom-selection': e.preventDefault(); this.zoomToSelection(); break;
+      case 'zoom-in': e.preventDefault(); this.zoomIn(); break;
+      case 'zoom-out': e.preventDefault(); this.zoomOut(); break;
+      case 'search': e.preventDefault(); this.openSearch(); break;
+      case 'next-state': e.preventDefault(); this.stepState(1); break;
+      case 'prev-state': e.preventDefault(); this.stepState(-1); break;
+      case 'next-transition': e.preventDefault(); this.stepTransition(); break;
+      case 'rename': {
+        const n = this.store.selectedNode();
+        if (n) { e.preventDefault(); this.startEdit(n.id, n.label); }
+        break;
+      }
+      case 'move-left': case 'move-right': case 'move-up': case 'move-down': {
+        const nodes = this.store.selectedNodes();
+        if (!nodes.length) break;
+        e.preventDefault();
+        const step = e.shiftKey ? GRID * 10 : GRID;
+        const dx = hit.id === 'move-left' ? -step : hit.id === 'move-right' ? step : 0;
+        const dy = hit.id === 'move-up' ? -step : hit.id === 'move-down' ? step : 0;
+        const now = Date.now();
+        if (now > this.moveBurstUntil) this.store.checkpoint();
+        this.moveBurstUntil = now + 500;
+        for (const n of nodes) this.store.moveNode(n.id, n.x + dx, n.y + dy);
+        break;
+      }
+      case 'help': this.helpOpen.update(v => !v); break;
     }
-    if ((e.key === 'Delete' || e.key === 'Backspace') && this.editNodeId() === null) this.deleteSelected();
-    if (e.key === 'Escape') { this.cancelEdit(); this.drawing.set(null); this.reconnecting.set(null); this.marquee.set(null); this.closeContextMenu(); }
+    this.cdr.markForCheck();
+  }
+
+  /** Selects and focuses the next (or previous) state in reading order. */
+  private stepState(dir: 1 | -1): void {
+    const order = readingOrder(this.store.nodes().filter(n => !this.hiddenNodeIds().has(n.id)));
+    if (!order.length) return;
+    const cur = order.findIndex(n => n.id === this.store.selectedNode()?.id);
+    const next = order[cur < 0 ? (dir > 0 ? 0 : order.length - 1) : (cur + dir + order.length) % order.length];
+    this.store.select(next.id, 'node');
+    this.revealElement(next.id);
+    this.focusNode(next.id);
+  }
+
+  private stepTransition(): void {
+    const edges = this.store.edges().filter(e => this.geometries().has(e.id));
+    if (!edges.length) return;
+    const cur = edges.findIndex(e => e.id === this.store.selectedEdge()?.id);
+    const next = edges[(cur + 1) % edges.length];
+    this.store.select(next.id, 'edge');
+    this.revealElement(next.id);
+  }
+
+  /** Moves keyboard focus to a state's element, after it has rendered. */
+  private focusNode(id: string): void {
+    setTimeout(() => {
+      this.host.nativeElement.querySelector<SVGGElement>(`[data-node-id="${id}"]`)?.focus();
+    });
   }
 
   @HostListener('document:mousedown', ['$event'])
@@ -581,6 +744,7 @@ export class CanvasComponent {
   }
 
   onGroupMouseDown(e: MouseEvent, group: CanvasGroup): void {
+    if (this.readonly()) { this.startPan(e); return; }
     if (e.button !== 0) return;
     if (this.handTool(e)) { this.startPan(e); return; }
     e.stopPropagation();
@@ -629,23 +793,44 @@ export class CanvasComponent {
    * alone. With nothing on the canvas there is nothing to centre, so the view
    * goes back to its default corner.
    */
+  /** Size of the canvas on screen; zero in tests and before layout. */
+  private viewSize(): { w: number; h: number } {
+    const r = this.svgEl()?.nativeElement.getBoundingClientRect();
+    return { w: r?.width ?? 0, h: r?.height ?? 0 };
+  }
+
+  private applyView(v: View): void {
+    this.zoom.set(v.zoom);
+    this.panX.set(v.panX);
+    this.panY.set(v.panY);
+    this.cdr.markForCheck();
+  }
+
+  /** Centres the diagram without changing the zoom. */
   centerView(): void {
-    const nodes = this.store.nodes();
-    const svg = this.svgEl().nativeElement;
-    const view = svg.getBoundingClientRect();
-    if (nodes.length === 0 || view.width === 0) {
-      this.resetView();
-      return;
-    }
-    const minX = Math.min(...nodes.map(n => n.x));
-    const minY = Math.min(...nodes.map(n => n.y));
-    const maxX = Math.max(...nodes.map(n => n.x + n.w));
-    const maxY = Math.max(...nodes.map(n => n.y + n.h));
-    const zoom = this.zoom();
-    // Pan is applied before zoom (see `toCanvas`), so the offset that centres
-    // the content is measured in canvas units, not screen pixels.
-    this.panX.set(Math.round((view.width / zoom - (maxX - minX)) / 2 - minX));
-    this.panY.set(Math.round((view.height / zoom - (maxY - minY)) / 2 - minY));
+    const box = boundsOf(this.store.nodes());
+    const { w, h } = this.viewSize();
+    if (!box || w === 0) { this.resetView(); return; }
+    this.applyView(centreOn(box, w, h, this.zoom()));
+  }
+
+  /** Zooms and pans so the whole model fills the view (Shift+1). */
+  zoomToFit(): void {
+    const box = boundsOf(this.store.nodes());
+    const { w, h } = this.viewSize();
+    if (!box || w === 0) return;
+    this.applyView(fitTo(box, w, h));
+  }
+
+  /** Zooms and pans so the selected states fill the view (Shift+2). */
+  zoomToSelection(): void {
+    const boxes = this.store.selection()
+      .map(s => this.elementBox(s.id))
+      .filter((b): b is Box => !!b);
+    const box = boundsOf(boxes);
+    const { w, h } = this.viewSize();
+    if (!box || w === 0) return;
+    this.applyView(fitTo(box, w, h));
   }
 
   /**
@@ -653,20 +838,16 @@ export class CanvasComponent {
    * An element already in view is left where it is.
    */
   revealElement(id: string): void {
+    // A state inside a collapsed group is shown by expanding the group.
+    this.store.expandToShow(id);
+    const e = this.store.edgeById(id);
+    if (e) { this.store.expandToShow(e.fromId); this.store.expandToShow(e.toId); }
     const box = this.elementBox(id);
-    const view = this.svgEl()?.nativeElement.getBoundingClientRect();
-    if (!box || !view || view.width === 0) return;
-    const zoom = this.zoom();
-    const margin = 24;
-    const left = (box.x + this.panX()) * zoom;
-    const right = (box.x + box.w + this.panX()) * zoom;
-    const top = (box.y + this.panY()) * zoom;
-    const bottom = (box.y + box.h + this.panY()) * zoom;
-    if (left >= margin && right <= view.width - margin
-        && top >= margin && bottom <= view.height - margin) return;
-    this.panX.set(Math.round(view.width / zoom / 2 - (box.x + box.w / 2)));
-    this.panY.set(Math.round(view.height / zoom / 2 - (box.y + box.h / 2)));
-    this.cdr.markForCheck();
+    const { w, h } = this.viewSize();
+    if (!box || w === 0) return;
+    const view = { zoom: this.zoom(), panX: this.panX(), panY: this.panY() };
+    if (isVisible(box, view, w, h)) return;
+    this.applyView(centreOn(box, w, h, view.zoom));
   }
 
   /** Canvas-space bounds of a state, or of the two states a transition joins. */
@@ -693,6 +874,8 @@ export class CanvasComponent {
     // The hand tool pans from anywhere, so grabbing a state moves the view
     // rather than the state.
     if (this.handTool(e)) { this.startPan(e); return; }
+    // Present mode: dragging anywhere pans; a click still selects.
+    if (this.readonly()) { this.store.select(node.id, 'node'); this.startPan(e); return; }
     e.stopPropagation();
     this.nodeDownAt = { x: e.clientX, y: e.clientY };
     if (this.editNodeId() === node.id) return;
@@ -717,6 +900,7 @@ export class CanvasComponent {
 
   onNodeDblClick(e: MouseEvent, node: CanvasNode): void {
     e.stopPropagation();
+    if (this.readonly()) return;
     this.startEdit(node.id, node.label);
   }
 
@@ -767,6 +951,7 @@ export class CanvasComponent {
 
   // ── Connector (start drawing edge) ────────────────────────────────────
   onConnectorMouseDown(e: MouseEvent, node: CanvasNode, anchor: Anchor): void {
+    if (this.readonly()) return;
     if (this.handTool(e)) { this.startPan(e); return; }
     e.stopPropagation();
     const p = anchorPoint(node, anchor);
@@ -780,6 +965,10 @@ export class CanvasComponent {
   onEdgeClick(e: MouseEvent, edge: CanvasEdge): void {
     e.stopPropagation();
     this.store.select(edge.id, 'edge');
+    // Alt+click on the line adds a bend point there.
+    if (e.altKey && !this.readonly()) {
+      this.addBendPoint(edge.id, toCanvas(e, this.svgEl().nativeElement, this.zoom(), this.panX(), this.panY()));
+    }
   }
 
   /**
@@ -799,16 +988,89 @@ export class CanvasComponent {
 
   /** Public endpoint accessor for the drag handles. */
   edgeEndpoint(e: CanvasEdge, end: 'from' | 'to'): { x: number; y: number } | null {
-    const from = this.store.nodeById(e.fromId);
-    const to   = this.store.nodeById(e.toId);
-    if (!from || !to) return null;
-    if (from === to) {
-      // Self-loop: handles sit at the two ends of the arc.
-      const cx = from.x + from.w / 2;
-      return { x: cx + (end === 'from' ? -18 : 18), y: from.y - 2 };
+    const g = this.geometries().get(e.id);
+    return g ? (end === 'from' ? g.src : g.tgt) : null;
+  }
+
+  /** States folded into a collapsed group. */
+  readonly hiddenNodeIds = computed(() => new Set(this.store.hiddenBy().keys()));
+  readonly visibleNodes = computed(() => {
+    const hidden = this.hiddenNodeIds();
+    return this.store.nodes().filter(n => !hidden.has(n.id));
+  });
+
+  /**
+   * Path, label and handle points of every visible transition (see
+   * edge-geometry). An end inside a collapsed group attaches to the group's
+   * box; a transition with both ends in the same collapsed group is hidden.
+   */
+  readonly geometries = computed(() => {
+    const hiddenBy = this.store.hiddenBy();
+    const end = (id: string) => {
+      const g = hiddenBy.get(id);
+      return g ? collapsedNode(g) : this.store.nodeById(id);
+    };
+    const loops = loopIndices(this.store.edges());
+    const out = new Map<string, EdgeGeometry>();
+    for (const e of this.store.edges()) {
+      const gf = hiddenBy.get(e.fromId), gt = hiddenBy.get(e.toId);
+      if (gf && gf === gt) continue;
+      const from = end(e.fromId);
+      const to = end(e.toId);
+      if (!from || !to) continue;
+      // Waypoints belong to the full layout; a folded end gets a plain line.
+      const shown = gf || gt ? { ...e, waypoints: undefined, fromAnchor: gf ? undefined : e.fromAnchor,
+        toAnchor: gt ? undefined : e.toAnchor } : e;
+      out.set(e.id, edgeGeometry(shown, from, to, loops.get(e.id) ?? 0));
     }
-    const { src, tgt } = this.endpoints(e, from, to);
-    return end === 'from' ? src : tgt;
+    return out;
+  });
+
+  // ── Routing drags: bend handle, waypoints, label ──────────────────────
+  private readonly routingDrag = signal<
+    | { kind: 'bend'; edgeId: string }
+    | { kind: 'waypoint'; edgeId: string; index: number }
+    | { kind: 'label'; edgeId: string; startX: number; startY: number; dx: number; dy: number }
+    | null
+  >(null);
+
+  /** A handle of a transition was pressed: start the matching drag. */
+  onEdgeGrab(g: EdgeGrab): void {
+    if (this.readonly()) return;
+    if (this.handTool(g.event)) { this.startPan(g.event); return; }
+    if (g.kind === 'endpoint') { this.onEndpointMouseDown(g.event, g.edge, g.end); return; }
+    this.store.select(g.edge.id, 'edge');
+    this.store.checkpoint();
+    if (g.kind === 'bend') {
+      this.routingDrag.set({ kind: 'bend', edgeId: g.edge.id });
+    } else if (g.kind === 'waypoint') {
+      this.routingDrag.set({ kind: 'waypoint', edgeId: g.edge.id, index: g.index });
+    } else {
+      const pt = toCanvas(g.event, this.svgEl().nativeElement, this.zoom(), this.panX(), this.panY());
+      const o = g.edge.labelOffset ?? { dx: 0, dy: 0 };
+      this.routingDrag.set({ kind: 'label', edgeId: g.edge.id, startX: pt.x, startY: pt.y, dx: o.dx, dy: o.dy });
+    }
+  }
+
+  private moveRoutingDrag(pt: { x: number; y: number }): void {
+    const r = this.routingDrag();
+    if (!r) return;
+    if (r.kind === 'bend') {
+      const g = this.geometries().get(r.edgeId);
+      if (g) this.store.setEdgeCurveLive(r.edgeId, curveThrough(g.src, g.tgt, pt));
+    } else if (r.kind === 'waypoint') {
+      this.store.moveWaypointLive(r.edgeId, r.index, pt);
+    } else {
+      this.store.setLabelOffsetLive(r.edgeId, r.dx + pt.x - r.startX, r.dy + pt.y - r.startY);
+    }
+  }
+
+  /** Adds a bend point at `pt`, on the segment of the route nearest to it. */
+  addBendPoint(edgeId: string, pt: { x: number; y: number }): void {
+    const e = this.store.edgeById(edgeId);
+    const g = this.geometries().get(edgeId);
+    if (!e || !g || e.fromId === e.toId) return;
+    this.store.addWaypoint(edgeId, insertIndex(g.src, e.waypoints ?? [], g.tgt, pt), pt);
   }
 
   /** Grab one end of a transition to re-attach it elsewhere. */
@@ -902,7 +1164,22 @@ export class CanvasComponent {
     const d = this.drag();
     if (d) {
       const pt = toCanvas(e, svg, this.zoom(), this.panX(), this.panY());
-      const dx = pt.x - d.startX, dy = pt.y - d.startY;
+      let dx = pt.x - d.startX, dy = pt.y - d.startY;
+      // Snap the grabbed state; the rest of the selection keeps its offsets.
+      const node = this.store.nodeById(d.nodeId);
+      if (node && this.snapOn() && !e.altKey) {
+        const moved = new Set([d.nodeId, ...d.others.map(o => o.id)]);
+        const snapped = snapPosition(
+          { x: d.origX + dx, y: d.origY + dy, w: node.w, h: node.h },
+          this.visibleNodes().filter(n => !moved.has(n.id)),
+          6 / this.zoom(),
+        );
+        dx = snapped.x - d.origX;
+        dy = snapped.y - d.origY;
+        this.guides.set(snapped.guides);
+      } else {
+        this.guides.set([]);
+      }
       this.store.moveNode(d.nodeId, d.origX + dx, d.origY + dy);
       for (const o of d.others) this.store.moveNode(o.id, o.x + dx, o.y + dy);
       this.cdr.markForCheck();
@@ -919,6 +1196,11 @@ export class CanvasComponent {
     if (recon) {
       const pt = toCanvas(e, svg, this.zoom(), this.panX(), this.panY());
       this.reconnecting.set({ ...recon, x: pt.x, y: pt.y });
+      this.cdr.markForCheck();
+    }
+
+    if (this.routingDrag()) {
+      this.moveRoutingDrag(toCanvas(e, svg, this.zoom(), this.panX(), this.panY()));
       this.cdr.markForCheck();
     }
   }
@@ -941,6 +1223,8 @@ export class CanvasComponent {
     }
 
     if (this.drag()) this.drag.set(null);
+    this.guides.set([]);
+    this.routingDrag.set(null);
     this.groupDrag.set(null);
     this.groupResize.set(null);
     this.panning.set(null);
@@ -1020,55 +1304,6 @@ export class CanvasComponent {
 
   // ── Path helpers ──────────────────────────────────────────────────────
   /** Endpoints of an edge: its dots when set, else centre-to-centre geometry. */
-  private endpoints(e: CanvasEdge, from: CanvasNode, to: CanvasNode) {
-    const src = e.fromAnchor
-      ? anchorPoint(from, e.fromAnchor)
-      : borderPt(from, to.x + to.w / 2, to.y + to.h / 2);
-    const tgt = e.toAnchor
-      ? anchorPoint(to, e.toAnchor)
-      : borderPt(to, from.x + from.w / 2, from.y + from.h / 2);
-    return { src, tgt };
-  }
-
-  edgePath(e: CanvasEdge): string {
-    const from = this.store.nodeById(e.fromId);
-    const to   = this.store.nodeById(e.toId);
-    if (!from || !to) return '';
-
-    if (from === to) {
-      const cx = from.x + from.w / 2;
-      const top = from.y - 2;
-      return `M ${cx - 18} ${top} C ${cx - 55} ${top - 72} ${cx + 55} ${top - 72} ${cx + 18} ${top}`;
-    }
-
-    const { src, tgt } = this.endpoints(e, from, to);
-
-    if (e.curve === 0) return `M ${src.x} ${src.y} L ${tgt.x} ${tgt.y}`;
-
-    const mx = (src.x + tgt.x) / 2;
-    const my = (src.y + tgt.y) / 2;
-    const pdx = tgt.y - src.y, pdy = -(tgt.x - src.x);
-    const pl = Math.sqrt(pdx * pdx + pdy * pdy) || 1;
-    const cpx = mx + (pdx / pl) * e.curve;
-    const cpy = my + (pdy / pl) * e.curve;
-    return `M ${src.x} ${src.y} Q ${cpx} ${cpy} ${tgt.x} ${tgt.y}`;
-  }
-
-  edgeLabelPt(e: CanvasEdge): { x: number; y: number } {
-    const from = this.store.nodeById(e.fromId);
-    const to   = this.store.nodeById(e.toId);
-    if (!from || !to) return { x: 0, y: 0 };
-    if (from === to) return { x: from.x + from.w / 2, y: from.y - 52 };
-
-    const { src, tgt } = this.endpoints(e, from, to);
-    if (e.curve === 0) return { x: (src.x + tgt.x) / 2, y: (src.y + tgt.y) / 2 };
-
-    const mx = (src.x + tgt.x) / 2, my = (src.y + tgt.y) / 2;
-    const pdx = tgt.y - src.y, pdy = -(tgt.x - src.x);
-    const pl = Math.sqrt(pdx * pdx + pdy * pdy) || 1;
-    return { x: mx + (pdx / pl) * e.curve * 0.5, y: my + (pdy / pl) * e.curve * 0.5 };
-  }
-
   drawingPath(): string {
     const d = this.drawing();
     if (!d) return '';

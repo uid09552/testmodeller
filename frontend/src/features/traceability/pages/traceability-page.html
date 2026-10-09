@@ -170,6 +170,10 @@
 <ng-template #cells let-tc="tc">
   <td>
     <a [routerLink]="['/test-cases']" [queryParams]="{ open: tc.id }">{{ tc.name }}</a>
+    @if (tc.elements[0]; as el) {
+      <a class="path-link" title="Show path on the model" aria-label="Show path"
+         [routerLink]="['/models', el.modelId]" [queryParams]="{ highlight: tc.id }"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/><path d="M7 19h6a4 4 0 0 0 0-8h-2a4 4 0 0 1 0-8h6"/></svg></a>
+    }
   </td>
   <td class="muted">{{ names().component(tc.componentId) }} › {{ names().feature(tc.featureId) }}</td>
   <td>

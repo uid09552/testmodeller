@@ -251,6 +251,44 @@
              (input)="setEdgeAction(edge, $any($event.target).value)"
              placeholder="e.g. count := count + 1" />
 
+      <label class="props__label" for="edge-expected">
+        Expected result <span class="props__hint">used by generated tests</span>
+      </label>
+      <input id="edge-expected" class="props__input"
+             [value]="edge.expected ?? ''"
+             (input)="setEdgeExpected(edge, $any($event.target).value)"
+             placeholder="e.g. the home screen is shown" />
+
+      <!-- Routing: everything the canvas handles do, without a mouse. -->
+      @if (edge.fromId !== edge.toId) {
+        <label class="props__label" for="edge-routing">Routing</label>
+        <select id="edge-routing" class="props__select"
+                (change)="store.setRouting(edge.id, $any($event.target).value)">
+          <option value="curved" [selected]="edge.routing !== 'orthogonal'">Curved</option>
+          <option value="orthogonal" [selected]="edge.routing === 'orthogonal'">Right-angle</option>
+        </select>
+      }
+      @if (edge.waypoints?.length) {
+        <p class="props__label">Bend points</p>
+        <ul class="props__waypoints" role="list">
+          @for (w of edge.waypoints; track $index; let i = $index) {
+            <li>
+              <span>{{ i + 1 }}: {{ w.x }}, {{ w.y }}</span>
+              <button class="icon-btn" type="button" [attr.aria-label]="'Remove bend point ' + (i + 1)"
+                      (click)="store.removeWaypoint(edge.id, i)">×</button>
+            </li>
+          }
+        </ul>
+      }
+      @if (edge.curve || edge.waypoints?.length) {
+        <button class="props__wide-btn" type="button" (click)="store.straighten(edge.id)">Straighten</button>
+      }
+      @if (edge.labelOffset) {
+        <button class="props__wide-btn" type="button" (click)="store.resetLabelOffset(edge.id)">
+          Reset label position
+        </button>
+      }
+
       <div class="props__meta">
         <span class="props__meta-label">ID</span>
         <code class="props__meta-val">{{ edge.id.slice(0, 8) }}…</code>

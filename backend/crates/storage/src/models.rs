@@ -25,6 +25,30 @@ pub struct ModelMeta {
     pub description: Option<String>,
     /// Status.
     pub status: Option<ModelStatus>,
+    /// Editor layout: `None` keeps it, `Some(None)` clears it, `Some(Some(_))` sets it.
+    pub layout: Option<Option<serde_json::Value>>,
+}
+
+async fn load_layout(conn: &mut PgConnection, id: Uuid) -> Result<Option<serde_json::Value>> {
+    let layout: Option<Option<serde_json::Value>> =
+        sqlx::query_scalar("SELECT layout FROM models WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&mut *conn)
+            .await?;
+    Ok(layout.flatten())
+}
+
+async fn store_layout(
+    conn: &mut PgConnection,
+    id: Uuid,
+    layout: Option<&serde_json::Value>,
+) -> Result<()> {
+    sqlx::query("UPDATE models SET layout = $2 WHERE id = $1")
+        .bind(id)
+        .bind(layout.map(Json))
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
 }
 
 /// A state with its owning model and assignment count.
@@ -176,11 +200,13 @@ pub(crate) async fn load_model(conn: &mut PgConnection, id: Uuid) -> Result<Mode
             transition_counts.insert(t, n);
         }
     }
+    let layout = load_layout(conn, id).await?;
     Ok(Model {
         summary,
         graph,
         state_test_case_counts: state_counts,
         transition_test_case_counts: transition_counts,
+        layout,
     })
 }
 
@@ -204,11 +230,13 @@ async fn bump_version(conn: &mut PgConnection, id: Uuid, expected: Option<i32>) 
 async fn record_version(conn: &mut PgConnection, id: Uuid, summary_text: &str) -> Result<()> {
     let meta = load_summary(conn, id).await?;
     let graph = load_graph(conn, id).await?;
+    let layout = load_layout(conn, id).await?;
     let snapshot = ModelSnapshot {
         name: meta.name,
         description: meta.description,
         status: meta.status,
         graph,
+        layout,
     };
     sqlx::query(
         "INSERT INTO model_versions (model_id, version, summary, snapshot) VALUES ($1, $2, $3, $4)",
@@ -385,6 +413,7 @@ pub(crate) async fn insert_model(
     description: Option<&str>,
     status: ModelStatus,
     graph: &ModelGraph,
+    layout: Option<&serde_json::Value>,
 ) -> Result<Uuid> {
     let exists = sqlx::query("SELECT 1 FROM features WHERE id = $1")
         .bind(feature_id)
@@ -405,6 +434,7 @@ pub(crate) async fn insert_model(
     .execute(&mut *conn)
     .await?;
     replace_graph(conn, id, graph).await?;
+    store_layout(conn, id, layout).await?;
     record_version(conn, id, "Created").await?;
     Ok(id)
 }
@@ -460,6 +490,7 @@ impl Store {
             meta.description.as_deref(),
             meta.status.unwrap_or(ModelStatus::Draft),
             graph,
+            meta.layout.as_ref().and_then(Option::as_ref),
         )
         .await?;
         let model = load_model(&mut tx, id).await?;
@@ -501,6 +532,9 @@ impl Store {
         .execute(&mut *tx)
         .await?;
         replace_graph(&mut tx, id, graph).await?;
+        if let Some(layout) = &meta.layout {
+            store_layout(&mut tx, id, layout.as_ref()).await?;
+        }
         record_version(&mut tx, id, "Graph saved").await?;
         let model = load_model(&mut tx, id).await?;
         tx.commit().await?;
@@ -555,7 +589,10 @@ impl Store {
         let mut tx = self.pool.begin().await?;
         let source = load_summary(&mut tx, id).await?;
         let graph = load_graph(&mut tx, id).await?;
-        let (copy, _) = remap_ids(&graph);
+        let (copy, map) = remap_ids(&graph);
+        let layout = load_layout(&mut tx, id)
+            .await?
+            .map(|l| tm_domain::layout::remap_layout_ids(&l, &map));
         let name = name.map_or_else(|| format!("{} (copy)", source.name), str::to_owned);
         let new_id = insert_model(
             &mut tx,
@@ -564,6 +601,7 @@ impl Store {
             source.description.as_deref(),
             source.status,
             &copy,
+            layout.as_ref(),
         )
         .await?;
         let model = load_model(&mut tx, new_id).await?;
@@ -614,6 +652,7 @@ impl Store {
             .execute(&mut *tx)
             .await?;
         replace_graph(&mut tx, id, &snapshot.graph).await?;
+        store_layout(&mut tx, id, snapshot.layout.as_ref()).await?;
         record_version(&mut tx, id, &format!("Restored version {version}")).await?;
         let model = load_model(&mut tx, id).await?;
         tx.commit().await?;

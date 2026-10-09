@@ -239,6 +239,7 @@ impl ModelMetaInput {
             name: self.name,
             description: self.description,
             status: self.status,
+            layout: None,
         })
     }
 }
@@ -405,6 +406,23 @@ impl From<VariableDto> for d::Variable {
     }
 }
 
+/// Present-but-null and absent must differ: `Some(None)` is an explicit `null`.
+fn present<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Option<serde_json::Value>>, D::Error> {
+    Option::<serde_json::Value>::deserialize(d).map(Some)
+}
+
+/// Checks an incoming layout; errors name the `layout` field (ADR 0010).
+pub fn check_layout(layout: &serde_json::Value) -> Result<(), ApiError> {
+    d::layout::check_layout(layout).map_err(|e| {
+        ApiError::bad_request("invalid layout").with_errors(vec![FieldError {
+            field: "layout".into(),
+            message: e.to_string(),
+        }])
+    })
+}
+
 /// Full model input (create / atomic save).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModelInput {
@@ -416,18 +434,30 @@ pub struct ModelInput {
     pub states: Vec<StateInput>,
     #[serde(default)]
     pub transitions: Vec<TransitionInput>,
+    /// Absent keeps the stored layout; `null` clears it.
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub layout: Option<Option<serde_json::Value>>,
 }
 
 impl ModelInput {
     /// Validates and converts to `(name, meta, graph)`. Rejects structurally broken graphs (422).
     pub fn into_parts(self) -> Result<(String, tm_storage::ModelMeta, d::ModelGraph), ApiError> {
+        if let Some(Some(layout)) = &self.layout {
+            check_layout(layout)?;
+        }
+        let layout = self.layout;
         let graph = Self::graph(self.variables, self.states, self.transitions)?;
         let structural = d::validation::structural_issues(&graph);
         if !structural.is_empty() {
             return Err(ApiError::unprocessable("model graph is inconsistent")
                 .with_errors(structural.iter().map(issue_error).collect()));
         }
-        let meta = self.meta.into_meta()?;
+        let mut meta = self.meta.into_meta()?;
+        meta.layout = layout;
         let name = meta
             .name
             .clone()
@@ -465,11 +495,13 @@ impl ModelInput {
             variables: graph.variables.iter().map(Into::into).collect(),
             states: graph.states.iter().map(Into::into).collect(),
             transitions: graph.transitions.iter().map(Into::into).collect(),
+            layout: None,
         }
     }
 }
 
-fn issue_error(i: &d::ValidationIssue) -> FieldError {
+/// A validation issue as a field error.
+pub fn issue_error(i: &d::ValidationIssue) -> FieldError {
     let field = i
         .transition_id
         .map(|t| format!("transitions[{t}]"))
@@ -520,6 +552,8 @@ pub struct ModelDto {
     pub variables: Vec<VariableDto>,
     pub states: Vec<StateDto>,
     pub transitions: Vec<TransitionDto>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<serde_json::Value>,
 }
 
 impl From<&d::Model> for ModelDto {
@@ -552,6 +586,7 @@ impl From<&d::Model> for ModelDto {
                         .unwrap_or(0),
                 })
                 .collect(),
+            layout: m.layout.clone(),
         }
     }
 }
@@ -1202,6 +1237,82 @@ pub struct ImportReportDto {
     pub duplicates: usize,
     pub unmatched: Vec<String>,
     pub ambiguous: Vec<String>,
+}
+
+// ---------- simulation ----------
+
+/// `POST /models/{modelId}/simulate` body.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimulationRequest {
+    pub graph: ModelInput,
+    pub state_id: Option<Uuid>,
+    pub env: Option<serde_json::Map<String, serde_json::Value>>,
+    pub take: Option<Uuid>,
+}
+
+/// One outgoing transition in a simulation step.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimTransitionDto {
+    pub transition_id: Uuid,
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Result of a simulation step.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimulationStepDto {
+    pub state_id: Uuid,
+    pub env: serde_json::Map<String, serde_json::Value>,
+    pub r#final: bool,
+    pub transitions: Vec<SimTransitionDto>,
+}
+
+/// A variable value as JSON.
+pub fn value_to_json(v: &d::expr::Value) -> serde_json::Value {
+    match v {
+        d::expr::Value::Bool(b) => serde_json::Value::Bool(*b),
+        d::expr::Value::Int(i) => serde_json::Value::from(*i),
+        d::expr::Value::Str(s) => serde_json::Value::String(s.clone()),
+    }
+}
+
+/// Variable values from JSON, typed by the model's variables; unset ones keep their initial value.
+pub fn env_from_json(
+    vars: &[d::Variable],
+    json: &serde_json::Map<String, serde_json::Value>,
+) -> Result<d::expr::Env, ApiError> {
+    let mut env = d::expr::initial_env(vars);
+    for (name, value) in json {
+        let var = vars
+            .iter()
+            .find(|v| &v.name == name)
+            .ok_or_else(|| ApiError::unprocessable(format!("env: unknown variable '{name}'")))?;
+        let typed = match (var.var_type, value) {
+            (d::VariableType::Boolean, serde_json::Value::Bool(b)) => d::expr::Value::Bool(*b),
+            (d::VariableType::Integer, serde_json::Value::Number(n)) if n.is_i64() => {
+                d::expr::Value::Int(n.as_i64().unwrap_or_default())
+            }
+            (d::VariableType::String, serde_json::Value::String(s)) => {
+                d::expr::Value::Str(s.clone())
+            }
+            _ => {
+                let kind = match var.var_type {
+                    d::VariableType::Boolean => "boolean",
+                    d::VariableType::Integer => "integer",
+                    d::VariableType::String => "string",
+                };
+                return Err(ApiError::unprocessable(format!(
+                    "env: '{name}' must be a {kind}"
+                )));
+            }
+        };
+        env.insert(name.clone(), typed);
+    }
+    Ok(env)
 }
 
 // ---------- stale tests ----------

@@ -26,7 +26,10 @@ describe('ModelEditorPageComponent', () => {
           states: [{ id: 'a', modelId: id, name: 'Start', kind: 'initial', testCaseCount: 0 }],
         };
       },
-      modelTestCases: async () => [],
+      modelTestCases: async (id: string) => id !== 'm3' ? [] : [{
+        id: 'tc1', version: 1, featureId: 'f1', name: 'Walk', steps: [], tags: [],
+        assignments: [{ modelId: 'm3', stateId: 'a', testCaseId: 'tc1' }],
+      }],
       staleTests: async (id: string) => {
         staleRequests.push(id);
         return [{ testCaseId: 'tc1', reasons: [{ code: 'STEP_UNASSIGNED', message: 'gone' }] }];
@@ -119,5 +122,38 @@ describe('ModelEditorPageComponent', () => {
 
     expect(staleRequests).toEqual(['m1']);
     expect(page.store.staleReasons('tc1').map(r => r.code)).toEqual(['STEP_UNASSIGNED']);
+  });
+
+  it('opens with a test path highlighted from ?highlight=', async () => {
+    const page = await harness.navigateByUrl('/models/m3?highlight=tc1', ModelEditorPageComponent);
+    await new Promise(r => setTimeout(r));
+    expect(page.store.highlight()?.name).toBe('Walk');
+    expect(page.store.pathSteps('a')).toEqual([]);
+  });
+
+  it('presents read-only from ?view=present and returns with Esc', async () => {
+    const page = await harness.navigateByUrl('/models/m1?view=present', ModelEditorPageComponent);
+    await new Promise(r => setTimeout(r));
+    harness.detectChanges();
+    const root = harness.routeNativeElement!;
+    expect(page.mode()).toBe('present');
+    expect(root.querySelector('.editor-side')).toBeNull();
+    expect(root.querySelector('tm-canvas')!.classList).toContain('readonly');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(page.mode()).toBe('edit');
+    expect(root.querySelector('.editor-side')).not.toBeNull();
+  });
+
+  it('shows the table view for ?view=table', async () => {
+    await harness.navigateByUrl('/models/m1?view=table', ModelEditorPageComponent);
+    await new Promise(r => setTimeout(r));
+    harness.detectChanges();
+    const root = harness.routeNativeElement!;
+    expect(root.querySelector('tm-model-table')).not.toBeNull();
+    expect(root.querySelector('tm-canvas')).toBeNull();
+    expect(root.querySelector('.editor-side')).not.toBeNull();
   });
 });

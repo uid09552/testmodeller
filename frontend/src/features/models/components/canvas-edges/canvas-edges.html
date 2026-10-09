@@ -1,0 +1,80 @@
+<!-- Presentation only (pointer-events: none) except the label and the
+     handles, which must stay grabbable above the states. -->
+@for (edge of store.edges(); track edge.id) {
+  @if (geometries().get(edge.id); as g) {
+    <svg:g class="edge-group"
+           [class.edge-group--uncovered]="store.isUncoveredTransition(edge.id)"
+           [class.edge-group--selected]="selected(edge)"
+           [class.edge-group--on-path]="store.highlight() && store.pathSteps(edge.id)"
+           [class.edge-group--dimmed]="store.highlight() && !store.pathSteps(edge.id)"
+           [class.edge-group--sim-enabled]="store.simulation()?.enabled?.has(edge.id)"
+           [class.edge-group--sim-blocked]="store.simulation()?.blocked?.has(edge.id)">
+      <svg:path class="edge-line" [attr.d]="g.d"
+                [attr.marker-end]="selected(edge) ? 'url(#arrow-selected)' : 'url(#arrow)'" />
+
+      @if (needsLeader(g)) {
+        <svg:line class="edge-leader"
+                  [attr.x1]="g.labelHome.x" [attr.y1]="g.labelHome.y"
+                  [attr.x2]="g.label.x" [attr.y2]="g.label.y" />
+      }
+
+      <!-- Drag the label to move it, with its guard, off the line. -->
+      <svg:g class="edge-label-group" [class.edge-label-group--fixed]="readonly()"
+             (mousedown)="readonly() || press({ kind: 'label', event: $event, edge })">
+        <svg:rect class="edge-label-bg"
+                  [attr.x]="g.label.x - 36" [attr.y]="g.label.y - 10"
+                  width="72" height="18" rx="9" />
+        <svg:text class="edge-label" [attr.x]="g.label.x" [attr.y]="g.label.y + 4">
+          {{ edge.label }}
+        </svg:text>
+        @if (edge.guard) {
+          <svg:text class="edge-guard" [attr.x]="g.label.x" [attr.y]="g.label.y + 20">
+            [{{ edge.guard }}]
+          </svg:text>
+        }
+      </svg:g>
+
+      @if (store.pathSteps(edge.id)?.length) {
+        <svg:g class="path-badge" [attr.transform]="'translate(' + (g.label.x + 38) + ',' + (g.label.y - 9) + ')'">
+          <svg:rect [attr.width]="12 + steps(edge.id).length * 6.5" height="18" rx="9" />
+          <svg:text x="6" y="13">{{ steps(edge.id) }}</svg:text>
+        </svg:g>
+      }
+
+      @if (selected(edge) && !readonly()) {
+        <!-- Ends: drag onto another dot to re-attach. A 16px transparent circle
+             catches the drag; the 6px dot on top ignores pointer events. -->
+        <svg:g class="edge-handle-group">
+          <svg:circle class="edge-handle-hit" [attr.cx]="g.src.x" [attr.cy]="g.src.y" r="16"
+                      (mousedown)="press({ kind: 'endpoint', event: $event, edge, end: 'from' })" />
+          <svg:circle class="edge-handle" [attr.cx]="g.src.x" [attr.cy]="g.src.y" r="6" />
+        </svg:g>
+        <svg:g class="edge-handle-group">
+          <svg:circle class="edge-handle-hit" [attr.cx]="g.tgt.x" [attr.cy]="g.tgt.y" r="16"
+                      (mousedown)="press({ kind: 'endpoint', event: $event, edge, end: 'to' })" />
+          <svg:circle class="edge-handle edge-handle--target" [attr.cx]="g.tgt.x" [attr.cy]="g.tgt.y" r="6" />
+        </svg:g>
+
+        @if (g.bend; as b) {
+          <svg:g class="edge-bend" role="button" aria-label="Bend handle: drag to bend, double-click to straighten">
+            <svg:circle class="edge-bend__hit" [attr.cx]="b.x" [attr.cy]="b.y" r="12"
+                        (mousedown)="press({ kind: 'bend', event: $event, edge })"
+                        (dblclick)="straighten($event, edge)" />
+            <svg:rect class="edge-bend__dot" [attr.x]="b.x - 5" [attr.y]="b.y - 5"
+                      width="10" height="10" rx="2" [attr.transform]="'rotate(45 ' + b.x + ' ' + b.y + ')'" />
+          </svg:g>
+        }
+
+        @for (w of edge.waypoints ?? []; track $index; let i = $index) {
+          <svg:g class="edge-waypoint" role="button"
+                 [attr.aria-label]="'Bend point ' + (i + 1) + ': drag to move, double-click to remove'">
+            <svg:circle class="edge-waypoint__hit" [attr.cx]="w.x" [attr.cy]="w.y" r="12"
+                        (mousedown)="press({ kind: 'waypoint', event: $event, edge, index: i })"
+                        (dblclick)="removeWaypoint($event, edge, i)" />
+            <svg:circle class="edge-waypoint__dot" [attr.cx]="w.x" [attr.cy]="w.y" r="5" />
+          </svg:g>
+        }
+      }
+    </svg:g>
+  }
+}

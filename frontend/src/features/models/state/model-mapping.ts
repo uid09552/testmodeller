@@ -1,19 +1,21 @@
 /**
  * Between the editor's model and the contract's (ADR 0008).
  *
- * The database holds what the contract can express: states, transitions,
- * positions, guards and actions, the model's name, description and status,
- * and test cases assigned to states. The canvas holds more — shapes, colours,
- * sizes, groups, edge curves, the `decision` kind, a three-way status, test
- * links and display numbers — and that is not stored: after a reload a state
- * has the default shape and colour for its kind. `fromRemote` can still merge
- * a copy held in memory, by id.
+ * The contract holds the graph (states, transitions, positions, guards and
+ * actions, variables), the model's name, description and status, and test
+ * cases assigned to states. What the graph cannot express — shapes, colours,
+ * sizes, groups, edge curves and connector dots, the `decision` kind, test
+ * display numbers — travels in the model's opaque `layout` (ADR 0010, see
+ * `layout-doc.ts`). Only the three-way status (`review`) is still not stored.
+ * Variables are not edited here but are sent back unchanged.
  *
  * Pure, so the round trip can be tested without a backend.
  */
 import {
-  ApiModelStatus, ModelInput, StateInput, TestCase, TestCaseInput, TransitionInput,
+  ApiModelStatus, ModelInput, ModelLayoutDoc, StateInput, TestCase, TestCaseInput,
+  TransitionInput, Variable,
 } from '../../../core/api/api.types';
+import { layoutOf, overlayFromLayout } from './layout-doc';
 import {
   CanvasEdge, CanvasGroup, CanvasNode, ModelStatus, SHAPE_FOR_KIND, SIZE_FOR_SHAPE, StateKind,
   StateTest, TestCategory,
@@ -31,6 +33,8 @@ export interface PersistedModel {
   groups?: CanvasGroup[];
   /** Next test-id counter, so ids are never reused across sessions. */
   testSeq: number;
+  /** Stored variables; not edited here, but sent back on every save. */
+  variables?: Variable[];
 }
 
 const UUID_RE =
@@ -115,13 +119,18 @@ export function toModelInput(m: PersistedModel): ModelInput {
       event: e.label?.trim() || 'transition',
       guard: e.guard?.trim() || undefined,
       action: e.action?.trim() || undefined,
+      expected: e.expected?.trim() || undefined,
     }));
   return {
     name: m.name?.trim() || 'Model',
     description: m.description?.trim() || undefined,
     status: toApiStatus(m.status),
+    // Sent back as loaded: a save replaces the whole model, so leaving them
+    // out would delete them.
+    ...(m.variables ? { variables: m.variables } : {}),
     states,
     transitions,
+    layout: layoutOf(m),
   };
 }
 
@@ -163,7 +172,7 @@ export function testToInput(t: StateTest, modelId: string, stateId: string): Tes
 }
 
 /** A stored test case back onto the canvas. `seq` is display-only and local. */
-export function testFromApi(tc: TestCase, seq: number): StateTest {
+export function testFromApi(tc: TestCase, seq: number, modelId?: string): StateTest {
   const tags = (tc.tags ?? []).map(t => t.toLowerCase());
   const descLines = (tc.description ?? '').split('\n');
   // Data saved before the links had fields still has them in the description.
@@ -180,6 +189,15 @@ export function testFromApi(tc: TestCase, seq: number): StateTest {
     then: tc.steps.map(s => s.expected?.trim()).filter(Boolean).join('\n'),
     implementationUrl: tc.implementationUrl ?? legacy(LEGACY_IMPL),
     backlogUrl: tc.backlogUrl ?? legacy(LEGACY_BACKLOG),
+    ...(modelId ? {
+      path: tc.assignments
+        .filter(a => a.modelId === modelId && (a.stateId || a.transitionId))
+        .map(a => ({
+          targetId: (a.transitionId ?? a.stateId)!,
+          kind: a.transitionId ? 'transition' as const : 'state' as const,
+          ...(a.stepOrder !== undefined ? { stepOrder: a.stepOrder } : {}),
+        })),
+    } : {}),
     ...(tc.lastResult ? {
       lastResult: {
         status: tc.lastResult.status,
@@ -197,15 +215,18 @@ export interface RemoteModel {
   name: string;
   description?: string;
   status?: string;
+  variables?: Variable[];
   states: StateInput[];
   transitions: TransitionInput[];
+  layout?: ModelLayoutDoc | null;
 }
 
 /**
  * A stored model, with the browser's overlay merged in by id.
  *
- * The database wins for everything it holds. The overlay contributes only
- * what the contract cannot carry: a state keeps its shape, colour and size; a
+ * The database wins for everything it holds. The overlay — the copy in
+ * memory, or else the stored layout — contributes only what the graph cannot
+ * carry: a state keeps its shape, colour and size; a
  * `normal` state the browser knows to be a decision stays one; a transition
  * keeps its curve and connector dots; groups and test numbers come along.
  * Anything the browser has that the database does not is dropped — the
@@ -218,6 +239,8 @@ export function fromRemote(
   scenarioDesc: string,
   local: PersistedModel | null,
 ): PersistedModel {
+  // Without an in-memory copy, the stored layout plays its part (ADR 0010).
+  local = local ?? overlayFromLayout(remote.layout);
   const localNodes = new Map((local?.nodes ?? []).map(n => [n.id, n]));
   const localEdges = new Map((local?.edges ?? []).map(e => [e.id, e]));
   const localTests = new Map(
@@ -235,7 +258,7 @@ export function fromRemote(
     const assignment = tc.assignments.find(a => a.modelId === modelId && a.stateId);
     if (!assignment?.stateId) continue;
     const list = testsByState.get(assignment.stateId) ?? [];
-    list.push(testFromApi(tc, seqFor(tc.id)));
+    list.push(testFromApi(tc, seqFor(tc.id), modelId));
     testsByState.set(assignment.stateId, list);
   }
 
@@ -249,7 +272,7 @@ export function fromRemote(
     const kind: StateKind = apiKind === 'regular' && prior?.kind === 'decision'
       ? 'decision' : apiKind;
     const shape = prior?.shape ?? SHAPE_FOR_KIND[kind];
-    const size = prior ? { w: prior.w, h: prior.h } : SIZE_FOR_SHAPE[shape];
+    const size = prior?.w && prior?.h ? { w: prior.w, h: prior.h } : SIZE_FOR_SHAPE[shape];
     return {
       id,
       label: s.name,
@@ -274,9 +297,13 @@ export function fromRemote(
       label: t.event,
       guard: t.guard,
       action: t.action,
+      ...(t.expected ? { expected: t.expected } : {}),
       curve: prior?.curve ?? 0,
       fromAnchor: prior?.fromAnchor,
       toAnchor: prior?.toAnchor,
+      ...(prior?.waypoints ? { waypoints: prior.waypoints } : {}),
+      ...(prior?.routing ? { routing: prior.routing } : {}),
+      ...(prior?.labelOffset ? { labelOffset: prior.labelOffset } : {}),
     };
   });
 
@@ -291,6 +318,7 @@ export function fromRemote(
     edges,
     groups: local?.groups ?? [],
     testSeq: Math.max(nextSeq, maxSeq + 1),
+    variables: remote.variables ?? [],
   };
 }
 

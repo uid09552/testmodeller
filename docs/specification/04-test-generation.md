@@ -62,3 +62,18 @@ current data: nothing is stored, and nothing is changed, unassigned or deleted.
 - Limits: only the stored steps count, so a generated test case whose steps
   were edited by hand is checked against its edited step count; the check is
   one pass over the test case's assignments.
+
+## Simulation
+`POST /models/{modelId}/simulate` evaluates one step of the graph in the
+request (the editor sends its current graph, unsaved edits included; nothing
+is stored). It uses the generator's own step function, so a guard is enabled
+in a simulation exactly when generation could take that transition:
+
+- Without `stateId`: start at the initial state with `initial_env`.
+- With `take`: from `stateId` and `env`, check the transition's guard, apply its
+  action, and move to its target. A blocked transition is a 422.
+- The response lists every outgoing transition of the resulting state as
+  enabled or blocked, with the false guard or the evaluation error as the
+  reason, and says whether the state is final.
+- A graph without exactly one initial state, or with an invalid expression,
+  is a 422 with the validation issues.

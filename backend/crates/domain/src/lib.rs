@@ -3,6 +3,7 @@
 pub mod entities;
 pub mod expr;
 pub mod graph;
+pub mod layout;
 pub mod links;
 pub mod validation;
 

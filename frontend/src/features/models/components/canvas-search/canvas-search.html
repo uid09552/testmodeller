@@ -1,0 +1,12 @@
+<div class="search-box" role="search">
+  <input class="search-box__input" type="search" placeholder="Find state or transition…"
+         aria-label="Find a state or transition" tmAutofocus
+         [value]="query()" (input)="setQuery($any($event.target).value)"
+         (keydown)="onKeydown($event)" />
+  <span class="search-box__status" role="status">{{ status() }}</span>
+  <button class="tb-btn tb-btn--icon" type="button" aria-label="Previous match"
+          [disabled]="!hits().length" (click)="step(-1)">‹</button>
+  <button class="tb-btn tb-btn--icon" type="button" aria-label="Next match"
+          [disabled]="!hits().length" (click)="step(1)">›</button>
+  <button class="tb-btn tb-btn--icon" type="button" aria-label="Close search" (click)="closed.emit()">×</button>
+</div>

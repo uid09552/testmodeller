@@ -34,6 +34,7 @@ export class PropertiesPanelComponent {
   setEdgeGuard(e: CanvasEdge, v: string): void { this.store.updateEdge(e.id, { guard: v || undefined }); }
 
   getEdgeAction(e: CanvasEdge): string { return e.action ?? ''; }
+  setEdgeExpected(e: CanvasEdge, v: string): void { this.store.updateEdge(e.id, { expected: v || undefined }); }
   setEdgeAction(e: CanvasEdge, v: string): void { this.store.updateEdge(e.id, { action: v || undefined }); }
 
   nodeName(id: string): string { return singleLine(this.store.nodeById(id)?.label ?? id.slice(0, 8)); }

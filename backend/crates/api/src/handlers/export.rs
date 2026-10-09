@@ -282,6 +282,8 @@ struct ImportModelDoc {
     states: Vec<StateInput>,
     #[serde(default)]
     transitions: Vec<TransitionInput>,
+    #[serde(default)]
+    layout: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -322,6 +324,9 @@ fn convert(doc: ImportDoc) -> ApiResult<Vec<ImportComponent>> {
                                 .into_iter()
                                 .map(|m| {
                                     check_len("model name", &m.name, 1, 200)?;
+                                    if let Some(l) = &m.layout {
+                                        crate::dto::check_layout(l)?;
+                                    }
                                     Ok(ImportModel {
                                         source_id: m.id,
                                         name: m.name,
@@ -332,6 +337,7 @@ fn convert(doc: ImportDoc) -> ApiResult<Vec<ImportComponent>> {
                                             m.states,
                                             m.transitions,
                                         )?,
+                                        layout: m.layout,
                                     })
                                 })
                                 .collect::<ApiResult<_>>()?,
