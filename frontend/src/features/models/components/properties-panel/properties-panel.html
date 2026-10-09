@@ -19,7 +19,7 @@
         canvas to align, colour or group them.
       </p>
 
-      <label class="props__label">Border colour</label>
+      <span class="props__label">Border colour</span>
       <div class="color-row">
         @for (c of colors; track c.name) {
           <button class="swatch swatch--ring"
@@ -35,7 +35,7 @@
         }
       </div>
 
-      <label class="props__label">Align</label>
+      <span class="props__label">Align</span>
       <div class="align-grid">
         @for (a of alignActions; track a.mode) {
           <button class="shape-btn" [title]="a.label" (click)="store.alignSelection(a.mode)">
@@ -73,12 +73,13 @@
       <input id="group-label" class="props__input" [value]="group.label"
              (input)="store.updateGroup(group.id, { label: $any($event.target).value })" />
 
-      <label class="props__label">Colour</label>
+      <span class="props__label">Colour</span>
       <div class="color-row">
         @for (c of groupColors; track c) {
           <button class="swatch"
                   [class.swatch--on]="group.color === c"
                   [style.background]="c"
+                  [attr.aria-label]="'Colour ' + c"
                   (click)="setGroupColor(group.id, c)"></button>
         }
       </div>
@@ -152,7 +153,7 @@
         <option value="final">Final</option>
       </select>
 
-      <label class="props__label">Shape</label>
+      <span class="props__label">Shape</span>
       <div class="shape-row" role="radiogroup" aria-label="Shape">
         @for (sh of shapes; track sh.value) {
           <button class="shape-btn" [class.shape-btn--on]="node.shape === sh.value"
@@ -174,7 +175,7 @@
         }
       </div>
 
-      <label class="props__label">Border colour</label>
+      <span class="props__label">Border colour</span>
       <div class="color-row">
         @for (c of colors; track c.name) {
           <button class="swatch swatch--ring"

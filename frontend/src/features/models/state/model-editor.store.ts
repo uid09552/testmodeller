@@ -3,6 +3,7 @@
  * Provided at model-editor-page level so each editor gets its own instance.
  */
 import { computed, Injectable, signal } from '@angular/core';
+import { fitNodeSize, resetTextMeasure } from './node-fit';
 
 export type StateKind = 'initial' | 'regular' | 'decision' | 'final';
 
@@ -438,9 +439,36 @@ export class ModelEditorStore {
         next.w = w;
         next.h = h;
       }
+      // A state is as big as its label needs, around the same centre.
+      if (changes.label !== undefined || next.shape !== n.shape) {
+        const size = fitNodeSize(next.label, next.shape, SIZE_FOR_SHAPE[next.shape]);
+        if (next.shape === n.shape) {
+          next.x = n.x + (n.w - size.w) / 2;
+          next.y = n.y + (n.h - size.h) / 2;
+        }
+        next.w = size.w;
+        next.h = size.h;
+      }
       return next;
     }));
     this.dirty.set(true);
+  }
+
+  /** Re-fit every state to its label, e.g. after web fonts load. Not an edit. */
+  refitNodes(): void {
+    resetTextMeasure();
+    this.nodes.update(ns => ns.map(n => this.fitted(n)));
+  }
+
+  /** `n` resized to fit its label, keeping its centre. */
+  private fitted(n: CanvasNode): CanvasNode {
+    const size = fitNodeSize(n.label, n.shape, SIZE_FOR_SHAPE[n.shape]);
+    if (size.w === n.w && size.h === n.h) return n;
+    return {
+      ...n, ...size,
+      x: n.x + (n.w - size.w) / 2,
+      y: n.y + (n.h - size.h) / 2,
+    };
   }
 
   moveNode(id: string, x: number, y: number): void {
@@ -959,7 +987,7 @@ export class ModelEditorStore {
     this.scenarioDesc.set(m.scenarioDesc);
     this.modelStatus.set(m.status);
     // Tolerate models stored before `tests` existed.
-    this.nodes.set(m.nodes.map(n => ({
+    this.nodes.set(m.nodes.map(n => this.fitted({
       ...n,
       tests: n.tests ?? [],
       shape: n.shape ?? SHAPE_FOR_KIND[n.kind] ?? 'rect',

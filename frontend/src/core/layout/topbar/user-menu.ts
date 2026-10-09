@@ -20,14 +20,14 @@ import { SessionService } from '../../auth/session';
 })
 export class UserMenuComponent {
   readonly open = input(false);
-  readonly close = output<void>();
+  readonly dismiss = output<void>();
 
   private readonly session = inject(SessionService);
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
 
   /** Ends the gateway session (FR-046). */
   signOut(): void {
-    this.close.emit();
+    this.dismiss.emit();
     this.session.signOut();
   }
 
@@ -37,7 +37,7 @@ export class UserMenuComponent {
     const target = event.target as Node;
     const el = this.panel()?.nativeElement;
     if (el && !el.contains(target)) {
-      this.close.emit();
+      this.dismiss.emit();
     }
   }
 }

@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy, Component, computed, effect, HostListener, inject, signal,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { AutofocusDirective } from '../../../../shared/components/autofocus';
 import {
   ExplorerStore, ExplorerProject, ExplorerComponent, ExplorerFeature, ExplorerModel,
   NewItemKind,
@@ -23,6 +24,7 @@ interface ContextMenu { x: number; y: number; target: CtxTarget }
  */
 @Component({
   selector: 'tm-explorer-tree',
+  imports: [AutofocusDirective],
   templateUrl: './explorer-tree.html',
   styleUrl: './explorer-tree.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -98,7 +100,7 @@ export class ExplorerTreeComponent {
 
   /** Open a model in the editor. The feature id travels with it: the AI
    *  endpoints are scoped to a feature and the editor cannot look it up. */
-  openModel(model: ExplorerModel, feature: ExplorerFeature): void {
+  openModel(model: ExplorerModel, _feature: ExplorerFeature): void {
     void this.router.navigate(['/models', model.id]);
   }
 

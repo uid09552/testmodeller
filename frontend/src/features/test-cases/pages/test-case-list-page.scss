@@ -10,8 +10,34 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 18px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
+
+  &--secondary { margin-bottom: 18px; }
+
+  .search { flex: 1; }
+}
+
+.filter-select {
+  width: auto;
+  max-width: 220px;
+  padding: 7px 10px;
+}
+
+.btn--sm { padding: 6px 11px; font-size: var(--text-xs); }
+
+.view-opts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+
+  &__label {
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--clr-text-400);
+    white-space: nowrap;
+  }
 }
 
 // ── Project dropdown (main filter) ────────────────────────────────────────────
@@ -103,6 +129,93 @@
   }
 }
 
+// ── Sortable headers ──────────────────────────────────────────────────────────
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+
+  &:hover { color: var(--clr-text-900); }
+
+  &__icon {
+    opacity: 0;
+    transition: transform var(--transition-fast), opacity var(--transition-fast);
+    &--desc { transform: rotate(180deg); }
+  }
+
+  &:hover &__icon { opacity: .5; }
+
+  &--on {
+    color: var(--clr-brand-600);
+    .th-sort__icon { opacity: 1; }
+  }
+}
+
+// ── Group header rows ─────────────────────────────────────────────────────────
+.tc-table .grp-row {
+  cursor: default;
+
+  td {
+    padding: 0;
+    background: var(--clr-surface-50);
+    border-bottom: 1px solid var(--clr-surface-200);
+  }
+
+  &:hover { background: none; }
+}
+
+.grp-row__btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  color: var(--clr-text-900);
+  background: none;
+  border: none;
+  cursor: pointer;
+
+  &:hover { background: var(--clr-surface-100); }
+}
+
+.grp-row__chev {
+  flex-shrink: 0;
+  color: var(--clr-text-400);
+  transition: transform var(--transition-fast);
+  &--closed { transform: rotate(-90deg); }
+}
+
+.grp-row__label { font-weight: 600; text-transform: capitalize; }
+.grp-row__ctx   { color: var(--clr-text-400); }
+
+.grp-row__count {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--clr-surface-100);
+  color: var(--clr-text-600);
+}
+
+.grp-row__pol {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  &--pos { color: #16a34a; }
+  &--neg { color: var(--clr-danger); }
+}
+
 // ── Table cells ───────────────────────────────────────────────────────────────
 .tc-table {
   tbody tr {
@@ -165,3 +278,6 @@
   .tc-table th:nth-child(2), .tc-table td:nth-child(2) { display: none; }
   .tc-steps { max-width: 240px; }
 }
+
+// Grouped tables have one <tbody> per group; keep the divider between them.
+.tc-table tbody:not(:last-of-type) tr:last-child td { border-bottom: 1px solid var(--clr-surface-100); }

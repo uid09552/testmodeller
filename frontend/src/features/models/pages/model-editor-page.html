@@ -166,8 +166,8 @@
 
 <!-- ── Delete confirmation ──────────────────────────────────────────────────── -->
 @if (confirmDelete()) {
-  <div class="dialog-backdrop" (click)="cancelDelete()">
-    <div class="dialog dialog--confirm" (click)="$event.stopPropagation()">
+  <div class="dialog-backdrop" role="presentation" (click)="cancelDelete()">
+    <div class="dialog dialog--confirm" role="presentation" (click)="$event.stopPropagation()">
       <div class="dialog__icon">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

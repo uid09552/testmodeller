@@ -37,8 +37,8 @@
       @if (projectMenuOpen()) {
         <ul class="proj-select__menu" role="listbox">
           <li>
-            <button class="proj-select__opt" [class.proj-select__opt--on]="projectFilter() === 'all'"
-                    role="option" [attr.aria-selected]="projectFilter() === 'all'"
+            <button class="proj-select__opt" [class.proj-select__opt--on]="filters().projectId === 'all'"
+                    role="option" [attr.aria-selected]="filters().projectId === 'all'"
                     (click)="setProject('all')">
               All projects
               <span class="proj-select__count">{{ allRows().length }}</span>
@@ -46,10 +46,11 @@
           </li>
           @for (p of projects(); track p.id) {
             <li>
-              <button class="proj-select__opt" [class.proj-select__opt--on]="projectFilter() === p.id"
-                      role="option" [attr.aria-selected]="projectFilter() === p.id"
+              <button class="proj-select__opt" [class.proj-select__opt--on]="filters().projectId === p.id"
+                      role="option" [attr.aria-selected]="filters().projectId === p.id"
                       (click)="setProject(p.id)">
                 {{ p.name }}
+                <span class="proj-select__count">{{ projectCounts().get(p.id) ?? 0 }}</span>
               </button>
             </li>
           }
@@ -57,26 +58,85 @@
       }
     </div>
 
+    <select class="select filter-select" aria-label="Component"
+            [value]="filters().componentId" (change)="setComponent($any($event.target).value)">
+      <option value="all">All components</option>
+      @for (o of facets().components; track o.id) {
+        <option [value]="o.id" [selected]="filters().componentId === o.id">{{ o.name }} ({{ o.count }})</option>
+      }
+    </select>
+
+    <select class="select filter-select" aria-label="Scenario"
+            [value]="filters().featureId" (change)="setFeature($any($event.target).value)">
+      <option value="all">All scenarios</option>
+      @for (o of facets().features; track o.id) {
+        <option [value]="o.id" [selected]="filters().featureId === o.id">{{ o.name }} ({{ o.count }})</option>
+      }
+    </select>
+
+    <select class="select filter-select" aria-label="Model"
+            [value]="filters().modelId" (change)="setModel($any($event.target).value)">
+      <option value="all">All models</option>
+      @for (o of facets().models; track o.id) {
+        <option [value]="o.id" [selected]="filters().modelId === o.id">{{ o.name }} ({{ o.count }})</option>
+      }
+    </select>
+
     <div class="search">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
-      <input class="search__input" placeholder="Search id, scenario, model…"
-             [value]="search()" (input)="search.set($any($event.target).value)" />
+      <input class="search__input" placeholder="Search id, scenario, state, steps…"
+             aria-label="Search test cases"
+             [value]="filters().search" (input)="patchFilters({ search: $any($event.target).value })" />
     </div>
+  </div>
 
-    <div class="chips">
+  <div class="filters filters--secondary">
+    <div class="chips" role="group" aria-label="Category">
+      <button class="chip" [class.chip--active]="filters().categories.length === 0"
+              [attr.aria-pressed]="filters().categories.length === 0"
+              (click)="patchFilters({ categories: [] })">all</button>
       @for (c of categoryFilters; track c) {
-        <button class="chip" [class.chip--active]="categoryFilter() === c"
-                (click)="categoryFilter.set(c)">{{ c }}</button>
+        <button class="chip" [class.chip--active]="filters().categories.includes(c)"
+                [attr.aria-pressed]="filters().categories.includes(c)"
+                (click)="toggleCategory(c)">{{ c }}</button>
       }
     </div>
 
-    <div class="chips">
+    <div class="chips" role="group" aria-label="Type">
       @for (p of polarityFilters; track p) {
-        <button class="chip" [class.chip--active]="polarityFilter() === p"
-                (click)="polarityFilter.set(p)">{{ p }}</button>
+        <button class="chip" [class.chip--active]="filters().polarity === p"
+                [attr.aria-pressed]="filters().polarity === p"
+                (click)="patchFilters({ polarity: p })">{{ p }}</button>
+      }
+    </div>
+
+    <select class="select filter-select" aria-label="Links"
+            [value]="filters().links" (change)="patchFilters({ links: $any($event.target).value })">
+      @for (o of linkFilters; track o.value) {
+        <option [value]="o.value" [selected]="filters().links === o.value">{{ o.label }}</option>
+      }
+    </select>
+
+    @if (activeFilters() > 0) {
+      <button class="btn btn--secondary btn--sm" (click)="clearFilters()">
+        Clear filters ({{ activeFilters() }})
+      </button>
+    }
+
+    <div class="view-opts">
+      <label class="view-opts__label" for="tc-group">Group by</label>
+      <select id="tc-group" class="select filter-select"
+              [value]="groupBy()" (change)="setGroupBy($any($event.target).value)">
+        @for (o of groupOptions; track o.value) {
+          <option [value]="o.value" [selected]="groupBy() === o.value">{{ o.label }}</option>
+        }
+      </select>
+      @if (groupBy() !== 'none') {
+        <button class="btn btn--secondary btn--sm" (click)="expandAll()">Expand all</button>
+        <button class="btn btn--secondary btn--sm" (click)="collapseAll()">Collapse all</button>
       }
     </div>
   </div>
@@ -98,6 +158,10 @@
     <div class="stat">
       <div class="stat__label">Models covered</div>
       <div class="stat__value">{{ modelCount() }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat__label">Implemented</div>
+      <div class="stat__value">{{ implementedCount() }}</div>
     </div>
   </div>
 
@@ -122,19 +186,46 @@
       <table class="table tc-table">
         <thead>
           <tr>
-            <th style="width:118px">ID</th>
-            <th style="width:130px">Component</th>
-            <th style="width:130px">Scenario</th>
-            <th style="width:130px">Model</th>
-            <th>Test Case</th>
-            <th style="width:100px">Category</th>
-            <th style="width:78px">Type</th>
+            @for (col of sortColumns; track col.key) {
+              <th [style.width]="col.width" [attr.aria-sort]="ariaSort(col.key)">
+                <button class="th-sort" [class.th-sort--on]="sort().key === col.key"
+                        (click)="sortBy(col.key)">
+                  {{ col.label }}
+                  <svg class="th-sort__icon" [class.th-sort__icon--desc]="sort().key === col.key && sort().dir === 'desc'"
+                       width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="6 15 12 9 18 15"/>
+                  </svg>
+                </button>
+              </th>
+            }
             <th style="width:62px">Links</th>
-            <th style="width:54px"></th>
+            <th style="width:54px" aria-label="Actions"></th>
           </tr>
         </thead>
+        @for (group of groups(); track group.key) {
         <tbody>
-          @for (row of rows(); track row.test.id) {
+          @if (groupBy() !== 'none') {
+            <tr class="grp-row">
+              <td colspan="9">
+                <button class="grp-row__btn" [attr.aria-expanded]="!isCollapsed(group.key)"
+                        (click)="toggleGroup(group.key)">
+                  <svg class="grp-row__chev" [class.grp-row__chev--closed]="isCollapsed(group.key)"
+                       width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                  <span class="grp-row__label">{{ group.label }}</span>
+                  @if (group.context) { <span class="grp-row__ctx">{{ group.context }}</span> }
+                  <span class="grp-row__count">{{ group.rows.length }}</span>
+                  <span class="grp-row__pol grp-row__pol--pos" title="Positive">+{{ group.positive }}</span>
+                  <span class="grp-row__pol grp-row__pol--neg" title="Negative">−{{ group.negative }}</span>
+                </button>
+              </td>
+            </tr>
+          }
+          @if (!isCollapsed(group.key)) {
+          @for (row of group.rows; track row.test.id) {
             <tr (dblclick)="editRow(row)" title="Double-click to edit Gherkin">
               <td><code class="tc-ref">{{ row.ref }}</code></td>
               <td class="tc-dim">{{ row.componentName }}</td>
@@ -205,7 +296,9 @@
               </td>
             </tr>
           }
+          }
         </tbody>
+        }
       </table>
     </div>
   }
@@ -218,5 +311,5 @@
     [ref]="ed.ref"
     [stateName]="ed.stateName"
     (save)="saveTest($event)"
-    (cancel)="closeEditor()" />
+    (cancelled)="closeEditor()" />
 }

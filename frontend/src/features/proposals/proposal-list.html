@@ -43,7 +43,8 @@
     <div class="prop-list">
       @for (p of filtered(); track p.id) {
         <article class="prop" [class.prop--open]="p.expanded">
-          <header class="prop__head" (click)="toggle(p.id)">
+          <header class="prop__head" role="button" tabindex="0" [attr.aria-expanded]="p.expanded"
+                  (click)="toggle(p.id)" (keydown.enter)="toggle(p.id)">
             <span class="prop__chevron" [class.prop__chevron--open]="p.expanded">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">

@@ -14,6 +14,7 @@
     <!-- ── Project ── -->
     <div class="tree-item tree-item--project"
          [class.tree-item--selected]="store.isSelected(project.id)"
+         [attr.aria-selected]="store.isSelected(project.id)"
          (click)="selectProject(project)"
          (keydown.enter)="selectProject(project)"
          (contextmenu)="openCtx($event, { kind: 'project', project })"
@@ -36,7 +37,7 @@
                (input)="editValue.set($any($event.target).value)"
                (blur)="finishEdit(project)"
                (keydown)="onEditKey($event, project)"
-               (click)="$event.stopPropagation()" autofocus />
+               (click)="$event.stopPropagation()" tmAutofocus />
       } @else {
         <span class="tree-item__label">{{ project.name }}</span>
       }
@@ -49,6 +50,7 @@
         <!-- ── Component ── -->
         <div class="tree-item tree-item--component"
              [class.tree-item--selected]="store.isSelected(comp.id)"
+         [attr.aria-selected]="store.isSelected(comp.id)"
              (click)="selectComponent(project, comp)"
              (keydown.enter)="selectComponent(project, comp)"
              (contextmenu)="openCtx($event, { kind: 'component', project, component: comp })"
@@ -72,7 +74,7 @@
                    (input)="editValue.set($any($event.target).value)"
                    (blur)="finishEdit(project, comp)"
                    (keydown)="onEditKey($event, project, comp)"
-                   (click)="$event.stopPropagation()" autofocus />
+                   (click)="$event.stopPropagation()" tmAutofocus />
           } @else {
             <span class="tree-item__label">{{ comp.name }}</span>
           }
@@ -85,6 +87,7 @@
             <!-- ── Feature ── -->
             <div class="tree-item tree-item--feature"
                  [class.tree-item--selected]="store.isSelected(feat.id)"
+         [attr.aria-selected]="store.isSelected(feat.id)"
                  (click)="selectFeature(project, comp, feat)"
                  (keydown.enter)="selectFeature(project, comp, feat)"
                  (contextmenu)="openCtx($event, { kind: 'feature', project, component: comp, feature: feat })"
@@ -111,7 +114,7 @@
                        (input)="editValue.set($any($event.target).value)"
                        (blur)="finishEdit(project, comp, feat)"
                        (keydown)="onEditKey($event, project, comp, feat)"
-                       (click)="$event.stopPropagation()" autofocus />
+                       (click)="$event.stopPropagation()" tmAutofocus />
               } @else {
                 <span class="tree-item__label">{{ feat.name }}</span>
               }
@@ -125,6 +128,7 @@
                 <!-- ── Model: one click opens the editor ── -->
                 <div class="tree-item tree-item--model"
                      [class.tree-item--selected]="store.isSelected(model.id)"
+         [attr.aria-selected]="store.isSelected(model.id)"
                      (click)="selectModel(project, comp, feat, model)"
                      (keydown.enter)="selectModel(project, comp, feat, model)"
                      (contextmenu)="openCtx($event, { kind: 'model', project, component: comp, feature: feat, model })"
@@ -141,7 +145,7 @@
                            (input)="editValue.set($any($event.target).value)"
                            (blur)="finishEdit(project, comp, feat, model)"
                            (keydown)="onEditKey($event, project, comp, feat, model)"
-                           (click)="$event.stopPropagation()" autofocus />
+                           (click)="$event.stopPropagation()" tmAutofocus />
                   } @else {
                     <span class="tree-item__label">{{ model.name }}</span>
                   }
@@ -217,15 +221,15 @@
 
 <!-- ── New item dialog ───────────────────────────────────────────────────────── -->
 @if (newPrompt(); as prompt) {
-  <div class="dialog-backdrop" (click)="cancelNew()">
-    <div class="dialog" (click)="$event.stopPropagation()">
+  <div class="dialog-backdrop" role="presentation" (click)="cancelNew()">
+    <div class="dialog" role="presentation" (click)="$event.stopPropagation()">
       <h3 class="dialog__title">New {{ newPromptTitle() }}</h3>
       <input class="dialog__input"
              [placeholder]="'Enter ' + prompt.kind + ' name'"
              [value]="newValue()"
              (input)="newValue.set($any($event.target).value)"
              (keydown.enter)="confirmNew()"
-             (keydown.escape)="cancelNew()" autofocus />
+             (keydown.escape)="cancelNew()" tmAutofocus />
       @if (prompt.kind === 'model') {
         <p class="dialog__hint">Opens on an empty canvas — no template is applied.</p>
       }

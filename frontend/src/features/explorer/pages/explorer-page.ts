@@ -25,7 +25,7 @@ export class ExplorerPageComponent {
   readonly selFeature   = this.store.selectedFeature;
 
   /** Open a model in the editor, carrying the feature context with it. */
-  openModel(model: ExplorerModel, feature: ExplorerFeature): void {
+  openModel(model: ExplorerModel, _feature: ExplorerFeature): void {
     void this.router.navigate(['/models', model.id]);
   }
 

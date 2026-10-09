@@ -3,7 +3,7 @@ import {
   inject, OnInit, signal, untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ParamMap, Router, RouterLink, ActivatedRoute } from '@angular/router';
+import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { CanvasComponent } from '../components/canvas/canvas';
 import { PropertiesPanelComponent } from '../components/properties-panel/properties-panel';
 import { TestCasesPanelComponent } from '../components/test-cases-panel/test-cases-panel';

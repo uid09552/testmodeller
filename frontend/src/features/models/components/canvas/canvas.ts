@@ -10,6 +10,7 @@ import {
   Anchor, ANCHORS, anchorPoint, nearestAnchor,
   AlignMode, CanvasGroup, GROUP_COLORS, ResizeHandle,
 } from '../../state/model-editor.store';
+import { LABEL_LINE_H, labelLines } from '../../state/node-fit';
 
 /** Shapes offered in the quick bar as drag sources. */
 export const PALETTE: { kind: StateKind; label: string }[] = [
@@ -118,6 +119,11 @@ export class CanvasComponent {
   readonly store = inject(ModelEditorStore);
   private readonly cdr = inject(ChangeDetectorRef);
 
+  constructor() {
+    // Label widths depend on the web font, which may arrive after first paint.
+    void document.fonts?.ready.then(() => this.store.refitNodes());
+  }
+
   // ── Viewport ────────────────────────────────────────────────────────────
   readonly panX  = signal(40);
   readonly panY  = signal(40);
@@ -224,6 +230,16 @@ export class CanvasComponent {
   diamondPoints(n: CanvasNode): string {
     const hw = n.w / 2, hh = n.h / 2;
     return `${hw},0 ${n.w},${hh} ${hw},${n.h} 0,${hh}`;
+  }
+
+  readonly lineHeight = LABEL_LINE_H;
+
+  /** The label wrapped as the sizing logic did, so it fits the state. */
+  labelLines(n: CanvasNode): string[] { return labelLines(n.label, n.shape); }
+
+  /** Baseline of the first line, so the block is centred vertically. */
+  labelY(n: CanvasNode, lineCount: number): number {
+    return n.h / 2 + 5 - ((lineCount - 1) * LABEL_LINE_H) / 2;
   }
 
   /** Only the blue-filled initial state needs light text. */

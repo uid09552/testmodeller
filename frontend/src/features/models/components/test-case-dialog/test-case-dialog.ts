@@ -1,6 +1,7 @@
 import {
-  ChangeDetectionStrategy, Component, computed, HostListener, input, output, signal,
+  ChangeDetectionStrategy, Component, computed, input, output, signal,
 } from '@angular/core';
+import { AutofocusDirective } from '../../../../shared/components/autofocus';
 import {
   StateTest, TestCategory, TestPolarity,
   TEST_CATEGORIES, TEST_POLARITIES, testToGherkin, safeExternalUrl,
@@ -12,6 +13,7 @@ export type TestDraft = Omit<StateTest, 'id' | 'seq'>;
 /** Overlay editor for a single Gherkin test case attached to a state. */
 @Component({
   selector: 'tm-test-case-dialog',
+  imports: [AutofocusDirective],
   templateUrl: './test-case-dialog.html',
   styleUrl: './test-case-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -24,7 +26,7 @@ export class TestCaseDialogComponent {
   readonly ref = input<string>('');
 
   readonly save   = output<TestDraft>();
-  readonly cancel = output<void>();
+  readonly cancelled = output<void>();
 
   readonly categories = TEST_CATEGORIES;
   readonly polarities = TEST_POLARITIES;
@@ -89,9 +91,6 @@ export class TestCaseDialogComponent {
     if (!this.valid()) return;
     this.save.emit(this.current());
   }
-
-  @HostListener('document:keydown.escape')
-  onEscape(): void { this.cancel.emit(); }
 
   categoryLabel(c: TestCategory): string {
     return { unit: 'Unit', integration: 'Integration', feature: 'Feature' }[c];

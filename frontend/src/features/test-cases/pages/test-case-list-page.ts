@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy, Component, computed, effect, HostListener, inject, signal, untracked,
 } from '@angular/core';
 import { OrgApi } from '../../../core/api/org-api';
+import { readJson, writeJson } from '../../../core/persistence/local-store';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
 import { fromRemote, PersistedModel, testToInput } from '../../models/state/model-mapping';
 import {
@@ -10,23 +11,20 @@ import {
 import {
   TestCaseDialogComponent, TestDraft,
 } from '../../models/components/test-case-dialog/test-case-dialog';
+import {
+  CATEGORY_ORDER, EMPTY_FILTERS, GroupKey, LinkFilter, SortKey, SortState, TestCaseFilters,
+  TestRow, activeFilterCount, facetOptions, filterRows, groupRows, sortRows, toggleSort,
+} from '../state/test-case-view';
 
-/** One row of the cross-project test case table. */
-interface TestRow {
-  projectId: string;
-  projectName: string;
-  componentName: string;
-  featureName: string;
-  modelId: string;
-  modelName: string;
-  stateLabel: string;
-  nodeId: string;
-  ref: string;
-  test: StateTest;
+/** Table layout the user chose; remembered across visits (per browser). */
+interface ViewPrefs {
+  filters: TestCaseFilters;
+  sort: SortState;
+  groupBy: GroupKey;
 }
 
-type CategoryFilter = 'all' | TestCategory;
-type PolarityFilter = 'all' | 'positive' | 'negative';
+const VIEW_KEY = 'test-cases:view';
+const DEFAULT_SORT: SortState = { key: 'ref', dir: 'asc' };
 
 @Component({
   selector: 'tm-test-case-list-page',
@@ -42,13 +40,6 @@ export class TestCaseListPageComponent {
   /** Every model's content, as stored in the database. */
   private readonly stored = signal<Record<string, PersistedModel>>({});
   readonly error = signal<string | null>(null);
-
-  constructor() {
-    effect(() => {
-      const ids = this.explorer.modelPaths().map(p => p.model.id);
-      untracked(() => void this.load(ids));
-    });
-  }
 
   private async load(ids: string[]): Promise<void> {
     try {
@@ -76,21 +67,62 @@ export class TestCaseListPageComponent {
     }
   }
 
-  // ── Filters ────────────────────────────────────────────────────────────────
-  readonly projectFilter  = signal<string>('all');
-  readonly categoryFilter = signal<CategoryFilter>('all');
-  readonly polarityFilter = signal<PolarityFilter>('all');
-  readonly search         = signal('');
+  // ── Filters, sorting, grouping ────────────────────────────────────────────
+  private readonly saved = readJson<Partial<ViewPrefs>>(VIEW_KEY);
+
+  readonly filters = signal<TestCaseFilters>({ ...EMPTY_FILTERS, ...this.saved?.filters });
+  readonly sort    = signal<SortState>(this.saved?.sort ?? DEFAULT_SORT);
+  readonly groupBy = signal<GroupKey>(this.saved?.groupBy ?? 'none');
+  /** Keys of collapsed groups; reset when the grouping changes. */
+  readonly collapsed = signal<ReadonlySet<string>>(new Set());
   readonly projectMenuOpen = signal(false);
 
-  readonly categoryFilters: CategoryFilter[] = ['all', 'unit', 'integration', 'feature'];
-  readonly polarityFilters: PolarityFilter[] = ['all', 'positive', 'negative'];
+  readonly categoryFilters: TestCategory[] = CATEGORY_ORDER;
+  readonly polarityFilters: TestCaseFilters['polarity'][] = ['all', 'positive', 'negative'];
+  readonly linkFilters: { value: LinkFilter; label: string }[] = [
+    { value: 'all',           label: 'Any links' },
+    { value: 'implemented',   label: 'Has implementation' },
+    { value: 'unimplemented', label: 'No implementation' },
+    { value: 'backlog',       label: 'Has backlog item' },
+    { value: 'none',          label: 'No links' },
+  ];
+  readonly sortColumns: { key: SortKey; label: string; width: string | null }[] = [
+    { key: 'ref',       label: 'ID',        width: '118px' },
+    { key: 'component', label: 'Component', width: '130px' },
+    { key: 'feature',   label: 'Scenario',  width: '130px' },
+    { key: 'model',     label: 'Model',     width: '130px' },
+    { key: 'name',      label: 'Test Case', width: null },
+    { key: 'category',  label: 'Category',  width: '100px' },
+    { key: 'polarity',  label: 'Type',      width: '78px' },
+  ];
+  readonly groupOptions: { value: GroupKey; label: string }[] = [
+    { value: 'none',      label: 'No grouping' },
+    { value: 'project',   label: 'Project' },
+    { value: 'component', label: 'Component' },
+    { value: 'feature',   label: 'Scenario' },
+    { value: 'model',     label: 'Model' },
+    { value: 'state',     label: 'State' },
+    { value: 'category',  label: 'Category' },
+    { value: 'polarity',  label: 'Type' },
+  ];
+
+  constructor() {
+    effect(() => {
+      const ids = this.explorer.modelPaths().map(p => p.model.id);
+      untracked(() => void this.load(ids));
+    });
+    effect(() => {
+      writeJson(VIEW_KEY, {
+        filters: this.filters(), sort: this.sort(), groupBy: this.groupBy(),
+      } satisfies ViewPrefs);
+    });
+  }
 
   readonly projects = computed(() =>
     this.explorer.projects().map(p => ({ id: p.id, name: p.name })));
 
   readonly selectedProjectName = computed(() => {
-    const id = this.projectFilter();
+    const id = this.filters().projectId;
     if (id === 'all') return 'All projects';
     return this.projects().find(p => p.id === id)?.name ?? 'All projects';
   });
@@ -109,7 +141,9 @@ export class TestCaseListPageComponent {
         (node.tests ?? []).map(test => ({
           projectId: path.projectId,
           projectName: path.projectName,
+          componentId: path.componentId,
           componentName: path.componentName,
+          featureId: path.featureId,
           featureName: path.featureName,
           modelId: path.model.id,
           modelName: model.name,
@@ -122,34 +156,73 @@ export class TestCaseListPageComponent {
     });
   });
 
-  readonly rows = computed(() => {
-    const proj = this.projectFilter();
-    const cat  = this.categoryFilter();
-    const pol  = this.polarityFilter();
-    const q    = this.search().toLowerCase().trim();
-
-    return this.allRows().filter(r =>
-      (proj === 'all' || r.projectId === proj) &&
-      (cat  === 'all' || r.test.category === cat) &&
-      (pol  === 'all' || r.test.polarity === pol) &&
-      (!q ||
-        r.ref.toLowerCase().includes(q) ||
-        r.test.name.toLowerCase().includes(q) ||
-        r.modelName.toLowerCase().includes(q) ||
-        r.featureName.toLowerCase().includes(q) ||
-        r.componentName.toLowerCase().includes(q)),
-    );
+  readonly projectCounts = computed(() => {
+    const counts = new Map<string, number>();
+    for (const r of this.allRows()) counts.set(r.projectId, (counts.get(r.projectId) ?? 0) + 1);
+    return counts;
   });
+
+  readonly facets = computed(() => facetOptions(this.allRows(), this.filters()));
+
+  /** Filtered and sorted — the set that is shown, counted and exported. */
+  readonly rows = computed(() => sortRows(filterRows(this.allRows(), this.filters()), this.sort()));
+
+  readonly groups = computed(() => groupRows(this.rows(), this.groupBy()));
+
+  readonly activeFilters = computed(() => activeFilterCount(this.filters()));
+
+  patchFilters(changes: Partial<TestCaseFilters>): void {
+    this.filters.update(f => ({ ...f, ...changes }));
+  }
+
+  /** Picking a level clears the levels below it, which may no longer exist under it. */
+  setProject(id: string): void {
+    this.patchFilters({ projectId: id, componentId: 'all', featureId: 'all', modelId: 'all' });
+    this.projectMenuOpen.set(false);
+  }
+  setComponent(id: string): void { this.patchFilters({ componentId: id, featureId: 'all', modelId: 'all' }); }
+  setFeature(id: string):   void { this.patchFilters({ featureId: id, modelId: 'all' }); }
+  setModel(id: string):     void { this.patchFilters({ modelId: id }); }
+
+  toggleCategory(c: TestCategory): void {
+    const cur = this.filters().categories;
+    this.patchFilters({ categories: cur.includes(c) ? cur.filter(x => x !== c) : [...cur, c] });
+  }
+
+  clearFilters(): void { this.filters.set(EMPTY_FILTERS); }
+
+  sortBy(key: SortKey): void { this.sort.update(s => toggleSort(s, key)); }
+
+  ariaSort(key: SortKey): 'ascending' | 'descending' | 'none' {
+    const s = this.sort();
+    if (s.key !== key) return 'none';
+    return s.dir === 'asc' ? 'ascending' : 'descending';
+  }
+
+  setGroupBy(g: GroupKey): void {
+    this.groupBy.set(g);
+    this.collapsed.set(new Set());
+  }
+
+  isCollapsed(key: string): boolean { return this.collapsed().has(key); }
+
+  toggleGroup(key: string): void {
+    this.collapsed.update(set => {
+      const next = new Set(set);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  collapseAll(): void { this.collapsed.set(new Set(this.groups().map(g => g.key))); }
+  expandAll():   void { this.collapsed.set(new Set()); }
 
   // ── Summary ────────────────────────────────────────────────────────────────
   readonly positiveCount = computed(() => this.rows().filter(r => r.test.polarity === 'positive').length);
   readonly negativeCount = computed(() => this.rows().filter(r => r.test.polarity === 'negative').length);
   readonly modelCount    = computed(() => new Set(this.rows().map(r => r.modelId)).size);
-
-  setProject(id: string): void {
-    this.projectFilter.set(id);
-    this.projectMenuOpen.set(false);
-  }
+  readonly implementedCount = computed(() =>
+    this.rows().filter(r => !!r.test.implementationUrl?.trim()).length);
 
   @HostListener('document:click', ['$event'])
   onDocClick(e: MouseEvent): void {

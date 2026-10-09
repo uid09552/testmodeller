@@ -279,10 +279,13 @@
           }
 
           @if (editNodeId() !== node.id) {
+            @let lines = labelLines(node);
             <text class="node-label"
                   [class.node-label--light]="labelIsLight(node)"
-                  [attr.x]="node.w / 2" [attr.y]="node.h / 2 + 5">
-              {{ node.label }}
+                  [attr.x]="node.w / 2" [attr.y]="labelY(node, lines.length)">
+              @for (line of lines; track $index) {
+                <tspan [attr.x]="node.w / 2" [attr.dy]="$index === 0 ? 0 : lineHeight">{{ line }}</tspan>
+              }
             </text>
           } @else {
             <foreignObject [attr.x]="editBox(node).x" [attr.y]="editBox(node).y"
