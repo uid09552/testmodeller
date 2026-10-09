@@ -8,8 +8,7 @@ import { CanvasComponent } from '../components/canvas/canvas';
 import { PropertiesPanelComponent } from '../components/properties-panel/properties-panel';
 import { TestCasesPanelComponent } from '../components/test-cases-panel/test-cases-panel';
 import { BottomPanelComponent } from '../components/bottom-panel/bottom-panel';
-import { AiChatComponent } from '../components/ai-chat/ai-chat';
-import { SimulationPanelComponent } from '../components/simulation-panel/simulation-panel';
+import { AiChatWindowComponent } from '../components/ai-chat-window/ai-chat-window';
 import { ModelTableComponent } from '../components/model-table/model-table';
 import { AiChatStore } from '../state/ai-chat.store';
 import { ModelEditorStore } from '../state/model-editor.store';
@@ -23,17 +22,17 @@ function clamp(v: number, min: number, max: number): number {
 }
 
 /** The panes of the editor's right column, in the order they are shown. */
-export type SideTab = 'tests' | 'properties' | 'chat' | 'simulate';
+export type SideTab = 'tests' | 'properties';
 export type EditorMode = 'edit' | 'present' | 'table';
 
 @Component({
   selector: 'tm-model-editor-page',
   imports: [
     RouterLink, CanvasComponent, TestCasesPanelComponent, PropertiesPanelComponent,
-    BottomPanelComponent, AiChatComponent, SimulationPanelComponent, ModelTableComponent,
+    BottomPanelComponent, AiChatWindowComponent, ModelTableComponent,
   ],
   // Each editor instance gets its own stores. The chat store is here, not in
-  // the panel, so the transcript survives switching the right-panel tab.
+  // the chat window, so the transcript survives closing the window.
   providers: [ModelEditorStore, ModelPersistenceService, AiChatStore],
   templateUrl: './model-editor-page.html',
   styleUrl: './model-editor-page.scss',
@@ -169,7 +168,7 @@ export class ModelEditorPageComponent implements OnInit {
   readonly saveError   = this.remote.error;
   /** The id this editor persists under; null while loading, so autosave is off. */
   private readonly modelId = signal<string | null>(null);
-  /** For the simulation panel. */
+  /** For the Simulate tab of the bottom panel. */
   readonly openModelId = this.modelId.asReadonly();
 
   /** Route id the editor is currently showing, so a re-run is a no-op. */

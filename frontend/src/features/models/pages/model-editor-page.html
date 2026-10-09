@@ -116,10 +116,13 @@
     }
     @if (mode() === 'present') {
       <button type="button" class="present-exit" (click)="setMode('edit')">Edit (Esc)</button>
+    } @else {
+      <!-- AI assistant: a chat window floating over the canvas (06-ui.md). -->
+      <tm-ai-chat-window />
     }
   </div>
 
-  <!-- Right column: Properties and the AI assistant (06-ui.md). It spans the
+  <!-- Right column: Test Cases and Properties (06-ui.md). It spans the
        bottom panel's row too, so the test cases sit high and stay in full. -->
   @if (mode() !== 'present') {
   <aside class="editor-side" aria-label="Model side panel">
@@ -137,32 +140,17 @@
               (click)="showTab('properties')">
         Properties
       </button>
-      <button class="side-tab" [class.side-tab--on]="sideTab() === 'simulate'"
-              role="tab" [attr.aria-selected]="sideTab() === 'simulate'"
-              (click)="showTab('simulate')">
-        Simulate
-      </button>
-      <button class="side-tab" [class.side-tab--on]="sideTab() === 'chat'"
-              role="tab" [attr.aria-selected]="sideTab() === 'chat'"
-              (click)="showTab('chat')">
-        AI
-        @if (chat.pendingCount(); as n) {
-          <span class="side-tab__badge">{{ n }}</span>
-        }
-      </button>
     </div>
 
     @switch (sideTab()) {
       @case ('tests')      { <tm-test-cases-panel /> }
       @case ('properties') { <tm-properties-panel /> }
-      @case ('chat')       { <tm-ai-chat /> }
-      @case ('simulate')   { <tm-simulation-panel [modelId]="openModelId()" [featureId]="featureId()" /> }
     }
   </aside>
 
-  <!-- Bottom panel (scenario / test cases / validation) -->
+  <!-- Bottom panel (scenario / test cases / validation / simulate) -->
   <div class="editor-bottom">
-    <tm-bottom-panel />
+    <tm-bottom-panel [modelId]="openModelId()" [featureId]="featureId()" />
   </div>
   }
 

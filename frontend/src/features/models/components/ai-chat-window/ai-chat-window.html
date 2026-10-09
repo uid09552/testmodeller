@@ -1,0 +1,53 @@
+@if (open()) {
+  <section class="ai-window" [class.ai-window--min]="minimised()"
+           aria-label="AI assistant"
+           [style.width.px]="width()"
+           [style.height.px]="minimised() ? null : height()">
+    @if (!minimised()) {
+      <div class="ai-window__resize" (mousedown)="startResize($event)"
+           title="Drag to resize" aria-hidden="true"></div>
+    }
+    <header class="ai-window__bar">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <span class="ai-window__title">AI assistant</span>
+      @if (chat.pendingCount(); as n) {
+        <span class="ai-badge" title="Proposals waiting for a decision">{{ n }}</span>
+      }
+      <button type="button" class="ai-window__btn" (click)="minimised.set(!minimised())"
+              [attr.aria-label]="minimised() ? 'Expand chat' : 'Minimise chat'"
+              [title]="minimised() ? 'Expand' : 'Minimise'">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+          @if (minimised()) { <polyline points="6 15 12 9 18 15"/> }
+          @else { <line x1="5" y1="12" x2="19" y2="12"/> }
+        </svg>
+      </button>
+      <button type="button" class="ai-window__btn" (click)="toggle()"
+              aria-label="Close chat" title="Close (the conversation is kept)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </header>
+    <!-- Kept while minimised, so a draft is not lost. -->
+    <div class="ai-window__body" [class.ai-window__body--hidden]="minimised()">
+      <tm-ai-chat />
+    </div>
+  </section>
+}
+<button type="button" class="ai-launcher" [class.ai-launcher--on]="open()"
+        (click)="toggle()" [attr.aria-expanded]="open()" aria-label="AI assistant"
+        [title]="open() ? 'Close AI assistant' : 'Open AI assistant'">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  </svg>
+  AI
+  @if (chat.pendingCount(); as n) {
+    <span class="ai-badge">{{ n }}</span>
+  }
+</button>

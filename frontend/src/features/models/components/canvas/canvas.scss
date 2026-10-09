@@ -581,7 +581,8 @@
 // Overlays on the canvas: search, shortcut help, minimap.
 .canvas-overlay { position: absolute; z-index: 5; }
 .canvas-overlay--search { top: 10px; right: 12px; }
-.canvas-overlay--minimap { bottom: 12px; right: 12px; }
+// Above the editor's AI button, which sits in the bottom-right corner.
+.canvas-overlay--minimap { bottom: 56px; right: 12px; }
 .canvas-wrap:focus-visible { outline: 2px solid var(--clr-brand-400); outline-offset: -2px; }
 
 .snap-guide { stroke: var(--clr-brand-500); stroke-width: 1; stroke-dasharray: 4 3; pointer-events: none; }

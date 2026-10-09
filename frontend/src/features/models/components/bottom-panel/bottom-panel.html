@@ -44,6 +44,21 @@
       }
     </button>
 
+    <button class="bp-tab" role="tab"
+            [class.bp-tab--active]="activeTab() === 'simulate'"
+            [attr.aria-selected]="activeTab() === 'simulate'"
+            id="tab-simulate"
+            (click)="activeTab.set('simulate')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      Simulate
+      @if (store.simulation()) {
+        <span class="bp-badge bp-badge--live" title="A simulation is running">●</span>
+      }
+    </button>
+
   </div>
 
   <!-- Tab panels -->
@@ -255,6 +270,14 @@
         }
       </div>
     }
+
+    <!-- ── Simulate ──────────────────────────────────────────────────── -->
+    <!-- Kept alive while another tab is shown, so a running simulation and
+         its canvas markers survive a look at the validation list. -->
+    <div class="bp-pane" role="tabpanel" aria-labelledby="tab-simulate"
+         [class.bp-pane--hidden]="activeTab() !== 'simulate'">
+      <tm-simulation-panel [modelId]="modelId()" [featureId]="featureId()" />
+    </div>
 
   </div>
 </div>

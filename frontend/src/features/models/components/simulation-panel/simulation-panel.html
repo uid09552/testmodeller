@@ -1,7 +1,22 @@
 <section class="sim" aria-label="Simulation">
   <header class="sim__head">
     <h2 class="sim__title">Simulation</h2>
-    @if (current()) {
+    @if (current(); as c) {
+      <p class="sim__state" role="status">
+        <span class="sim__state-label">Current state</span>
+        <strong>{{ stateName(c.stateId) }}</strong>
+        @if (c.final) { <span class="sim__tag sim__tag--ok">final — done</span> }
+        @if (stuck()) { <span class="sim__tag sim__tag--warn">stuck: no transition is enabled</span> }
+      </p>
+      <span class="sim__spacer"></span>
+      @if (savedName(); as n) {
+        <span class="sim__saved" role="status">Saved “{{ n }}”.</span>
+      }
+      @if (trail().length) {
+        <button class="sim__btn" type="button" (click)="back()">Step back</button>
+        <button class="sim__btn sim__btn--primary" type="button" [disabled]="busy() || !featureId()"
+                (click)="saveAsTestCase()">Save as test case</button>
+      }
       <button class="sim__btn" type="button" (click)="start()" [disabled]="busy()">Restart</button>
       <button class="sim__btn" type="button" (click)="stop()">Stop</button>
     }
@@ -17,64 +32,68 @@
   }
 
   @if (!current()) {
-    <p class="sim__hint">
-      Walk through the model one transition at a time. Guards and actions are
-      evaluated as test generation evaluates them, on the model as it is now.
-    </p>
-    <button class="sim__btn sim__btn--primary" type="button" (click)="start()"
-            [disabled]="busy() || !modelId()">Start simulation</button>
+    <div class="sim__intro">
+      <p class="sim__hint">
+        Walk through the model one transition at a time. Guards and actions are
+        evaluated as test generation evaluates them, on the model as it is now.
+      </p>
+      <button class="sim__btn sim__btn--primary" type="button" (click)="start()"
+              [disabled]="busy() || !modelId()">▶ Start simulation</button>
+    </div>
   } @else {
     @let c = current()!;
-    <p class="sim__state" role="status">
-      Current state: <strong>{{ stateName(c.stateId) }}</strong>
-      @if (c.final) { <span class="sim__tag">final — done</span> }
-      @if (stuck()) { <span class="sim__tag sim__tag--warn">stuck: no transition is enabled</span> }
-    </p>
-
-    @if (variables().length) {
-      <table class="sim__vars" aria-label="Variables">
-        <tbody>
-          @for (v of variables(); track v[0]) {
-            <tr><th scope="row">{{ v[0] }}</th><td>{{ showValue(v[1]) }}</td></tr>
-          }
-        </tbody>
-      </table>
-    }
-
-    @if (c.transitions.length) {
-      <ul class="sim__options" role="list" aria-label="Transitions from here">
-        @for (t of c.transitions; track t.transitionId) {
-          <li>
-            @if (t.enabled) {
-              <button class="sim__take" type="button" [disabled]="busy()" (click)="take(t.transitionId)">
-                ▶ {{ edgeLabel(t.transitionId) }}
-                @if (guard(t.transitionId); as g) { <code>[{{ g }}]</code> }
-              </button>
-            } @else {
-              <div class="sim__blocked">
-                ⊘ {{ edgeLabel(t.transitionId) }}
-                <span class="sim__reason">blocked: {{ t.reason }}</span>
-              </div>
-            }
-          </li>
+    <div class="sim__cols">
+      <div class="sim__col">
+        <h3 class="sim__sub">Variables</h3>
+        @if (variables().length) {
+          <table class="sim__vars" aria-label="Variables">
+            <tbody>
+              @for (v of variables(); track v[0]) {
+                <tr><th scope="row">{{ v[0] }}</th><td>{{ showValue(v[1]) }}</td></tr>
+              }
+            </tbody>
+          </table>
+        } @else {
+          <p class="sim__none">This model has no variables.</p>
         }
-      </ul>
-    }
-
-    @if (trail().length) {
-      <h3 class="sim__sub">Trail</h3>
-      <ol class="sim__trail">
-        <li>{{ stateName(frames()[0].step.stateId) }}</li>
-        @for (s of trail(); track $index) { <li>{{ s.event }} → {{ s.state }}</li> }
-      </ol>
-      <div class="sim__actions">
-        <button class="sim__btn" type="button" (click)="back()">Step back</button>
-        <button class="sim__btn sim__btn--primary" type="button" [disabled]="busy() || !featureId()"
-                (click)="saveAsTestCase()">Save as test case</button>
       </div>
-      @if (savedName(); as n) {
-        <p class="sim__saved" role="status">Saved “{{ n }}”.</p>
-      }
-    }
+
+      <div class="sim__col">
+        <h3 class="sim__sub">Transitions from here</h3>
+        @if (c.transitions.length) {
+          <ul class="sim__options" role="list" aria-label="Transitions from here">
+            @for (t of c.transitions; track t.transitionId) {
+              <li>
+                @if (t.enabled) {
+                  <button class="sim__take" type="button" [disabled]="busy()" (click)="take(t.transitionId)">
+                    ▶ {{ edgeLabel(t.transitionId) }}
+                    @if (guard(t.transitionId); as g) { <code>[{{ g }}]</code> }
+                  </button>
+                } @else {
+                  <div class="sim__blocked">
+                    ⊘ {{ edgeLabel(t.transitionId) }}
+                    <span class="sim__reason" [title]="t.reason">blocked: {{ t.reason }}</span>
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="sim__none">None — this state has no outgoing transitions.</p>
+        }
+      </div>
+
+      <div class="sim__col">
+        <h3 class="sim__sub">Trail</h3>
+        @if (trail().length) {
+          <ol class="sim__trail">
+            <li>{{ stateName(frames()[0].step.stateId) }}</li>
+            @for (s of trail(); track $index) { <li>{{ s.event }} → {{ s.state }}</li> }
+          </ol>
+        } @else {
+          <p class="sim__none">Take a transition; the path walked so far is listed here.</p>
+        }
+      </div>
+    </div>
   }
 </section>

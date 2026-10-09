@@ -294,7 +294,7 @@ export type AlignMode =
 
 export type SelType = 'node' | 'edge' | 'group';
 
-export type BottomTab = 'scenario' | 'testcases' | 'validation';
+export type BottomTab = 'scenario' | 'testcases' | 'validation' | 'simulate';
 export interface Selection { id: string; type: SelType }
 
 /** A search result on the canvas. */

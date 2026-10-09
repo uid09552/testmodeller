@@ -134,8 +134,8 @@ async function main() {
     await page.getByRole('tab', { name: 'Properties' }).click();
     await shoot(page, '04-properties');
 
-    // ── AI assistant ───────────────────────────────────────────────────────
-    await page.getByRole('tab', { name: 'AI' }).click();
+    // ── AI assistant: a chat window over the canvas ────────────────────────
+    await page.getByRole('button', { name: 'AI assistant' }).click();
     await shoot(page, '05-ai-assistant');
 
     // ── Cross-cutting views ────────────────────────────────────────────────

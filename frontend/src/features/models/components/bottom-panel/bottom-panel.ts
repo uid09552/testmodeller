@@ -1,15 +1,16 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   ModelEditorStore, StateTest, TestCategory, gherkinClause, safeExternalUrl,
 } from '../../state/model-editor.store';
 import { TestCaseDialogComponent } from '../test-case-dialog/test-case-dialog';
+import { SimulationPanelComponent } from '../simulation-panel/simulation-panel';
 
 type CategoryFilter = 'all' | TestCategory;
 
 @Component({
   selector: 'tm-bottom-panel',
-  imports: [FormsModule, TestCaseDialogComponent],
+  imports: [FormsModule, TestCaseDialogComponent, SimulationPanelComponent],
   templateUrl: './bottom-panel.html',
   styleUrl: './bottom-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -17,6 +18,10 @@ type CategoryFilter = 'all' | TestCategory;
 export class BottomPanelComponent {
   readonly store = inject(ModelEditorStore);
   readonly activeTab = this.store.bottomTab;
+
+  /** The open model and its feature, for the Simulate tab; null while loading. */
+  readonly modelId = input<string | null>(null);
+  readonly featureId = input<string | null>(null);
 
   // ── Test case list ─────────────────────────────────────────────────────────
   readonly categoryFilters: CategoryFilter[] = ['all', 'unit', 'integration', 'feature'];
