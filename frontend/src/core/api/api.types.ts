@@ -117,11 +117,26 @@ export interface AssignmentInput {
 }
 
 /** A stored test case, as `GET /models/{id}/test-cases` returns it. */
+/** An imported execution result (`TestResult` in openapi.yaml). */
+export type ResultStatus = 'passed' | 'failed' | 'skipped' | 'error';
+export interface TestResult {
+  id: string;
+  testCaseId: string;
+  runId: string;
+  status: ResultStatus;
+  durationMs?: number;
+  message?: string;
+  executedAt: string;
+  source: string;
+}
+
 export interface TestCase extends TestCaseInput {
   id: string;
   version: number;
   featureId: string;
   assignments: (AssignmentInput & { testCaseId: string })[];
+  /** Read-only: most recent imported result. */
+  lastResult?: TestResult;
 }
 
 /** Payload of a `states-and-transitions` proposal. */

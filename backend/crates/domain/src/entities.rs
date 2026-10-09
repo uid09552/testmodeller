@@ -62,6 +62,10 @@ string_enum!(
     Origin { Manual => "manual", Generated => "generated", Ai => "ai" }
 );
 string_enum!(
+    /// Outcome of an imported test result.
+    ResultStatus { Passed => "passed", Failed => "failed", Skipped => "skipped", Error => "error" }
+);
+string_enum!(
     /// Lifecycle status of a test case.
     TestCaseStatus { Draft => "draft", Approved => "approved", Deprecated => "deprecated" }
 );
@@ -294,6 +298,29 @@ pub struct TestCase {
     pub generated_from_model_id: Option<Uuid>,
     /// Where the test case is assigned.
     pub assignments: Vec<Assignment>,
+    /// Most recent imported result, by execution time.
+    pub last_result: Option<TestResult>,
+}
+
+/// An imported execution result of a test case (FR-052).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestResult {
+    /// Id.
+    pub id: Uuid,
+    /// Test case it belongs to.
+    pub test_case_id: Uuid,
+    /// Run it came from; unique per test case.
+    pub run_id: String,
+    /// Outcome.
+    pub status: ResultStatus,
+    /// Duration in milliseconds, if reported.
+    pub duration_ms: Option<i64>,
+    /// Failure or error message, if any.
+    pub message: Option<String>,
+    /// When the test ran.
+    pub executed_at: DateTime<Utc>,
+    /// Format and file name it was imported from.
+    pub source: String,
 }
 
 /// AI-suggested artifact awaiting review.

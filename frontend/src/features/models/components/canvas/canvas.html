@@ -96,6 +96,26 @@
     Align
   </button>
 
+  <div class="toolbar__sep" aria-hidden="true"></div>
+
+  <div class="toolbar__group tb-coverage">
+    <button class="tb-btn" [class.tb-btn--on]="store.coverageView() !== 'off'"
+            [attr.aria-pressed]="store.coverageView() !== 'off'"
+            title="Highlight states and transitions without a test case"
+            (click)="toggleCoverage()">
+      Coverage
+    </button>
+    @if (store.coverageView() !== 'off') {
+      <select class="tb-select" aria-label="Coverage of"
+              (change)="setCoverageView($any($event.target).value)">
+        <option value="both" [selected]="store.coverageView() === 'both'">States and transitions</option>
+        <option value="states" [selected]="store.coverageView() === 'states'">States</option>
+        <option value="transitions" [selected]="store.coverageView() === 'transitions'">Transitions</option>
+      </select>
+      <span class="tb-coverage__counts" role="status">{{ coverageSummary() }}</span>
+    }
+  </div>
+
   <div class="toolbar__spacer" aria-hidden="true"></div>
 
   @if (store.errorCount() > 0) {
@@ -224,7 +244,7 @@
               (dblclick)="onEdgeDblClick($event, edge)"
               (contextmenu)="openContextMenu($event, 'edge', edge.id)"
               role="button"
-              [attr.aria-label]="'Transition: ' + edge.label"
+              [attr.aria-label]="edgeAriaLabel(edge)"
               [attr.aria-pressed]="isSelected(edge.id)" />
       }
 
@@ -233,6 +253,8 @@
         <g class="node-group"
            [class.node-group--selected]="isSelected(node.id)"
            [class.node-group--issue]="isIssue(node.id)"
+           [class.node-group--uncovered]="store.isUncoveredState(node.id)"
+           (click)="onNodeClick($event, node)"
            [attr.transform]="'translate(' + node.x + ',' + node.y + ')'"
            (mousedown)="onNodeMouseDown($event, node)"
            (mouseup)="onNodeMouseUp($event, node)"
@@ -241,7 +263,7 @@
            (mouseenter)="hoveredNodeId.set(node.id)"
            (mouseleave)="hoveredNodeId.set(null)"
            role="button"
-           [attr.aria-label]="node.kind + ' state: ' + node.label"
+           [attr.aria-label]="nodeAriaLabel(node)"
            [attr.aria-pressed]="isSelected(node.id)"
            tabindex="0"
            (keydown.enter)="store.select(node.id, 'node')">
@@ -303,6 +325,17 @@
             </foreignObject>
           }
 
+          <!-- Uncovered under the coverage overlay: a dashed outline and a "0"
+               marker, so the cue does not rely on colour. -->
+          @if (store.isUncoveredState(node.id)) {
+            <rect class="node-gap-outline" x="-6" y="-6"
+                  [attr.width]="node.w + 12" [attr.height]="node.h + 12" rx="12" ry="12" />
+            <g class="node-gap-marker" [attr.transform]="'translate(' + (node.w / 2) + ',' + (node.h + 12) + ')'">
+              <circle r="8" />
+              <text y="3.5">0</text>
+            </g>
+          }
+
           @if (node.kind !== 'regular') {
             <text class="node-kind-badge"
                   [class.node-kind-badge--final]="node.kind === 'final'"
@@ -320,6 +353,8 @@
                role="button" tabindex="0"
                (keydown.enter)="revealTestsFor(node)"
                [attr.aria-label]="'Test cases on ' + node.label + ': ' + node.tests.length
+                                  + (store.staleCountOn(node) ? ', ' + store.staleCountOn(node) + ' stale' : '')
+                                  + (store.failingCountOn(node) ? ', ' + store.failingCountOn(node) + ' failing' : '')
                                   + '. Double-click to open.'">
               <title>{{ node.tests.length }} test case(s) — double-click to open</title>
               <!-- One hit area behind the row: the gaps between chips are part
@@ -338,6 +373,23 @@
                     <circle class="node-tests__neg" cx="29" cy="-10" r="4" />
                     <text class="node-tests__neg-txt" x="29" y="-7.5">−</text>
                   }
+                </g>
+              }
+              <!-- Stale generated tests: a "!" chip, not colour alone. -->
+              @if (store.staleCountOn(node)) {
+                <g class="node-tests__stale"
+                   [attr.transform]="'translate(' + (store.testCounts(node).length * TEST_CHIP_STEP) + ',0)'">
+                  <rect x="0" y="-11" width="19" height="19" rx="9" ry="9" />
+                  <text x="9.5" y="3">!</text>
+                </g>
+              }
+              <!-- Latest result failed: a "✗" chip with the count. -->
+              @if (store.failingCountOn(node); as failing) {
+                <g class="node-tests__failing"
+                   [attr.transform]="'translate(' + (store.testCounts(node).length * TEST_CHIP_STEP
+                                     + (store.staleCountOn(node) ? 23 : 0)) + ',0)'">
+                  <rect x="0" y="-11" width="27" height="19" rx="9" ry="9" />
+                  <text x="13.5" y="3">✗{{ failing }}</text>
                 </g>
               }
             </g>
@@ -378,6 +430,7 @@
            stay grabbable above the states. -->
       @for (edge of store.edges(); track edge.id) {
         <g class="edge-group edge-group--visual"
+           [class.edge-group--uncovered]="store.isUncoveredTransition(edge.id)"
            [class.edge-group--selected]="isSelected(edge.id)">
           <path class="edge-line" [attr.d]="edgePath(edge)"
                 [attr.marker-end]="isSelected(edge.id) ? 'url(#arrow-selected)' : 'url(#arrow)'" />

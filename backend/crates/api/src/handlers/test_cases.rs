@@ -308,6 +308,7 @@ pub async fn generate(
                             step_order: a.step_order,
                         })
                         .collect(),
+                    last_result: None,
                 };
                 (&tc).into()
             })
@@ -336,11 +337,53 @@ async fn coverage_of(
     let ids: Vec<Uuid> = graphs.iter().map(|(id, _)| *id).collect();
     let (states, transitions): (HashSet<Uuid>, HashSet<Uuid>) =
         state.store.covered_elements(&ids).await?;
+    let (passing_states, passing_transitions) = state.store.passing_elements(&ids).await?;
     let mut total = CoverageReport::default();
+    let (mut ps, mut pt) = (0, 0);
     for (_, graph) in &graphs {
         total.merge(CoverageReport::compute(graph, &states, &transitions));
+        ps += graph
+            .states
+            .iter()
+            .filter(|s| passing_states.contains(&s.id))
+            .count();
+        pt += graph
+            .transitions
+            .iter()
+            .filter(|t| passing_transitions.contains(&t.id))
+            .count();
     }
-    Ok((&total).into())
+    let mut dto: CoverageDto = (&total).into();
+    dto.states.passing = Some(ps);
+    dto.transitions.passing = Some(pt);
+    Ok(dto)
+}
+
+/// `GET /models/{modelId}/stale-tests`: generated test cases whose path no longer fits
+/// the model. Read-only. See docs/specification/04-test-generation.md#stale-tests.
+pub async fn stale_tests(
+    State(state): State<AppState>,
+    ApiPath(id): ApiPath<Uuid>,
+) -> ApiResult<Json<Vec<StaleTestDto>>> {
+    let graph = state.store.get_model_graph(id).await?;
+    let cases = state.store.generated_test_cases(id).await?;
+    let stale = cases
+        .iter()
+        .filter_map(|tc| {
+            let assigned: Vec<_> = tc
+                .assignments
+                .iter()
+                .filter(|a| a.model_id == id)
+                .map(|a| (a.target, a.step_order))
+                .collect();
+            let reasons = tm_generation::check_path(&graph, tc.data.steps.len(), &assigned);
+            (!reasons.is_empty()).then(|| StaleTestDto {
+                test_case_id: tc.audit.id,
+                reasons: reasons.iter().map(Into::into).collect(),
+            })
+        })
+        .collect();
+    Ok(Json(stale))
 }
 
 /// `GET /models/{modelId}/coverage` (FR-022)

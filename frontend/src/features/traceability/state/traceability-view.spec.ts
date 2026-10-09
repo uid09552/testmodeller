@@ -12,7 +12,9 @@ const ITEMS: TraceItem[] = [
     backlogUrl: 'https://jira.example/TM-1',
     testCases: [
       tc({ id: 'a', name: 'Valid login', implementationUrl: 'https://git/login.spec.ts',
-           elements: [{ modelId: 'm', stateId: 's' }] }),
+           elements: [{ modelId: 'm', stateId: 's' }],
+           lastResult: { id: 'r', testCaseId: 'a', runId: 'run', status: 'failed',
+                         executedAt: '2026-10-01T09:00:00Z', source: 'junit' } }),
       tc({ id: 'b', name: 'Wrong password' }),
     ],
   },
@@ -67,16 +69,16 @@ describe('toCsv (FR-028)', () => {
     const lines = toCsv(toRows(ITEMS, []), NAMES).trimEnd().split('\r\n');
     expect(lines).toHaveLength(1 + 3);
     expect(lines[0]).toBe(
-      'Backlog item,Test case,Test case id,Component,Feature,Implementation,Model elements');
+      'Backlog item,Test case,Test case id,Component,Feature,Implementation,Model elements,Latest result');
     expect(lines[1]).toBe(
-      'https://jira.example/TM-1,Valid login,a,Auth,Login,https://git/login.spec.ts,1');
-    expect(lines[2]).toBe('https://jira.example/TM-1,Wrong password,b,Auth,Login,,0');
-    expect(lines[3]).toBe('https://jira.example/TM-2,Reset,c,Auth,Login,,0');
+      'https://jira.example/TM-1,Valid login,a,Auth,Login,https://git/login.spec.ts,1,failed');
+    expect(lines[2]).toBe('https://jira.example/TM-1,Wrong password,b,Auth,Login,,0,');
+    expect(lines[3]).toBe('https://jira.example/TM-2,Reset,c,Auth,Login,,0,');
   });
 
   it('leaves the backlog cell empty for an untraced test case', () => {
     const lines = toCsv(toRows([], UNTRACED), NAMES).trimEnd().split('\r\n');
-    expect(lines[1]).toBe(',Orphan,d,Auth,Login,,0');
+    expect(lines[1]).toBe(',Orphan,d,Auth,Login,,0,');
   });
 
   it('quotes commas, quotes and line breaks', () => {

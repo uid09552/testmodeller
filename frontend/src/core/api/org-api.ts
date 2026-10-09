@@ -31,6 +31,21 @@ export interface ModelSummary extends Audit {
   stateCount: number;
   transitionCount: number;
 }
+/** Why a generated test case no longer fits its model (`StaleReason` in openapi.yaml). */
+export interface StaleReason {
+  code: 'STEP_UNASSIGNED' | 'STEPS_DISCONNECTED' | 'NOT_FROM_INITIAL' | 'GUARD_UNSATISFIABLE';
+  stepOrder?: number;
+  message: string;
+}
+export interface StaleTest { testCaseId: string; reasons: StaleReason[] }
+
+/** `Coverage` in openapi.yaml. */
+export interface Coverage {
+  states: { covered: number; total: number };
+  transitions: { covered: number; total: number };
+  uncoveredStateIds?: string[];
+  uncoveredTransitionIds?: string[];
+}
 export interface Model extends ModelSummary {
   description?: string;
   status?: string;
@@ -173,6 +188,18 @@ export class OrgApi {
   async deleteModel(modelId: string): Promise<void> {
     await this.call(() => firstValueFrom(
       this.http.delete<void>(`${BASE}/models/${modelId}`)));
+  }
+
+  /** `GET /models/{id}/coverage`: coverage of the saved model by assigned test cases. */
+  async modelCoverage(modelId: string): Promise<Coverage> {
+    return this.call(() => firstValueFrom(
+      this.http.get<Coverage>(`${BASE}/models/${modelId}/coverage`)));
+  }
+
+  /** `GET /models/{id}/stale-tests`: generated test cases that no longer fit the model. */
+  async staleTests(modelId: string): Promise<StaleTest[]> {
+    return this.call(() => firstValueFrom(
+      this.http.get<StaleTest[]>(`${BASE}/models/${modelId}/stale-tests`)));
   }
 
   // ── Test cases ────────────────────────────────────────────────────────────

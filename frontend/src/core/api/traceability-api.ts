@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { toApiError } from './api-error';
+import { TestResult } from './api.types';
 
 const BASE = '/api/v1';
 
@@ -21,6 +22,8 @@ export interface TraceTestCase {
   featureId: string;
   componentId: string;
   implementationUrl?: string;
+  /** Latest imported result. */
+  lastResult?: TestResult;
   elements: TraceElement[];
 }
 

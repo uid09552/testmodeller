@@ -1,0 +1,67 @@
+<div class="dialog-backdrop" role="presentation" (click)="close()">
+  <div class="dialog import" role="dialog" aria-modal="true" aria-labelledby="import-title"
+       (click)="$event.stopPropagation()" (keydown.escape)="close()">
+    <h3 class="dialog__title" id="import-title">Import test results</h3>
+    <p class="dialog__hint import__hint">
+      JUnit XML or Cucumber JSON, up to 10 MB. Results are matched by the <code>&#64;tm-…</code>
+      tag from the exports, otherwise by exact test case name.
+    </p>
+
+    <label class="field__label" for="import-project">Project</label>
+    <select id="import-project" class="select" tmAutofocus (change)="setProject($any($event.target).value)">
+      @for (p of projects(); track p.id) {
+        <option [value]="p.id" [selected]="project() === p.id">{{ p.name }}</option>
+      }
+    </select>
+
+    <label class="field__label" for="import-file">File</label>
+    <input id="import-file" class="input" type="file" accept=".xml,.json,application/xml,application/json"
+           (change)="pickFile($any($event.target).files)" />
+
+    <label class="field__label" for="import-format">Format</label>
+    <select id="import-format" class="select" (change)="setFormat($any($event.target).value)">
+      <option value="junit" [selected]="format() === 'junit'">JUnit XML</option>
+      <option value="cucumber" [selected]="format() === 'cucumber'">Cucumber JSON</option>
+    </select>
+
+    @if (error(); as err) {
+      <p class="import__error" role="alert">{{ err }}</p>
+    }
+
+    @if (report(); as r) {
+      <section class="import__report" aria-live="polite">
+        <p class="import__summary">
+          @if (r.dryRun) { <strong>Preview:</strong> }
+          {{ r.total }} result{{ r.total === 1 ? '' : 's' }} in the file,
+          {{ r.matched }} matched,
+          @if (r.dryRun) {
+            {{ r.matched - r.duplicates }} would be recorded,
+          } @else {
+            {{ r.recorded }} recorded,
+          }
+          {{ r.duplicates }} already imported.
+        </p>
+        @if (r.unmatched.length) {
+          <p class="import__list-title">Unmatched ({{ r.unmatched.length }})</p>
+          <ul class="import__list">
+            @for (n of r.unmatched; track $index) { <li>{{ n || '(no name)' }}</li> }
+          </ul>
+        }
+        @if (r.ambiguous.length) {
+          <p class="import__list-title">Ambiguous: several test cases have this name ({{ r.ambiguous.length }})</p>
+          <ul class="import__list">
+            @for (n of r.ambiguous; track $index) { <li>{{ n }}</li> }
+          </ul>
+        }
+      </section>
+    }
+
+    <div class="dialog__actions">
+      <button class="dialog__btn dialog__btn--cancel" type="button" (click)="close()">Close</button>
+      <button class="dialog__btn dialog__btn--cancel" type="button" [disabled]="!canSend()"
+              (click)="preview()">Preview</button>
+      <button class="dialog__btn dialog__btn--confirm" type="button" [disabled]="!canSend()"
+              (click)="run()">{{ busy() ? 'Importing…' : 'Import' }}</button>
+    </div>
+  </div>
+</div>

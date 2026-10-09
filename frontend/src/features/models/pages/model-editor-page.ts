@@ -11,6 +11,7 @@ import { BottomPanelComponent } from '../components/bottom-panel/bottom-panel';
 import { AiChatComponent } from '../components/ai-chat/ai-chat';
 import { AiChatStore } from '../state/ai-chat.store';
 import { ModelEditorStore } from '../state/model-editor.store';
+import { OrgApi } from '../../../core/api/org-api';
 import { ModelPersistenceService } from '../state/model-persistence';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
 import { readJson, writeJson } from '../../../core/persistence/local-store';
@@ -39,6 +40,7 @@ export class ModelEditorPageComponent implements OnInit {
   readonly store = inject(ModelEditorStore);
   readonly chat  = inject(AiChatStore);
   private readonly remote   = inject(ModelPersistenceService);
+  private readonly api      = inject(OrgApi);
   private readonly explorer = inject(ExplorerStore);
   private readonly route    = inject(ActivatedRoute);
   private readonly router   = inject(Router);
@@ -184,6 +186,24 @@ export class ModelEditorPageComponent implements OnInit {
     effect(() => {
       if (this.remote.state() === 'saved') this.store.clearDirty();
     });
+
+    // Transition coverage comes from the server for the saved model: fetched
+    // when the overlay shows transitions, and again after every save.
+    effect(() => {
+      const id = this.modelId();
+      const wanted = this.store.showTransitionGaps();
+      const saved = this.remote.state() === 'saved';
+      if (!id || !wanted || !saved) return;
+      untracked(() => void this.loadCoverage(id));
+    });
+
+    // Stale generated tests: on open and after every save, i.e. whenever the
+    // stored model is what the server would check.
+    effect(() => {
+      const id = this.modelId();
+      if (!id || this.remote.state() !== 'saved') return;
+      untracked(() => void this.loadStale(id));
+    });
   }
 
   ngOnInit(): void {
@@ -206,6 +226,28 @@ export class ModelEditorPageComponent implements OnInit {
    * route rather than run once on init — otherwise the editor keeps showing
    * the model that was open before.
    */
+  private async loadStale(id: string): Promise<void> {
+    try {
+      const list = await this.api.staleTests(id);
+      if (this.modelId() === id) this.store.setStaleTests(list);
+    } catch {
+      // Not knowing is not the same as stale: keep the last answer.
+    }
+  }
+
+  private async loadCoverage(id: string): Promise<void> {
+    try {
+      const c = await this.api.modelCoverage(id);
+      if (this.modelId() !== id) return;
+      this.store.setTransitionCoverage({
+        ...c.transitions, uncoveredTransitionIds: c.uncoveredTransitionIds ?? [],
+      });
+    } catch {
+      // Shown as unavailable rather than as zero.
+      if (this.modelId() === id) this.store.setTransitionCoverage(null);
+    }
+  }
+
   private openRouteModel(routeId: string | null): void {
     if (routeId === this.loadedRouteId()) return;
     this.loadedRouteId.set(routeId);

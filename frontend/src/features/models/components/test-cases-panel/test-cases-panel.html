@@ -5,6 +5,12 @@
     <span class="tests__total" [title]="store.totalTests() + ' in this model'">
       {{ store.totalTests() }}
     </span>
+    @if (store.staleCount() > 0) {
+      <button class="stale-badge stale-badge--action" type="button" (click)="store.showValidation()"
+              [title]="'Generated test cases that no longer fit the model — open Validation'">
+        ⚠ {{ store.staleCount() }} stale
+      </button>
+    }
   </header>
 
   <div class="tests__body">
@@ -51,6 +57,15 @@
                         [title]="test.polarity + ' case'">
                     {{ test.polarity === 'positive' ? '+' : '−' }}
                   </span>
+                  @if (store.staleReasons(test.id).length) {
+                    <span class="stale-badge">⚠ Stale</span>
+                  }
+                  @if (test.lastResult; as r) {
+                    <span class="result-badge result-badge--{{ r.status }}"
+                          [title]="'Latest result, ' + (r.executedAt | date: 'medium') + (r.message ? ': ' + r.message : '')">
+                      {{ resultLabel(r.status) }}
+                    </span>
+                  }
                   @if (implHref(test); as href) {
                     <a class="tc-link" [href]="href" target="_blank" rel="noopener noreferrer"
                        (click)="$event.stopPropagation()" title="Implementation">
@@ -72,6 +87,9 @@
                 </div>
                 <span class="tc-row__name">{{ test.name }}</span>
                 <span class="tc-row__steps">{{ gherkinSummary(test) }}</span>
+                @for (r of store.staleReasons(test.id); track $index) {
+                  <span class="stale-reason">{{ r.message }}</span>
+                }
                 <span class="tc-row__actions">
                   <button class="icon-btn" title="Edit in overlay" aria-label="Edit test case"
                           (click)="openEditor(n.id, test.id)">

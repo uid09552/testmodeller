@@ -20,10 +20,11 @@ REST/JSON under `/api/v1`. Errors use RFC 7807 problem details. Updates require 
 | Features | CRUD under a component, move, `scenarioDescription`, tags |
 | Models | CRUD under a feature, atomic graph save (`PUT`), duplicate, validate, versions, restore |
 | States / Transitions | Fine-grained CRUD within a model (transition = model step) |
-| TestCases | CRUD under a feature (manual), move, steps embedded, optional `implementationUrl` and `backlogUrl` |
+| TestCases | CRUD under a feature (manual), move, steps embedded, optional `implementationUrl` and `backlogUrl`, read-only `lastResult` |
 | Assignments | Assign test cases to states/transitions; list per test case, state, transition, model |
 | Generation | Generate test cases from a model (optionally saved and assigned) |
-| Coverage | Per model, feature, component |
+| Coverage | Per model, feature, component; stale generated test cases of a model |
+| TestResults | Import JUnit XML / Cucumber JSON results for a project, result history per test case |
 | Traceability | Read-only trace of backlog items to test cases, model elements and implementation links, with gaps |
 | Export | JSON/CSV/Gherkin export, JSON import |
 | AI | Async proposal jobs, list/accept/reject proposals |

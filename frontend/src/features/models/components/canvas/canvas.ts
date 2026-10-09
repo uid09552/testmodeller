@@ -1,5 +1,5 @@
 import {
-  ChangeDetectionStrategy, ChangeDetectorRef,
+  ChangeDetectionStrategy, ChangeDetectorRef, computed,
   Component, ElementRef, HostListener,
   effect, inject, output, signal, untracked, viewChild,
 } from '@angular/core';
@@ -8,7 +8,7 @@ import {
   CanvasEdge, CanvasNode, ModelEditorStore, NODE_H, NODE_W, StateKind,
   NodeShape, SIZE_FOR_SHAPE, SHAPE_FOR_KIND, NODE_COLORS,
   Anchor, ANCHORS, anchorPoint, nearestAnchor,
-  AlignMode, CanvasGroup, GROUP_COLORS, ResizeHandle,
+  AlignMode, CanvasGroup, GROUP_COLORS, ResizeHandle, CoverageView, coverageLabel,
 } from '../../state/model-editor.store';
 import { LABEL_LINE_H, labelLines } from '../../state/node-fit';
 
@@ -238,6 +238,59 @@ export class CanvasComponent {
   }
 
   readonly lineHeight = LABEL_LINE_H;
+
+  // ── Coverage overlay ──────────────────────────────────────────────────
+  /** e.g. "3/5 states, 4/7 transitions (as of last save)". */
+  readonly coverageSummary = computed(() => {
+    const parts: string[] = [];
+    // "passing" only once the model has results; before that it would always be 0.
+    const passing = (c: { passing?: number }) =>
+      this.store.hasResults() && c.passing !== undefined ? ` (${c.passing} passing)` : '';
+    if (this.store.showStateGaps()) {
+      const sc = this.store.stateCoverage();
+      parts.push(`${coverageLabel(sc)} states${passing(sc)}`);
+    }
+    if (this.store.showTransitionGaps()) {
+      const tc = this.store.transitionCoverage();
+      parts.push(!tc ? 'transitions unavailable until saved'
+        : `${coverageLabel(tc)} transitions${passing(tc)}${this.store.transitionCoverageStale() ? ' (as of last save)' : ''}`);
+    }
+    return parts.join(', ');
+  });
+  /** The dimension the toggle turns back on. */
+  private lastCoverageView: Exclude<CoverageView, 'off'> = 'both';
+  /** Where the last press on a state began, so a drag is not taken for a click. */
+  private nodeDownAt: { x: number; y: number } | null = null;
+
+  toggleCoverage(): void {
+    const cur = this.store.coverageView();
+    this.store.coverageView.set(cur === 'off' ? this.lastCoverageView : 'off');
+  }
+
+  setCoverageView(view: string): void {
+    if (view !== 'states' && view !== 'transitions' && view !== 'both') return;
+    this.lastCoverageView = view;
+    this.store.coverageView.set(view);
+  }
+
+  /** Clicking a highlighted state opens its test cases, ready to add one. */
+  onNodeClick(e: MouseEvent, node: CanvasNode): void {
+    const down = this.nodeDownAt;
+    this.nodeDownAt = null;
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+    if (this.store.isUncoveredState(node.id)) this.revealTestsFor(node);
+  }
+
+  nodeAriaLabel(node: CanvasNode): string {
+    const base = node.kind + ' state: ' + node.label;
+    return this.store.isUncoveredState(node.id) ? base + ', not covered by any test case' : base;
+  }
+
+  edgeAriaLabel(edge: CanvasEdge): string {
+    const base = 'Transition: ' + edge.label;
+    return this.store.isUncoveredTransition(edge.id)
+      ? base + ', not covered by any test case' : base;
+  }
 
   /** The label wrapped as the sizing logic did, so it fits the state. */
   labelLines(n: CanvasNode): string[] { return labelLines(n.label, n.shape); }
@@ -641,6 +694,7 @@ export class CanvasComponent {
     // rather than the state.
     if (this.handTool(e)) { this.startPan(e); return; }
     e.stopPropagation();
+    this.nodeDownAt = { x: e.clientX, y: e.clientY };
     if (this.editNodeId() === node.id) return;
 
     if (e.ctrlKey || e.metaKey) {

@@ -1056,3 +1056,51 @@
   &:hover { background: var(--clr-brand-50); color: var(--clr-brand-600); }
   &--backlog:hover { background: #fffbeb; color: #b45309; }
 }
+
+// ── Stale generated tests ─────────────────────────────────────────────────────
+// Text plus a symbol, never colour alone.
+.stale-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+
+  &--action {
+    cursor: pointer;
+    font-family: inherit;
+    &:hover { filter: brightness(.96); }
+    &:focus-visible { outline: 2px solid var(--clr-brand-500); outline-offset: 2px; }
+  }
+}
+
+.stale-reason {
+  display: block;
+  font-size: var(--text-xs);
+  color: #b45309;
+  margin-top: 2px;
+}
+
+// ── Latest test result ────────────────────────────────────────────────────────
+// The label carries a symbol and a word (see resultLabel), never colour alone.
+.result-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+
+  &--passed  { background: #f0fdf4; color: #15803d; border-color: #86efac; }
+  &--failed  { background: #fef2f2; color: #b91c1c; border-color: #fca5a5; }
+  &--error   { background: #fef2f2; color: #b91c1c; border-color: #fca5a5; }
+  &--skipped { background: var(--clr-surface-100); color: var(--clr-text-600); border-color: var(--clr-surface-200); }
+}

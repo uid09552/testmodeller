@@ -8,7 +8,7 @@ import {
   Traceability, TraceabilityApi, TraceGap, TraceItem, TraceTestCase,
 } from '../../../core/api/traceability-api';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
-import { linkLabel, safeExternalUrl } from '../../models/state/model-editor.store';
+import { linkLabel, resultLabel, safeExternalUrl } from '../../models/state/model-editor.store';
 import {
   coversNoElement, searchTrace, toCsv, toRows, TraceNames,
 } from '../state/traceability-view';
@@ -156,6 +156,7 @@ export class TraceabilityPageComponent {
   }
 
   // ── Row helpers ───────────────────────────────────────────────────────────
+  readonly resultLabel = resultLabel;
   href(url: string | undefined): string | null { return safeExternalUrl(url); }
   label(url: string | undefined): string { return linkLabel(url) || (url ?? ''); }
   noElement(item: TraceItem): boolean { return coversNoElement(item); }

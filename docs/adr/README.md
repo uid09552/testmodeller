@@ -20,3 +20,4 @@ Use [0000-template.md](0000-template.md). Number sequentially.
 | [0006](0006-ai-context-sync.md) | The AI panel syncs its own context to the backend | Superseded by 0008 |
 | [0007](0007-ai-provider-from-environment.md) | The AI provider is configured in the environment | Accepted |
 | [0008](0008-backend-is-the-only-store.md) | The backend is the only store of models | Accepted |
+| [0009](0009-test-result-import.md) | Importing test results: matching by tag, parsing safely | Accepted |

@@ -145,7 +145,7 @@ fn csv_field(s: &str) -> String {
 
 fn render_csv(b: &ExportBundle) -> String {
     let mut out = String::from(
-        "component,feature,testCaseId,testCase,status,priority,origin,tags,preconditions,step,action,expected\r\n",
+        "component,feature,testCaseId,testCase,status,priority,origin,tags,preconditions,step,action,expected,tmId\r\n",
     );
     for c in &b.components {
         for f in &c.features {
@@ -170,10 +170,14 @@ fn render_csv(b: &ExportBundle) -> String {
                         .map(|s| [s.order.to_string(), s.action.clone(), s.expected.clone()])
                         .collect()
                 };
+                // The tag the result importer matches on (FR-051), last so that
+                // existing column positions stay put.
+                let tag = [tm_tag(tc.audit.id)];
                 for row in rows {
                     let fields: Vec<String> = prefix
                         .iter()
                         .chain(row.iter())
+                        .chain(tag.iter())
                         .map(|s| csv_field(s))
                         .collect();
                     out.push_str(&fields.join(","));
@@ -191,6 +195,11 @@ fn one_line(s: &str) -> String {
 
 fn gherkin_tag(t: &str) -> String {
     format!("@{}", t.split_whitespace().collect::<Vec<_>>().join("_"))
+}
+
+/// Stable tag of a test case: what the result importer matches on (FR-051).
+pub fn tm_tag(id: Uuid) -> String {
+    format!("@tm-{id}")
 }
 
 fn render_gherkin(b: &ExportBundle) -> String {
@@ -216,10 +225,10 @@ fn render_gherkin(b: &ExportBundle) -> String {
             for tc in &f.test_cases {
                 let d = &tc.data;
                 out.push('\n');
-                if !d.tags.is_empty() {
-                    let tags: Vec<String> = d.tags.iter().map(|t| gherkin_tag(t)).collect();
-                    out.push_str(&format!("  {}\n", tags.join(" ")));
-                }
+                let tags: Vec<String> = std::iter::once(tm_tag(tc.audit.id))
+                    .chain(d.tags.iter().map(|t| gherkin_tag(t)))
+                    .collect();
+                out.push_str(&format!("  {}\n", tags.join(" ")));
                 out.push_str(&format!("  Scenario: {}\n", one_line(&d.name)));
                 if let Some(p) = d.preconditions.as_deref().filter(|p| !p.trim().is_empty()) {
                     out.push_str(&format!("    Given {}\n", one_line(p)));

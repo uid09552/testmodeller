@@ -81,6 +81,30 @@
   background: var(--clr-surface-50);
 }
 
+.tb-coverage { gap: 6px; }
+.tb-select {
+  font: inherit; font-size: var(--text-xs); padding: 3px 6px;
+  border: 1px solid var(--clr-surface-200); border-radius: var(--radius-sm); background: var(--clr-surface-0);
+}
+.tb-coverage__counts { font-size: var(--text-xs); color: var(--clr-text-600); white-space: nowrap; }
+
+// Coverage overlay: dashed amber outline plus a "0" marker (not colour alone).
+.node-gap-outline { fill: none; stroke: var(--clr-warning); stroke-width: 2; stroke-dasharray: 6 4; pointer-events: none; }
+.node-gap-marker {
+  pointer-events: none;
+  circle { fill: var(--clr-warning); }
+  text { fill: #fff; font-size: 10px; font-weight: 700; text-anchor: middle; }
+}
+.node-tests__stale {
+  rect { fill: #fffbeb; stroke: var(--clr-warning); }
+  text { fill: #b45309; font-size: 11px; font-weight: 800; text-anchor: middle; }
+}
+.node-tests__failing {
+  rect { fill: #fef2f2; stroke: var(--clr-danger); }
+  text { fill: var(--clr-danger); font-size: 10px; font-weight: 800; text-anchor: middle; }
+}
+.edge-group--uncovered .edge-line { stroke: var(--clr-warning); stroke-dasharray: 6 4; }
+
 .tb-zoom-label { font-size: var(--text-xs); color: var(--clr-text-400); min-width: 32px; text-align: center; }
 
 .tb-dirty-dot {

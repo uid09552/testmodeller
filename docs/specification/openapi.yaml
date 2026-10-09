@@ -21,6 +21,7 @@ tags:
   - name: Generation
   - name: Coverage
   - name: Traceability
+  - name: TestResults
   - name: Export
   - name: AI
   - name: Settings
@@ -359,6 +360,15 @@ paths:
       summary: Delete test case
       responses:
         '204': { description: Deleted }
+  /test-cases/{testCaseId}/results:
+    parameters: [ { $ref: '#/components/parameters/TestCaseId' } ]
+    get:
+      tags: [TestResults]
+      summary: Result history of a test case, newest first
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TestResult' } } } } }
   /test-cases/{testCaseId}/move:
     parameters: [ { $ref: '#/components/parameters/TestCaseId' } ]
     post:
@@ -451,6 +461,15 @@ paths:
       summary: Coverage of the model by assigned test cases
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Coverage' } } } }
+  /models/{modelId}/stale-tests:
+    parameters: [ { $ref: '#/components/parameters/ModelId' } ]
+    get:
+      tags: [Coverage]
+      summary: Generated test cases whose path no longer matches the current model, with reasons. Read-only.
+      description: Only test cases with origin `generated` are checked. Only stale test cases are listed.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StaleTest' } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
   /features/{featureId}/coverage:
     parameters: [ { $ref: '#/components/parameters/FeatureId' } ]
     get:
@@ -466,6 +485,28 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Coverage' } } } }
 
+  /projects/{projectId}/test-results:
+    parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+    post:
+      tags: [TestResults]
+      summary: Import a JUnit XML or Cucumber JSON result file; each result is matched to a test case of the project
+      description: >-
+        The file is the request body (not multipart), at most 10 MB. A result is matched by the tag
+        `@tm-<test case id>` (in a JUnit name, classname or `tmId` property, or a Cucumber tag), otherwise
+        by exact test case name within the project. Re-importing the same file records nothing new.
+        XML with a DOCTYPE is rejected.
+      parameters:
+        - { name: format, in: query, required: true, schema: { type: string, enum: [junit, cucumber] } }
+        - { name: dryRun, in: query, schema: { type: boolean, default: false }, description: Match and report without recording }
+      requestBody:
+        required: true
+        content:
+          application/xml: { schema: { type: string } }
+          application/json: { schema: { type: string } }
+      responses:
+        '200': { description: Import report, content: { application/json: { schema: { $ref: '#/components/schemas/ImportReport' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
   /projects/{projectId}/traceability:
     parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
     get:
@@ -815,6 +856,7 @@ components:
             backlogUrl: { type: string, format: uri, maxLength: 2048, pattern: '^https?://', description: Optional http(s) link to the backlog item (the requirement) }
             origin: { $ref: '#/components/schemas/Origin' }
             generatedFromModelId: { $ref: '#/components/schemas/Id' }
+            lastResult: { allOf: [ { $ref: '#/components/schemas/TestResult' } ], readOnly: true, description: Most recent imported result by execution time }
             steps: { type: array, items: { $ref: '#/components/schemas/TestStep' } }
             assignments: { type: array, items: { $ref: '#/components/schemas/Assignment' } }
     Traceability:
@@ -853,6 +895,7 @@ components:
         featureId: { $ref: '#/components/schemas/Id' }
         componentId: { $ref: '#/components/schemas/Id' }
         implementationUrl: { type: string, format: uri }
+        lastResult: { $ref: '#/components/schemas/TestResult' }
         elements:
           type: array
           description: Exactly one of stateId or transitionId per element
@@ -908,10 +951,49 @@ components:
         transitions: { $ref: '#/components/schemas/CoverageCount' }
         uncoveredStateIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
         uncoveredTransitionIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+    TestResult:
+      type: object
+      required: [id, testCaseId, runId, status, executedAt, source]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        testCaseId: { $ref: '#/components/schemas/Id' }
+        runId: { type: string }
+        status: { type: string, enum: [passed, failed, skipped, error] }
+        durationMs: { type: integer, minimum: 0 }
+        message: { type: string }
+        executedAt: { type: string, format: date-time }
+        source: { type: string, description: Format and file the result came from }
+    ImportReport:
+      type: object
+      required: [dryRun, total, matched, recorded, duplicates, unmatched, ambiguous]
+      properties:
+        dryRun: { type: boolean }
+        total: { type: integer, description: Results in the file }
+        matched: { type: integer }
+        recorded: { type: integer, description: New results stored (0 on a dry run) }
+        duplicates: { type: integer, description: Matched results already stored for the same run }
+        unmatched: { type: array, items: { type: string }, description: Names of results matching no test case }
+        ambiguous: { type: array, items: { type: string }, description: Names matching several test cases }
+    StaleTest:
+      type: object
+      required: [testCaseId, reasons]
+      properties:
+        testCaseId: { $ref: '#/components/schemas/Id' }
+        reasons: { type: array, minItems: 1, items: { $ref: '#/components/schemas/StaleReason' } }
+    StaleReason:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [STEP_UNASSIGNED, STEPS_DISCONNECTED, NOT_FROM_INITIAL, GUARD_UNSATISFIABLE] }
+        stepOrder: { type: integer, minimum: 1, description: '1-based step the reason refers to, when it is one step' }
+        message: { type: string }
     CoverageCount:
       type: object
       required: [covered, total]
-      properties: { covered: { type: integer }, total: { type: integer } }
+      properties:
+        covered: { type: integer }
+        total: { type: integer }
+        passing: { type: integer, description: Covered elements whose covering test cases all have a latest result of passed }
 
     ProjectTree:
       type: object

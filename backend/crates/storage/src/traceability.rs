@@ -56,6 +56,8 @@ pub struct TraceTestCase {
     pub implementation_url: Option<String>,
     /// Assigned states and transitions.
     pub elements: Vec<TraceElement>,
+    /// Latest imported result.
+    pub last_result: Option<tm_domain::TestResult>,
 }
 
 /// A backlog item and the test cases linking it.
@@ -158,6 +160,9 @@ impl Store {
             }
         }
 
+        let mut conn = self.pool.acquire().await?;
+        let mut latest = crate::results::latest_results(&mut conn, &ids).await?;
+
         let mut items: Vec<TraceItem> = Vec::new();
         let mut index: HashMap<String, usize> = HashMap::new();
         let mut untraced = Vec::new();
@@ -170,6 +175,7 @@ impl Store {
                 component_id: row.try_get("component_id")?,
                 implementation_url: row.try_get("implementation_url")?,
                 elements: elements.remove(&id).unwrap_or_default(),
+                last_result: latest.remove(&id),
             };
             match row.try_get::<Option<String>, _>("backlog_key")? {
                 None => untraced.push(tc),

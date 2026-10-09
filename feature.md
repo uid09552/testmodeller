@@ -76,17 +76,26 @@ All proposals stay reviewable and are never persisted unapproved (project rule 8
 
 ## Suggested order
 
-1. **Coverage gaps on the canvas**, **model critique** and **suite minimisation**: small, build on what exists, visible quickly.
-2. **Simulation**, **stale-test detection** and **CI CLI**: they change how the tool is used day to day.
-3. **Traceability matrix** and **results import**: the QA-lead story. Together they turn the tool from authoring into a quality dashboard.
-4. **Test data per step** and **hierarchical states**: the largest items; decide after the above shows where users hit limits.
+Reordered after the product-owner review on 2026-10-09 (see the answers below): the primary buyer is the QA lead, and real models are usually larger than 30 states.
 
-## Questions that would reorder this list
+1. **Section 1, the model-to-test loop.** All four are proposed as OpenSpec changes: [traceability matrix](openspec/changes/traceability-matrix/proposal.md), [test results import](openspec/changes/test-results-import/proposal.md), [coverage gaps on the canvas](openspec/changes/canvas-coverage-gaps/proposal.md) and [stale-test detection](openspec/changes/stale-test-detection/proposal.md).
+2. **Wire up the Coverage dashboard** (it still shows placeholder data, see below) and **CI CLI**: the QA lead's reporting needs real numbers and a pipeline gate.
+3. **Hierarchical states**, **search and jump to state**, **auto-layout**: large models are the norm, so navigation and structure come before smaller modelling niceties.
+4. **Review workflow** and **audit trail** (section 5): what a QA lead needs to sign off.
+5. **Simulation**, **model critique**, **suite minimisation**, then **test data per step**.
 
-- Who is the primary buyer: individual test engineers, or QA leads who need reporting? The first favours sections 2 to 3, the second sections 1 and 5.
-- Does the target team already use a test management tool? If so, section 6 (exports and trackers) moves up.
-- How big are real models? If most have under 30 states, hierarchical states can wait.
+## Answers that reordered this list
 
-## Needs checking against the code
+- Primary buyer: **QA leads who need reporting**. Sections 1 and 5 lead.
+- Test management tool: **not in use** by the target teams, so section 6 (exports to Xray/TestRail, tracker sync) stays where it is.
+- Model size: **usually more than 30 states**. Hierarchical states and large-model navigation move up.
 
-Several items extend features that are specified but whose implementation state this list did not verify (coverage dashboard, import and export, version history restore, table view, expression language limits). Check these before scoping.
+## Checked against the code (2026-10-09)
+
+| Item | What exists |
+| --- | --- |
+| Coverage dashboard | Backend endpoints exist (`/models|features|components/{id}/coverage`). The page (`features/coverage/coverage-dashboard.ts`) shows hard-coded placeholder rows and calls no API. |
+| Import and export | Backend: JSON, CSV and Gherkin export and JSON import (`handlers/export.rs`). Frontend: no UI for them; the Test Cases page builds its own Gherkin download in the browser. |
+| Version history restore | Backend: `GET /models/{id}/versions` and `POST …/versions/{v}/restore`. Frontend: no UI. |
+| Table view (NFR-004) | Specified in `06-ui.md` ("Behaviors") but not implemented; the canvas is the only editor. |
+| Expression language | Booleans, integers and strings; operators `|| && ! == != < <= > >= + -` and parentheses; no multiplication, division or functions. Generation caps the search at 200,000 nodes and 1,000 bounded paths. Variables exist in the model graph and API but the editor has no way to declare them, which makes the **model variables panel** more urgent than its row suggests. |

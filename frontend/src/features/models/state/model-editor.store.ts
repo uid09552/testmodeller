@@ -4,6 +4,8 @@
  */
 import { computed, Injectable, signal } from '@angular/core';
 import { fitNodeSize, resetTextMeasure, singleLine } from './node-fit';
+import type { StaleReason, StaleTest } from '../../../core/api/org-api';
+import type { ResultStatus } from '../../../core/api/api.types';
 
 export type StateKind = 'initial' | 'regular' | 'decision' | 'final';
 
@@ -80,6 +82,30 @@ export interface StateTest {
   implementationUrl?: string;
   /** Optional link to the backlog item this covers. */
   backlogUrl?: string;
+  /** Latest imported result; read-only, never saved from the editor. */
+  lastResult?: LastResult;
+}
+
+/** What the editor keeps of a test case's latest imported result. */
+export interface LastResult {
+  status: ResultStatus;
+  executedAt: string;
+  message?: string;
+}
+
+/** Symbol plus word, so a result never relies on colour alone. */
+export function resultLabel(status: ResultStatus): string {
+  switch (status) {
+    case 'passed':  return '✓ Passed';
+    case 'failed':  return '✗ Failed';
+    case 'error':   return '⚠ Error';
+    case 'skipped': return '– Skipped';
+  }
+}
+
+/** Failed and error both mean the behaviour is not shown to work. */
+export function isFailing(r: LastResult | undefined): boolean {
+  return r?.status === 'failed' || r?.status === 'error';
 }
 
 /**
@@ -246,6 +272,36 @@ export interface ValidationIssue {
 
 interface Snapshot { nodes: CanvasNode[]; edges: CanvasEdge[]; groups: CanvasGroup[] }
 
+// ── Coverage overlay ─────────────────────────────────────────────────────────
+/** What the coverage overlay shows; `off` leaves the canvas as it is. */
+export type CoverageView = 'off' | 'states' | 'transitions' | 'both';
+
+export interface CoverageCount {
+  covered: number;
+  total: number;
+  /** Covered elements whose tests all last passed; absent when unknown. */
+  passing?: number;
+}
+
+/** Transition coverage of the saved model, from `GET /models/{id}/coverage`. */
+export interface TransitionCoverage extends CoverageCount {
+  uncoveredTransitionIds: string[];
+}
+
+/** States with no test case, and covered/total, from the editor's own tests. */
+export function stateCoverage(nodes: CanvasNode[]): CoverageCount & { uncovered: Set<string> } {
+  const uncovered = new Set(nodes.filter(n => (n.tests ?? []).length === 0).map(n => n.id));
+  // Passing: covered, and every test on it last passed.
+  const passing = nodes.filter(n =>
+    (n.tests ?? []).length > 0 && n.tests.every(t => t.lastResult?.status === 'passed')).length;
+  return { covered: nodes.length - uncovered.size, total: nodes.length, passing, uncovered };
+}
+
+/** "3/5" style label, or "—" when there is nothing to count against. */
+export function coverageLabel(c: CoverageCount | null): string {
+  return c ? `${c.covered}/${c.total}` : '—';
+}
+
 export const NODE_W = 144;
 export const NODE_H = 48;
 
@@ -371,6 +427,19 @@ export class ModelEditorStore {
     for (const e of edges) {
       if (!nodeIds.has(e.fromId)) list.push({ code: 'UNKNOWN_STATE', severity: 'error', message: `Transition "${e.label}" has unknown source.`, elementId: e.id });
       if (!nodeIds.has(e.toId))   list.push({ code: 'UNKNOWN_STATE', severity: 'error', message: `Transition "${e.label}" has unknown target.`, elementId: e.id });
+    }
+
+    // Generated test cases that no longer fit the saved model (from the server).
+    const stale = this.staleTests();
+    for (const n of nodes) {
+      for (const t of n.tests ?? []) {
+        const reasons = stale[t.id];
+        if (!reasons?.length) continue;
+        list.push({
+          code: 'STALE_TEST', severity: 'warning', elementId: n.id,
+          message: `Test "${t.name}" is stale: ${reasons.map(r => r.message).join('; ')}.`,
+        });
+      }
     }
 
     return list;
@@ -674,6 +743,64 @@ export class ModelEditorStore {
   readonly testsFocusTick = signal(0);
 
   focusTests(): void { this.testsFocusTick.update(v => v + 1); }
+
+  // ── Coverage overlay ──────────────────────────────────────────────────────
+  /** Editor-local; not part of the model and not saved. */
+  readonly coverageView = signal<CoverageView>('off');
+  /** Saved model's transition coverage; null until fetched (or when it cannot be). */
+  readonly transitionCoverage = signal<TransitionCoverage | null>(null);
+
+  readonly showStateGaps = computed(() =>
+    this.coverageView() === 'states' || this.coverageView() === 'both');
+  readonly showTransitionGaps = computed(() =>
+    this.coverageView() === 'transitions' || this.coverageView() === 'both');
+
+  /** Live: follows the tests in the editor without a save. */
+  readonly stateCoverage = computed(() => stateCoverage(this.nodes()));
+  private readonly uncoveredTransitions = computed(() =>
+    new Set(this.transitionCoverage()?.uncoveredTransitionIds ?? []));
+  /** True while the transition figures may be behind the canvas. */
+  readonly transitionCoverageStale = computed(() =>
+    this.transitionCoverage() !== null && this.dirty());
+
+  isUncoveredState(id: string): boolean {
+    return this.showStateGaps() && this.stateCoverage().uncovered.has(id);
+  }
+
+  isUncoveredTransition(id: string): boolean {
+    return this.showTransitionGaps() && this.uncoveredTransitions().has(id);
+  }
+
+  setTransitionCoverage(c: TransitionCoverage | null): void { this.transitionCoverage.set(c); }
+
+  // ── Stale generated tests ─────────────────────────────────────────────────
+  /** Test case id -> reasons, from `GET /models/{id}/stale-tests` of the saved model. */
+  readonly staleTests = signal<Record<string, StaleReason[]>>({});
+
+  setStaleTests(list: StaleTest[]): void {
+    this.staleTests.set(Object.fromEntries(list.map(s => [s.testCaseId, s.reasons])));
+  }
+
+  staleReasons(testId: string): StaleReason[] { return this.staleTests()[testId] ?? []; }
+
+  /** Stale tests on one state, for its chips. */
+  staleCountOn(node: CanvasNode): number {
+    const stale = this.staleTests();
+    return (node.tests ?? []).filter(t => stale[t.id]?.length).length;
+  }
+
+  /** Tests on one state whose latest result failed or errored, for its chips. */
+  failingCountOn(node: CanvasNode): number {
+    return (node.tests ?? []).filter(t => isFailing(t.lastResult)).length;
+  }
+
+  /** True once any test of the model has an imported result. */
+  readonly hasResults = computed(() =>
+    this.nodes().some(n => (n.tests ?? []).some(t => !!t.lastResult)));
+
+  /** Stale tests in the model, as far as the editor still holds them. */
+  readonly staleCount = computed(() =>
+    this.nodes().reduce((sum, n) => sum + this.staleCountOn(n), 0));
 
   /** Record an undo point before a discrete, one-shot edit. */
   checkpoint(): void { this.pushUndo(); }
@@ -1074,6 +1201,8 @@ export class ModelEditorStore {
 
   /** Empty the editor (used when opening a brand-new model). */
   reset(): void {
+    this.transitionCoverage.set(null);
+    this.staleTests.set({});
     this.nodes.set([]);
     this.edges.set([]);
     this.groups.set([]);

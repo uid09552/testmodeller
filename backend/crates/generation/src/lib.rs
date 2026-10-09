@@ -14,6 +14,9 @@ use tm_domain::{
 };
 use uuid::Uuid;
 
+mod staleness;
+pub use staleness::{check_path, StaleCode, StaleReason};
+
 /// Upper bound on search nodes per query, protecting against state explosion through variables.
 const MAX_SEARCH_NODES: usize = 200_000;
 /// Upper bound on enumerated paths for `bounded-paths`.
@@ -583,13 +586,13 @@ pub fn path_to_test_case(
     let mut steps = Vec::with_capacity(path.transitions.len());
     let mut targets: Vec<(AssignmentTarget, Option<i32>)> = Vec::new();
     let mut seen = HashSet::new();
-    let mut push = |target: AssignmentTarget, step: Option<i32>| {
+    let mut push = |targets: &mut Vec<_>, target: AssignmentTarget, step: Option<i32>| {
         if seen.insert(target) {
             targets.push((target, step));
         }
     };
     if let Some(&first) = path.states.first() {
-        push(AssignmentTarget::State(first), None);
+        push(&mut targets, AssignmentTarget::State(first), None);
     }
     for (i, (&tid, &to)) in path
         .transitions
@@ -618,8 +621,10 @@ pub fn path_to_test_case(
             action,
             expected,
         });
-        push(AssignmentTarget::Transition(tid), Some(order));
-        push(AssignmentTarget::State(to), Some(order));
+        // Every step's transition is assigned, even one the path takes again, so
+        // the path can be rebuilt from the assignments (stale-test detection).
+        targets.push((AssignmentTarget::Transition(tid), Some(order)));
+        push(&mut targets, AssignmentTarget::State(to), Some(order));
     }
 
     let data = TestCaseData {
@@ -788,6 +793,24 @@ mod tests {
         assert!(tc.name.starts_with("Login #1: Start"));
         assert_eq!(targets[0], (AssignmentTarget::State(g.states[0].id), None));
         assert!(targets.contains(&(AssignmentTarget::Transition(path.transitions[0]), Some(1))));
+    }
+
+    #[test]
+    fn a_repeated_transition_is_assigned_at_every_step() {
+        let g = login_model();
+        let fail = g.transitions[2].id;
+        let path = GeneratedPath {
+            transitions: vec![g.transitions[0].id, fail, fail],
+            states: vec![
+                g.states[0].id,
+                g.states[1].id,
+                g.states[1].id,
+                g.states[1].id,
+            ],
+        };
+        let (_, targets) = path_to_test_case(&g, "Login", CoverageCriterion::Transition, 0, &path);
+        assert!(targets.contains(&(AssignmentTarget::Transition(fail), Some(2))));
+        assert!(targets.contains(&(AssignmentTarget::Transition(fail), Some(3))));
     }
 
     #[test]

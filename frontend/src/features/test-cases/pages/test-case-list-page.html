@@ -7,6 +7,15 @@
         Every test case across your models — double-click a row to edit its Gherkin
       </p>
     </div>
+    <div class="page__actions">
+    <button class="btn btn--secondary" [disabled]="projects().length === 0" (click)="importOpen.set(true)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      Import results
+    </button>
     <button class="btn btn--primary" [disabled]="rows().length === 0" (click)="exportGherkin()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -15,7 +24,13 @@
       </svg>
       Export Gherkin
     </button>
+    </div>
   </header>
+
+  @if (importOpen()) {
+    <tm-import-results-dialog [projects]="projects()" [projectId]="importProject()"
+                              (closed)="importOpen.set(false)" (imported)="onImported()" />
+  }
 
   <!-- ── Project selector (main filter) ──────────────────────────────────── -->
   <div class="filters">
@@ -235,7 +250,21 @@
                 <span class="tc-state">{{ row.stateLabel }}</span>
               </td>
               <td>
-                <div class="tc-name">{{ row.test.name }}</div>
+                <div class="tc-name">
+                  {{ row.test.name }}
+                  @if (staleReasons(row).length) {
+                    <span class="stale-badge" [title]="staleText(row)">⚠ Stale</span>
+                  }
+                  @if (row.test.lastResult; as r) {
+                    <span class="result-badge result-badge--{{ r.status }}"
+                          [title]="'Latest result' + (r.message ? ': ' + r.message : '')">
+                      {{ resultLabel(r.status) }}
+                    </span>
+                  }
+                </div>
+                @if (staleReasons(row).length) {
+                  <div class="stale-reason">{{ staleText(row) }}</div>
+                }
                 <div class="tc-steps">{{ summary(row.test) }}</div>
               </td>
               <td>

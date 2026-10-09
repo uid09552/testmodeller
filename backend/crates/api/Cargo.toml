@@ -34,6 +34,7 @@ clap.workspace = true
 thiserror.workspace = true
 testcontainers.workspace = true
 testcontainers-modules.workspace = true
+quick-xml.workspace = true
 
 [dev-dependencies]
 tower.workspace = true

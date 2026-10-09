@@ -281,3 +281,5 @@
 
 // Grouped tables have one <tbody> per group; keep the divider between them.
 .tc-table tbody:not(:last-of-type) tr:last-child td { border-bottom: 1px solid var(--clr-surface-100); }
+
+.page__actions { display: flex; gap: 8px; }

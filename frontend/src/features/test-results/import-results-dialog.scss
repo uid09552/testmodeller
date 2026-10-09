@@ -1,0 +1,27 @@
+.import {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+
+  .select, .input { width: 100%; margin-bottom: 12px; }
+  .field__label { display: block; margin-bottom: 4px; }
+
+  &__hint { margin: -6px 0 14px; }
+  &__error { color: var(--clr-danger); font-size: var(--text-sm); margin: 4px 0 8px; }
+  &__report {
+    margin-top: 6px;
+    padding: 10px 12px;
+    border: 1px solid var(--clr-surface-200);
+    border-radius: var(--radius-sm);
+    background: var(--clr-surface-50);
+    font-size: var(--text-sm);
+  }
+  &__list-title { font-weight: 600; margin-top: 8px; font-size: var(--text-xs); }
+  &__list {
+    margin: 4px 0 0 18px;
+    max-height: 140px;
+    overflow-y: auto;
+    font-size: var(--text-xs);
+    list-style: disc;
+  }
+}

@@ -5,6 +5,7 @@ mod ai;
 mod export;
 mod models;
 mod organization;
+mod results;
 mod tenancy;
 mod test_cases;
 mod traceability;
@@ -27,6 +28,7 @@ pub use models::{ModelMeta, StateRecord, TransitionRecord};
 pub use organization::{
     FeatureFields, NamedFields, SearchHit, SearchType, TreeComponent, TreeFeature, TreeModel,
 };
+pub use results::NewResult;
 pub use tenancy::TenantScope;
 pub use test_cases::{NewAssignment, TestCaseFilter};
 pub use traceability::{

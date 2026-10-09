@@ -11,6 +11,7 @@ use tm_domain::{
 };
 use uuid::Uuid;
 
+use crate::results::latest_results;
 use crate::{
     audit, into_page, keyset, missing_or_conflict, parse_col, parse_opt_col, Page, PageRequest,
     Result, StorageError, Store,
@@ -59,6 +60,7 @@ fn test_case(row: &PgRow) -> Result<TestCase, sqlx::Error> {
         origin: parse_col(row, "origin")?,
         generated_from_model_id: row.try_get("generated_from_model_id")?,
         assignments: Vec::new(),
+        last_result: None,
     })
 }
 
@@ -120,8 +122,10 @@ async fn attach_assignments(conn: &mut PgConnection, cases: &mut [TestCase]) -> 
         let a = assignment(row)?;
         by_case.entry(a.test_case_id).or_default().push(a);
     }
+    let mut latest = latest_results(conn, &ids).await?;
     for c in cases {
         c.assignments = by_case.remove(&c.audit.id).unwrap_or_default();
+        c.last_result = latest.remove(&c.audit.id);
     }
     Ok(())
 }
@@ -516,6 +520,18 @@ impl Store {
         self.test_cases_where(
             "SELECT DISTINCT t.* FROM test_cases t JOIN assignments a ON a.test_case_id = t.id
              WHERE a.model_id = $1 AND $2::uuid IS NULL
+             ORDER BY t.created_at, t.id",
+            Some(model_id),
+            None,
+        )
+        .await
+    }
+
+    /// Test cases generated from a model (origin `generated`), with their assignments.
+    pub async fn generated_test_cases(&self, model_id: Uuid) -> Result<Vec<TestCase>> {
+        self.test_cases_where(
+            "SELECT t.* FROM test_cases t
+             WHERE t.generated_from_model_id = $1 AND t.origin = 'generated' AND $2::uuid IS NULL
              ORDER BY t.created_at, t.id",
             Some(model_id),
             None,

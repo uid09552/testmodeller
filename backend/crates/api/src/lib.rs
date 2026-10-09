@@ -7,6 +7,7 @@ pub mod dto;
 pub mod error;
 pub mod extract;
 pub mod handlers;
+pub mod results_import;
 pub mod secrets;
 pub mod tenant_guard;
 
@@ -19,7 +20,9 @@ use tm_storage::Store;
 
 use crate::ai_service::AiService;
 use crate::auth::{AuthMode, Authenticator};
-use crate::handlers::{ai, export, models, organization as org, test_cases as tc};
+use crate::handlers::{
+    ai, export, models, organization as org, test_cases as tc, test_results as results,
+};
 
 /// Maximum request body size (imports can be large).
 const BODY_LIMIT: usize = 16 * 1024 * 1024;
@@ -165,9 +168,12 @@ pub fn router(state: AppState, auth: AuthMode) -> Router {
         .route("/models/{id}/test-cases", get(tc::model_test_cases))
         .route("/models/{id}/generate", post(tc::generate))
         .route("/models/{id}/coverage", get(tc::model_coverage))
+        .route("/models/{id}/stale-tests", get(tc::stale_tests))
         .route("/features/{id}/coverage", get(tc::feature_coverage))
         .route("/components/{id}/coverage", get(tc::component_coverage))
         .route("/projects/{id}/traceability", get(tc::traceability))
+        .route("/projects/{id}/test-results", post(results::import))
+        .route("/test-cases/{id}/results", get(results::history))
         .route("/projects/{id}/export", get(export::export))
         .route("/projects/{id}/import", post(export::import))
         .route("/ai/proposals", post(ai::request_proposals))

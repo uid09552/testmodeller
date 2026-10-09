@@ -2,8 +2,9 @@ import {
   ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener,
   computed, effect, inject, signal, viewChild,
 } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import {
-  CanvasNode, ModelEditorStore, StateTest, safeExternalUrl,
+  CanvasNode, ModelEditorStore, StateTest, resultLabel, safeExternalUrl,
 } from '../../state/model-editor.store';
 import { TestCaseDialogComponent, TestDraft } from '../test-case-dialog/test-case-dialog';
 
@@ -17,7 +18,7 @@ import { TestCaseDialogComponent, TestDraft } from '../test-case-dialog/test-cas
  */
 @Component({
   selector: 'tm-test-cases-panel',
-  imports: [TestCaseDialogComponent],
+  imports: [DatePipe, TestCaseDialogComponent],
   templateUrl: './test-cases-panel.html',
   styleUrl: './test-cases-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -132,6 +133,7 @@ export class TestCasesPanelComponent {
   /** Jump to a state from the overview. */
   focusState(nodeId: string): void { this.store.select(nodeId, 'node'); }
 
+  readonly resultLabel = resultLabel;
   implHref(t: StateTest):    string | null { return safeExternalUrl(t.implementationUrl); }
   backlogHref(t: StateTest): string | null { return safeExternalUrl(t.backlogUrl); }
 

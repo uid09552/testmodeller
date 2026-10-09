@@ -39,6 +39,12 @@ related: [00-overview.md, 05-api.md, 06-ui.md, 07-ai-integration.md]
 - FR-027 Identify traceability gaps: test cases without a backlog link, test cases without an implementation link, and backlog items whose test cases cover no model element.
 - FR-028 Show the trace as a filterable, searchable matrix and export it as CSV; only data of the caller's tenant and project is included.
 
+### Test results
+- FR-050 Import JUnit XML and Cucumber JSON result files for a project; reject malformed, unknown-format or oversized files (10 MB) without recording anything.
+- FR-051 Match each result to a test case of the project by its `@tm-<id>` tag, otherwise by exact unique name; report recorded, duplicate, unmatched and ambiguous results. Gherkin and CSV exports carry the tag.
+- FR-052 Keep every imported result with its run; the latest by execution time is the test case's result. Re-importing the same file records nothing new.
+- FR-053 Show the latest result on test cases, in lists and on state chips with a text label, and count passing covered elements in coverage. Results never cross tenants or projects.
+
 ### AI proposals
 - FR-030 Propose models from a feature's scenario description or a textual requirement.
 - FR-031 Propose missing states/transitions for an existing model.

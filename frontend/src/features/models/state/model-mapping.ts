@@ -180,6 +180,13 @@ export function testFromApi(tc: TestCase, seq: number): StateTest {
     then: tc.steps.map(s => s.expected?.trim()).filter(Boolean).join('\n'),
     implementationUrl: tc.implementationUrl ?? legacy(LEGACY_IMPL),
     backlogUrl: tc.backlogUrl ?? legacy(LEGACY_BACKLOG),
+    ...(tc.lastResult ? {
+      lastResult: {
+        status: tc.lastResult.status,
+        executedAt: tc.lastResult.executedAt,
+        ...(tc.lastResult.message ? { message: tc.lastResult.message } : {}),
+      },
+    } : {}),
   };
 }
 

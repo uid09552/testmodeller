@@ -123,6 +123,7 @@
               <th>Component › Scenario</th>
               <th>Model elements</th>
               <th>Implementation</th>
+              <th>Latest result</th>
             </tr>
           </thead>
           @for (item of shown().items; track item.backlogUrl) {
@@ -185,6 +186,13 @@
       {{ tc.implementationUrl }}
     } @else {
       <span class="badge badge--warning">Not implemented</span>
+    }
+  </td>
+  <td>
+    @if (tc.lastResult; as r) {
+      <span class="result-badge result-badge--{{ r.status }}" [title]="r.message ?? ''">{{ resultLabel(r.status) }}</span>
+    } @else {
+      <span class="muted">none</span>
     }
   </td>
 </ng-template>

@@ -3,17 +3,18 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import { OrgApi } from '../../../core/api/org-api';
+import { OrgApi, StaleReason } from '../../../core/api/org-api';
 import { readJson, writeJson } from '../../../core/persistence/local-store';
 import { singleLine } from '../../models/state/node-fit';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
 import { fromRemote, PersistedModel, testToInput } from '../../models/state/model-mapping';
 import {
-  StateTest, TestCategory, gherkinClause, testRefPrefix, safeExternalUrl,
+  StateTest, TestCategory, gherkinClause, testRefPrefix, safeExternalUrl, resultLabel,
 } from '../../models/state/model-editor.store';
 import {
   TestCaseDialogComponent, TestDraft,
 } from '../../models/components/test-case-dialog/test-case-dialog';
+import { ImportResultsDialogComponent } from '../../test-results/import-results-dialog';
 import {
   CATEGORY_ORDER, EMPTY_FILTERS, GroupKey, LinkFilter, SortKey, SortState, TestCaseFilters,
   TestRow, activeFilterCount, facetOptions, filterRows, groupRows, sortRows, toggleSort,
@@ -31,7 +32,7 @@ const DEFAULT_SORT: SortState = { key: 'ref', dir: 'asc' };
 
 @Component({
   selector: 'tm-test-case-list-page',
-  imports: [TestCaseDialogComponent],
+  imports: [TestCaseDialogComponent, ImportResultsDialogComponent],
   templateUrl: './test-case-list-page.html',
   styleUrl: './test-case-list-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -58,11 +59,28 @@ export class TestCaseListPageComponent {
     }
   }
 
+  /** Model id -> (test case id -> reasons) for stale generated tests. */
+  private readonly staleByModel = signal<Record<string, Record<string, StaleReason[]>>>({});
+
   private async fetchModel(id: string): Promise<PersistedModel> {
-    const [model, testCases] = await Promise.all([
+    const [model, testCases, stale] = await Promise.all([
       this.api.getModel(id), this.api.modelTestCases(id),
+      // A model the check cannot run on still lists its tests.
+      this.api.staleTests(id).catch(() => []),
     ]);
+    this.staleByModel.update(s => ({
+      ...s, [id]: Object.fromEntries(stale.map(x => [x.testCaseId, x.reasons])),
+    }));
     return { ...fromRemote(model, testCases, id, '', null), id };
+  }
+
+  /** Why a row's test is stale; empty when it is not. */
+  staleReasons(row: TestRow): StaleReason[] {
+    return this.staleByModel()[row.modelId]?.[row.test.id] ?? [];
+  }
+
+  staleText(row: TestRow): string {
+    return this.staleReasons(row).map(r => r.message).join('; ');
   }
 
   private async reloadModel(id: string): Promise<void> {
@@ -252,6 +270,7 @@ export class TestCaseListPageComponent {
   @HostListener('document:keydown.escape')
   onEscape(): void { this.projectMenuOpen.set(false); }
 
+  readonly resultLabel = resultLabel;
   implHref(t: StateTest):    string | null { return safeExternalUrl(t.implementationUrl); }
   backlogHref(t: StateTest): string | null { return safeExternalUrl(t.backlogUrl); }
 
@@ -317,6 +336,20 @@ export class TestCaseListPageComponent {
     }
   }
 
+  // ── Result import ──────────────────────────────────────────────────────────
+  readonly importOpen = signal(false);
+
+  /** The project filter, if one is chosen, preselects the import's project. */
+  readonly importProject = computed(() => {
+    const id = this.filters().projectId;
+    return id === 'all' ? null : id;
+  });
+
+  /** New results change the badges: reload what is shown. */
+  onImported(): void {
+    void this.load(Object.keys(this.stored()));
+  }
+
   // ── Export ─────────────────────────────────────────────────────────────────
   exportGherkin(): void {
     const rows = this.rows();
@@ -330,7 +363,7 @@ export class TestCaseListPageComponent {
 
     const text = [...byModel.entries()].map(([modelName, list]) => {
       const scenarios = list.map(r => [
-        `  @${r.test.category} @${r.test.polarity} @id:${r.ref}`,
+        `  @${r.test.category} @${r.test.polarity} @id:${r.ref} @tm-${r.test.id}`,
         `  # ${r.componentName} > ${r.featureName} > ${r.stateLabel}`,
         `  Scenario: ${r.test.name}`,
         ...gherkinClause('Given', r.test.given),

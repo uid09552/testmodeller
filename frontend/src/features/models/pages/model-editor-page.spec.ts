@@ -9,9 +9,13 @@ const audit = { version: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-
 describe('ModelEditorPageComponent', () => {
   let harness: RouterTestingHarness;
   const requested: string[] = [];
+  const coverageRequests: string[] = [];
+  const staleRequests: string[] = [];
 
   beforeEach(async () => {
     requested.length = 0;
+    coverageRequests.length = 0;
+    staleRequests.length = 0;
     const api = {
       listProjects: async () => [],
       getModel: async (id: string) => {
@@ -23,6 +27,17 @@ describe('ModelEditorPageComponent', () => {
         };
       },
       modelTestCases: async () => [],
+      staleTests: async (id: string) => {
+        staleRequests.push(id);
+        return [{ testCaseId: 'tc1', reasons: [{ code: 'STEP_UNASSIGNED', message: 'gone' }] }];
+      },
+      modelCoverage: async (id: string) => {
+        coverageRequests.push(id);
+        return {
+          states: { covered: 0, total: 1 }, transitions: { covered: 1, total: 3 },
+          uncoveredStateIds: ['a'], uncoveredTransitionIds: ['t2', 't3'],
+        };
+      },
       getFeature: async () => ({
         id: 'f1', componentId: 'c1', name: 'Login', scenarioDescription: 'As a user', ...audit,
       }),
@@ -79,5 +94,30 @@ describe('ModelEditorPageComponent', () => {
     page.revealTests();
 
     expect(page.sideTab()).toBe('tests');
+  });
+
+  it('fetches transition coverage of the saved model only when the overlay shows transitions', async () => {
+    const page = await open('m1');
+    page.store.coverageView.set('states');
+    TestBed.tick();
+    await new Promise(r => setTimeout(r));
+    expect(coverageRequests).toEqual([]);
+
+    page.store.coverageView.set('transitions');
+    TestBed.tick();
+    await new Promise(r => setTimeout(r));
+
+    expect(coverageRequests).toEqual(['m1']);
+    expect(page.store.transitionCoverage()).toEqual({
+      covered: 1, total: 3, uncoveredTransitionIds: ['t2', 't3'],
+    });
+  });
+
+  it('asks which generated tests are stale when the model opens', async () => {
+    const page = await open('m1');
+    await new Promise(r => setTimeout(r));
+
+    expect(staleRequests).toEqual(['m1']);
+    expect(page.store.staleReasons('tc1').map(r => r.code)).toEqual(['STEP_UNASSIGNED']);
   });
 });

@@ -43,7 +43,7 @@ export function coversNoElement(item: TraceItem): boolean {
 
 const CSV_HEADER = [
   'Backlog item', 'Test case', 'Test case id', 'Component', 'Feature',
-  'Implementation', 'Model elements',
+  'Implementation', 'Model elements', 'Latest result',
 ];
 
 /** A CSV cell. Quoted when needed; a leading `= + - @` is defused so a spreadsheet will not run it. */
@@ -56,7 +56,7 @@ function cell(value: string): string {
 export function toCsv(rows: TraceRow[], names: TraceNames): string {
   const lines = rows.map(({ backlogUrl, testCase: tc }) => [
     backlogUrl, tc.name, tc.id, names.component(tc.componentId), names.feature(tc.featureId),
-    tc.implementationUrl ?? '', String(tc.elements.length),
+    tc.implementationUrl ?? '', String(tc.elements.length), tc.lastResult?.status ?? '',
   ].map(cell).join(','));
   return [CSV_HEADER.map(cell).join(','), ...lines].join('\r\n') + '\r\n';
 }

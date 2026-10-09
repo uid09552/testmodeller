@@ -395,3 +395,175 @@ describe('multi-line names outside the canvas', () => {
     expect(store.issues().every(i => !i.message.includes('\n'))).toBe(true);
   });
 });
+
+describe('CanvasComponent coverage overlay', () => {
+  let store: ModelEditorStore;
+  let fixture: ReturnType<typeof TestBed.createComponent<CanvasComponent>>;
+  let root: HTMLElement;
+
+  const toolbarButton = () => [...root.querySelectorAll<HTMLButtonElement>('.tb-coverage .tb-btn')][0];
+  const counts = () => root.querySelector('.tb-coverage__counts')?.textContent?.replace(/\s+/g, ' ').trim();
+  const nodeGroup = (id: string) =>
+    [...root.querySelectorAll<SVGGElement>('g.node-group')]
+      .find(g => g.getAttribute('aria-label')?.includes(store.nodeById(id)!.label))!;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [CanvasComponent],
+      providers: [ModelEditorStore],
+    }).compileComponents();
+    fixture = TestBed.createComponent(CanvasComponent);
+    store = TestBed.inject(ModelEditorStore);
+    root = fixture.nativeElement;
+  });
+
+  function model() {
+    const a = store.addNode('initial', 0, 0);
+    const b = store.addNode('regular', 300, 0);
+    store.updateNode(a.id, { label: 'Start' });
+    store.updateNode(b.id, { label: 'Home' });
+    store.addTest(a.id);
+    const e1 = store.addEdge(a.id, b.id);
+    const e2 = store.addEdge(b.id, a.id);
+    store.setTransitionCoverage({ covered: 1, total: 2, uncoveredTransitionIds: [e2.id] });
+    store.clearDirty();
+    fixture.detectChanges();
+    return { a, b, e1, e2 };
+  }
+
+  it('is off by default and leaves the canvas as it is', () => {
+    model();
+    expect(root.querySelector('.node-group--uncovered')).toBeNull();
+    expect(root.querySelector('.edge-group--uncovered')).toBeNull();
+    expect(counts()).toBeUndefined();
+    expect(root.querySelector('.node-gap-outline')).toBeNull();
+  });
+
+  it('shows both dimensions with counts when switched on', () => {
+    const { b, e2 } = model();
+    toolbarButton().click();
+    fixture.detectChanges();
+
+    expect(counts()).toBe('1/2 states, 1/2 transitions');
+    expect(root.querySelectorAll('.node-group--uncovered')).toHaveLength(1);
+    expect(nodeGroup(b.id).classList).toContain('node-group--uncovered');
+    expect(root.querySelectorAll('.edge-group--uncovered')).toHaveLength(1);
+    const hit = [...root.querySelectorAll('path.edge-hit')]
+      .find(p => p.getAttribute('aria-label')?.includes('not covered'));
+    expect(hit).toBeTruthy();
+    expect(store.isUncoveredTransition(e2.id)).toBe(true);
+  });
+
+  it('marks an uncovered state with a non-colour cue and an accessible label', () => {
+    const { b } = model();
+    store.coverageView.set('states');
+    fixture.detectChanges();
+    const g = nodeGroup(b.id);
+    expect(g.querySelector('.node-gap-outline')).not.toBeNull();
+    expect(g.querySelector('.node-gap-marker text')?.textContent).toBe('0');
+    expect(g.getAttribute('aria-label')).toBe('regular state: Home, not covered by any test case');
+  });
+
+  it('shows states only', () => {
+    model();
+    store.coverageView.set('states');
+    fixture.detectChanges();
+    expect(counts()).toBe('1/2 states');
+    expect(root.querySelector('.edge-group--uncovered')).toBeNull();
+  });
+
+  it('shows transitions only, marked as of last save while unsaved', () => {
+    model();
+    store.coverageView.set('transitions');
+    fixture.detectChanges();
+    expect(counts()).toBe('1/2 transitions');
+    expect(root.querySelector('.node-group--uncovered')).toBeNull();
+
+    store.addNode('regular', 600, 0);
+    fixture.detectChanges();
+    expect(counts()).toBe('1/2 transitions (as of last save)');
+  });
+
+  it('says transitions are unavailable, not zero, before a save', () => {
+    model();
+    store.setTransitionCoverage(null);
+    store.coverageView.set('transitions');
+    fixture.detectChanges();
+    expect(counts()).toBe('transitions unavailable until saved');
+  });
+
+  it('turns off again', () => {
+    model();
+    toolbarButton().click();
+    fixture.detectChanges();
+    toolbarButton().click();
+    fixture.detectChanges();
+    expect(store.coverageView()).toBe('off');
+    expect(root.querySelector('.node-group--uncovered')).toBeNull();
+  });
+
+  it('opens the test cases of an uncovered state when it is clicked', () => {
+    const { a, b } = model();
+    store.coverageView.set('states');
+    fixture.detectChanges();
+    let reveals = 0;
+    fixture.componentInstance.revealTests.subscribe(() => reveals++);
+
+    nodeGroup(a.id).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(reveals).toBe(0);
+
+    nodeGroup(b.id).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(reveals).toBe(1);
+    expect(store.selectedNode()?.id).toBe(b.id);
+  });
+});
+
+describe('CanvasComponent stale tests', () => {
+  it('marks a state with stale tests by a "!" chip and says so in its label', async () => {
+    await TestBed.configureTestingModule({
+      imports: [CanvasComponent],
+      providers: [ModelEditorStore],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(CanvasComponent);
+    const store = TestBed.inject(ModelEditorStore);
+    const a = store.addNode('initial', 0, 0);
+    store.updateNode(a.id, { label: 'Start' });
+    const t = store.addTest(a.id, 'Path 1')!;
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    expect(root.querySelector('.node-tests__stale')).toBeNull();
+
+    store.setStaleTests([{ testCaseId: t.id, reasons: [{ code: 'NOT_FROM_INITIAL', message: 'm' }] }]);
+    fixture.detectChanges();
+
+    expect(root.querySelector('.node-tests__stale text')?.textContent).toBe('!');
+    expect(root.querySelector('.node-tests')?.getAttribute('aria-label'))
+      .toBe('Test cases on Start: 1, 1 stale. Double-click to open.');
+  });
+});
+
+describe('CanvasComponent test results', () => {
+  it('shows failing tests on the chips with a "✗" and passing counts in the overlay', async () => {
+    await TestBed.configureTestingModule({
+      imports: [CanvasComponent],
+      providers: [ModelEditorStore],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(CanvasComponent);
+    const store = TestBed.inject(ModelEditorStore);
+    const a = store.addNode('initial', 0, 0);
+    store.updateNode(a.id, { label: 'Start' });
+    const t = store.addTest(a.id, 'Path 1')!;
+    store.updateTest(a.id, t.id, { lastResult: { status: 'failed', executedAt: '' } });
+    store.setTransitionCoverage({ covered: 2, total: 3, passing: 1, uncoveredTransitionIds: [] });
+    store.clearDirty();
+    store.coverageView.set('both');
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+
+    expect(root.querySelector('.node-tests__failing text')?.textContent?.trim()).toBe('✗1');
+    expect(root.querySelector('.node-tests')?.getAttribute('aria-label'))
+      .toBe('Test cases on Start: 1, 1 failing. Double-click to open.');
+    expect(root.querySelector('.tb-coverage__counts')?.textContent?.trim())
+      .toBe('1/1 states (0 passing), 2/3 transitions (1 passing)');
+  });
+});

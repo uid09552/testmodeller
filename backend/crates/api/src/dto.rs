@@ -802,6 +802,9 @@ pub struct TestCaseDto {
     pub backlog_url: Option<String>,
     pub steps: Vec<TestStepDto>,
     pub assignments: Vec<AssignmentDto>,
+    /// Read-only; ignored on import.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_result: Option<TestResultDto>,
 }
 
 impl From<&d::TestCase> for TestCaseDto {
@@ -830,6 +833,7 @@ impl From<&d::TestCase> for TestCaseDto {
                 })
                 .collect(),
             assignments: t.assignments.iter().map(Into::into).collect(),
+            last_result: t.last_result.as_ref().map(Into::into),
         }
     }
 }
@@ -878,6 +882,9 @@ pub struct GenerationRequest {
 pub struct CoverageCount {
     pub covered: usize,
     pub total: usize,
+    /// Covered elements whose covering test cases all last passed; absent without results data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passing: Option<usize>,
 }
 
 /// Coverage report.
@@ -896,10 +903,12 @@ impl From<&tm_generation::CoverageReport> for CoverageDto {
             states: CoverageCount {
                 covered: c.states_covered,
                 total: c.states_total,
+                passing: None,
             },
             transitions: CoverageCount {
                 covered: c.transitions_covered,
                 total: c.transitions_total,
+                passing: None,
             },
             uncovered_state_ids: c.uncovered_state_ids.clone(),
             uncovered_transition_ids: c.uncovered_transition_ids.clone(),
@@ -1149,6 +1158,82 @@ pub struct AiSettingsInput {
     pub api_key: Option<String>,
 }
 
+// ---------- test results ----------
+
+/// An imported result.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TestResultDto {
+    pub id: Uuid,
+    pub test_case_id: Uuid,
+    pub run_id: String,
+    pub status: d::ResultStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    pub executed_at: DateTime<Utc>,
+    pub source: String,
+}
+
+impl From<&d::TestResult> for TestResultDto {
+    fn from(r: &d::TestResult) -> Self {
+        Self {
+            id: r.id,
+            test_case_id: r.test_case_id,
+            run_id: r.run_id.clone(),
+            status: r.status,
+            duration_ms: r.duration_ms,
+            message: r.message.clone(),
+            executed_at: r.executed_at,
+            source: r.source.clone(),
+        }
+    }
+}
+
+/// Outcome of an import.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportReportDto {
+    pub dry_run: bool,
+    pub total: usize,
+    pub matched: usize,
+    pub recorded: u64,
+    pub duplicates: usize,
+    pub unmatched: Vec<String>,
+    pub ambiguous: Vec<String>,
+}
+
+// ---------- stale tests ----------
+
+/// Why a generated test case no longer fits its model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaleReasonDto {
+    pub code: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step_order: Option<i32>,
+    pub message: String,
+}
+
+impl From<&tm_generation::StaleReason> for StaleReasonDto {
+    fn from(r: &tm_generation::StaleReason) -> Self {
+        Self {
+            code: r.code.as_str().to_owned(),
+            step_order: r.step_order,
+            message: r.message.clone(),
+        }
+    }
+}
+
+/// A stale generated test case.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaleTestDto {
+    pub test_case_id: Uuid,
+    pub reasons: Vec<StaleReasonDto>,
+}
+
 // ---------- traceability ----------
 
 /// Model element of a traced test case; exactly one of the two ids is set.
@@ -1172,6 +1257,8 @@ pub struct TraceTestCaseDto {
     pub component_id: Uuid,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub implementation_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_result: Option<TestResultDto>,
     pub elements: Vec<TraceElementDto>,
 }
 
@@ -1183,6 +1270,7 @@ impl From<&tm_storage::TraceTestCase> for TraceTestCaseDto {
             feature_id: t.feature_id,
             component_id: t.component_id,
             implementation_url: t.implementation_url.clone(),
+            last_result: t.last_result.as_ref().map(Into::into),
             elements: t
                 .elements
                 .iter()
