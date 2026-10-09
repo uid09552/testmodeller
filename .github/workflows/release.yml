@@ -1,0 +1,66 @@
+# Packages a source bundle for building TestModeller locally and publishes it
+# as a GitHub release whenever a version tag is pushed.
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# The zip holds what `make up` (docker compose up --build) needs: compose file,
+# backend and frontend sources, gateway config, .env.example, Makefile, docs.
+# It is built from tracked files only, so no target/, node_modules/ or .env.
+# A tag containing a hyphen (v0.2.0-rc1) is published as a pre-release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble package
+        run: |
+          name="testmodeller-${TAG}"
+          mkdir -p dist
+          git archive --format=tar --prefix="${name}/" HEAD \
+            backend frontend gateway docs \
+            compose.yaml .env.example Makefile README.md \
+            | tar -x -C dist
+          echo "${TAG}" > "dist/${name}/VERSION"
+          (cd dist && zip -qr "${name}.zip" "${name}")
+          (cd dist && sha256sum "${name}.zip" > "${name}.zip.sha256")
+          echo "PACKAGE=dist/${name}.zip" >> "$GITHUB_ENV"
+          ls -l dist
+
+      - name: Check the package builds as a stack
+        run: |
+          cd "dist/testmodeller-${TAG}"
+          # Placeholders for the values compose refuses to start without, to
+          # prove the packaged compose file and its build contexts are intact.
+          cp .env.example .env
+          for v in POSTGRES_PASSWORD TM_JWKS_URL OIDC_CLIENT_ID OIDC_CLIENT_SECRET \
+                   OIDC_DISCOVERY OIDC_SESSION_SECRET; do
+            sed -i "s|^${v}=\$|${v}=ci-check|" .env
+          done
+          docker compose config --quiet
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=""
+          case "${TAG}" in *-*) flags="--prerelease" ;; esac
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            # Re-run for an existing release: replace the assets.
+            gh release upload "${TAG}" "${PACKAGE}" "${PACKAGE}.sha256" --clobber
+          else
+            gh release create "${TAG}" "${PACKAGE}" "${PACKAGE}.sha256" \
+              --title "TestModeller ${TAG}" --generate-notes ${flags}
+          fi
