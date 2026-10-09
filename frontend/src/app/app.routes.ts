@@ -36,6 +36,12 @@ export const routes: Routes = [
           import('../features/coverage/coverage-dashboard').then((m) => m.CoverageDashboardComponent),
       },
       {
+        path: 'traceability',
+        data: { breadcrumb: 'Traceability' },
+        loadComponent: () =>
+          import('../features/traceability/pages/traceability-page').then((m) => m.TraceabilityPageComponent),
+      },
+      {
         path: 'proposals',
         data: { breadcrumb: 'AI Proposals' },
         loadComponent: () =>

@@ -33,6 +33,12 @@ related: [00-overview.md, 05-api.md, 06-ui.md, 07-ai-integration.md]
 - FR-023 Regenerate and diff against existing test cases.
 - FR-024 Export test cases as JSON, CSV, Gherkin.
 
+### Traceability
+- FR-025 A test case has an optional implementation link and an optional backlog item link, each a full http(s) URL stored as its own field.
+- FR-026 A backlog item (the requirement, identified by its URL) is traced to its test cases, their assigned states and transitions, models, features and components, and implementation links; URLs differing only by trailing slash, fragment or host case are one item.
+- FR-027 Identify traceability gaps: test cases without a backlog link, test cases without an implementation link, and backlog items whose test cases cover no model element.
+- FR-028 Show the trace as a filterable, searchable matrix and export it as CSV; only data of the caller's tenant and project is included.
+
 ### AI proposals
 - FR-030 Propose models from a feature's scenario description or a textual requirement.
 - FR-031 Propose missing states/transitions for an existing model.

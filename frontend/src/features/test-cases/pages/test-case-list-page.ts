@@ -1,6 +1,8 @@
 import {
   ChangeDetectionStrategy, Component, computed, effect, HostListener, inject, signal, untracked,
 } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
 import { OrgApi } from '../../../core/api/org-api';
 import { readJson, writeJson } from '../../../core/persistence/local-store';
 import { singleLine } from '../../models/state/node-fit';
@@ -37,6 +39,10 @@ const DEFAULT_SORT: SortState = { key: 'ref', dir: 'asc' };
 export class TestCaseListPageComponent {
   private readonly explorer = inject(ExplorerStore);
   private readonly api      = inject(OrgApi);
+  private readonly route    = inject(ActivatedRoute);
+  private readonly router   = inject(Router);
+  /** `?open=<testCaseId>`: a link from another page (e.g. Traceability) to the editor. */
+  private readonly openId   = toSignal(this.route.queryParamMap);
 
   /** Every model's content, as stored in the database. */
   private readonly stored = signal<Record<string, PersistedModel>>({});
@@ -111,6 +117,17 @@ export class TestCaseListPageComponent {
     effect(() => {
       const ids = this.explorer.modelPaths().map(p => p.model.id);
       untracked(() => void this.load(ids));
+    });
+    effect(() => {
+      const id = this.openId()?.get('open');
+      const row = id ? this.allRows().find(r => r.test.id === id) : undefined;
+      if (!row) return;
+      untracked(() => {
+        this.editRow(row);
+        void this.router.navigate([], {
+          queryParams: { open: null }, queryParamsHandling: 'merge', replaceUrl: true,
+        });
+      });
     });
     effect(() => {
       writeJson(VIEW_KEY, {

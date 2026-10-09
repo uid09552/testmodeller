@@ -149,6 +149,40 @@ describe('test cases', () => {
       test({ given: '', implementationUrl: '', backlogUrl: '' }), MODEL, A);
     expect(input.preconditions).toBeUndefined();
     expect(input.description).toBeUndefined();
+    expect(input.implementationUrl).toBeUndefined();
+    expect(input.backlogUrl).toBeUndefined();
+  });
+
+  it('sends the links as fields, not inside the description (FR-025)', () => {
+    const input = testToInput(
+      test({ implementationUrl: ' https://git/x ', backlogUrl: 'https://jira/TM-1' }), MODEL, A);
+    expect(input.implementationUrl).toBe('https://git/x');
+    expect(input.backlogUrl).toBe('https://jira/TM-1');
+    expect(input.description).toBeUndefined();
+  });
+
+  it('reads the links from their fields', () => {
+    const t = testFromApi({
+      ...stored(test(), A),
+      implementationUrl: 'https://git/x', backlogUrl: 'https://jira/TM-1',
+      description: 'Backlog: https://old/ignored',
+    }, 1);
+    expect(t.implementationUrl).toBe('https://git/x');
+    expect(t.backlogUrl).toBe('https://jira/TM-1');
+  });
+
+  it('falls back to the labelled description lines of data saved before the fields', () => {
+    const t = testFromApi({
+      ...stored(test({ implementationUrl: '', backlogUrl: '' }), A),
+      description: 'Implementation: https://git/old\nBacklog: https://jira/OLD-1',
+    }, 1);
+    expect(t.implementationUrl).toBe('https://git/old');
+    expect(t.backlogUrl).toBe('https://jira/OLD-1');
+    // The next save writes them as fields and drops the lines.
+    const input = testToInput(t, MODEL, A);
+    expect(input.implementationUrl).toBe('https://git/old');
+    expect(input.backlogUrl).toBe('https://jira/OLD-1');
+    expect(input.description).toBeUndefined();
   });
 });
 

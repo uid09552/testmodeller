@@ -7,6 +7,7 @@ mod models;
 mod organization;
 mod tenancy;
 mod test_cases;
+mod traceability;
 
 use std::str::FromStr;
 
@@ -28,6 +29,9 @@ pub use organization::{
 };
 pub use tenancy::TenantScope;
 pub use test_cases::{NewAssignment, TestCaseFilter};
+pub use traceability::{
+    TraceElement, TraceFilter, TraceGap, TraceItem, TraceSummary, TraceTestCase, Traceability,
+};
 
 /// Storage errors.
 #[derive(Debug, thiserror::Error)]

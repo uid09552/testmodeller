@@ -167,6 +167,7 @@ pub fn router(state: AppState, auth: AuthMode) -> Router {
         .route("/models/{id}/coverage", get(tc::model_coverage))
         .route("/features/{id}/coverage", get(tc::feature_coverage))
         .route("/components/{id}/coverage", get(tc::component_coverage))
+        .route("/projects/{id}/traceability", get(tc::traceability))
         .route("/projects/{id}/export", get(export::export))
         .route("/projects/{id}/import", post(export::import))
         .route("/ai/proposals", post(ai::request_proposals))

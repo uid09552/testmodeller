@@ -273,6 +273,8 @@ fn parse_one(
                         expected: s.expected,
                     })
                     .collect(),
+                implementation_url: None,
+                backlog_url: None,
             }))
         }
         ProposalKind::FeatureDescription => {

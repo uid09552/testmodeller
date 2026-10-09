@@ -1,0 +1,190 @@
+<section class="page">
+  @if (error(); as err) { <p role="alert">{{ err }}</p> }
+  <header class="page__head">
+    <div>
+      <h1 class="page__title">Traceability</h1>
+      <p class="page__sub">
+        Which test cases, model elements and implementations back each backlog item
+      </p>
+    </div>
+    <button class="btn btn--primary" [disabled]="rows().length === 0" (click)="exportCsv()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Export CSV
+    </button>
+  </header>
+
+  @if (projects().length === 0) {
+    <div class="empty"><p>No projects yet.</p></div>
+  } @else {
+    <!-- ── Filters ───────────────────────────────────────────────────────── -->
+    <div class="filters">
+      <select class="select filter-select" aria-label="Project"
+              (change)="setProject($any($event.target).value)">
+        @for (p of projects(); track p.id) {
+          <option [value]="p.id" [selected]="projectId() === p.id">{{ p.name }}</option>
+        }
+      </select>
+
+      <select class="select filter-select" aria-label="Component"
+              (change)="setComponent($any($event.target).value)">
+        <option value="">All components</option>
+        @for (c of components(); track c.id) {
+          <option [value]="c.id" [selected]="componentId() === c.id">{{ c.name }}</option>
+        }
+      </select>
+
+      <select class="select filter-select" aria-label="Scenario"
+              (change)="featureId.set($any($event.target).value)">
+        <option value="">All scenarios</option>
+        @for (f of features(); track f.id) {
+          <option [value]="f.id" [selected]="featureId() === f.id">{{ f.name }}</option>
+        }
+      </select>
+
+      @if (view() === 'matrix') {
+        <select class="select filter-select" aria-label="Gap"
+                (change)="setGap($any($event.target).value)">
+          <option value="">Any trace</option>
+          @for (g of gaps; track g.value) {
+            <option [value]="g.value" [selected]="gap() === g.value">{{ g.label }}</option>
+          }
+        </select>
+      }
+
+      <div class="search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input class="search__input" placeholder="Search backlog URL, test case, implementation…"
+               aria-label="Search the trace"
+               [value]="search()" (input)="search.set($any($event.target).value)" />
+      </div>
+    </div>
+
+    <div class="chips tabs" role="group" aria-label="View">
+      <button class="chip" [class.chip--active]="view() === 'matrix'"
+              [attr.aria-pressed]="view() === 'matrix'" (click)="setView('matrix')">Matrix</button>
+      <button class="chip" [class.chip--active]="view() === 'gaps'"
+              [attr.aria-pressed]="view() === 'gaps'" (click)="setView('gaps')">
+        Gaps ({{ summary().untraced + summary().unimplemented + summary().noElements }})
+      </button>
+    </div>
+
+    <!-- ── Summary ───────────────────────────────────────────────────────── -->
+    @if (view() === 'matrix') {
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat__label">Backlog items</div>
+          <div class="stat__value">{{ summary().backlogItems }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Test cases</div>
+          <div class="stat__value">{{ summary().testCases }}</div>
+        </div>
+      </div>
+    } @else {
+      <div class="stat-row" role="group" aria-label="Gap type">
+        @for (g of gaps; track g.value) {
+          <button class="stat stat--button" [class.stat--on]="gap() === g.value"
+                  [attr.aria-pressed]="gap() === g.value" [title]="g.hint"
+                  (click)="gap.set(g.value)">
+            <span class="stat__label">{{ g.label }}</span>
+            <span class="stat__value">{{ gapCount(g.value) }}</span>
+          </button>
+        }
+      </div>
+    }
+
+    <!-- ── Result ────────────────────────────────────────────────────────── -->
+    @if (rows().length === 0) {
+      <div class="empty">
+        @if (loading()) {
+          <p>Loading…</p>
+        } @else if (summary().testCases === 0) {
+          <p>No test cases in this project yet.</p>
+        } @else if (gap()) {
+          <p>No gap of type “{{ gapLabel(gap()) }}”.</p>
+        } @else {
+          <p>Nothing matches.</p>
+        }
+      </div>
+    } @else {
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Backlog item</th>
+              <th>Test case</th>
+              <th>Component › Scenario</th>
+              <th>Model elements</th>
+              <th>Implementation</th>
+            </tr>
+          </thead>
+          @for (item of shown().items; track item.backlogUrl) {
+            <tbody>
+              @for (tc of item.testCases; track tc.id; let first = $first) {
+                <tr>
+                  @if (first) {
+                    <td class="item" [attr.rowspan]="item.testCases.length">
+                      @if (href(item.backlogUrl); as h) {
+                        <a [href]="h" target="_blank" rel="noopener noreferrer">{{ label(item.backlogUrl) }}</a>
+                      } @else {
+                        {{ item.backlogUrl }}
+                      }
+                      @if (noElement(item)) {
+                        <span class="badge badge--warning">No model element</span>
+                      }
+                    </td>
+                  }
+                  <ng-container *ngTemplateOutlet="cells; context: { tc: tc }" />
+                </tr>
+              }
+            </tbody>
+          }
+          @if (shown().untraced.length > 0) {
+            <tbody>
+              @for (tc of shown().untraced; track tc.id; let first = $first) {
+                <tr>
+                  @if (first) {
+                    <td class="item" [attr.rowspan]="shown().untraced.length">
+                      <span class="badge badge--warning">No backlog item</span>
+                    </td>
+                  }
+                  <ng-container *ngTemplateOutlet="cells; context: { tc: tc }" />
+                </tr>
+              }
+            </tbody>
+          }
+        </table>
+      </div>
+    }
+  }
+</section>
+
+<ng-template #cells let-tc="tc">
+  <td>
+    <a [routerLink]="['/test-cases']" [queryParams]="{ open: tc.id }">{{ tc.name }}</a>
+  </td>
+  <td class="muted">{{ names().component(tc.componentId) }} › {{ names().feature(tc.featureId) }}</td>
+  <td>
+    @if (tc.elements.length === 0) {
+      <span class="muted">none</span>
+    } @else {
+      {{ tc.elements.length }}
+    }
+  </td>
+  <td>
+    @if (href(tc.implementationUrl); as h) {
+      <a [href]="h" target="_blank" rel="noopener noreferrer">{{ label(tc.implementationUrl) }}</a>
+    } @else if (tc.implementationUrl) {
+      {{ tc.implementationUrl }}
+    } @else {
+      <span class="badge badge--warning">Not implemented</span>
+    }
+  </td>
+</ng-template>

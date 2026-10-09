@@ -72,6 +72,10 @@ export interface TestCaseInput {
   priority?: 'low' | 'medium' | 'high';
   status?: 'draft' | 'approved' | 'deprecated';
   tags?: string[];
+  /** Optional http(s) link to the implementation. */
+  implementationUrl?: string;
+  /** Optional http(s) link to the backlog item (the requirement). */
+  backlogUrl?: string;
   steps: TestStepInput[];
   assignments?: AssignmentInput[];
 }

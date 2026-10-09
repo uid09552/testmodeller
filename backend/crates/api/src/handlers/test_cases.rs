@@ -9,7 +9,7 @@ use chrono::Utc;
 use serde::Deserialize;
 use tm_domain::{Assignment, AssignmentTarget, Audit, Origin, TestCase, TestCaseStatus};
 use tm_generation::{CoverageReport, GenerationError, GenerationOptions};
-use tm_storage::{NewAssignment, TestCaseFilter};
+use tm_storage::{NewAssignment, TestCaseFilter, TraceFilter, TraceGap};
 use uuid::Uuid;
 
 use crate::dto::*;
@@ -368,4 +368,41 @@ pub async fn component_coverage(
 ) -> ApiResult<Json<CoverageDto>> {
     let graphs = state.store.component_graphs(id).await?;
     Ok(Json(coverage_of(&state, graphs).await?))
+}
+
+/// Query of `GET /projects/{projectId}/traceability`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceabilityQuery {
+    component_id: Option<Uuid>,
+    feature_id: Option<Uuid>,
+    gap: Option<GapParam>,
+}
+
+/// Wire form of the `gap` query parameter.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum GapParam {
+    Untraced,
+    Unimplemented,
+    NoElements,
+}
+
+/// `GET /projects/{projectId}/traceability` (FR-026, FR-027)
+pub async fn traceability(
+    State(state): State<AppState>,
+    ApiPath(id): ApiPath<Uuid>,
+    ApiQuery(q): ApiQuery<TraceabilityQuery>,
+) -> ApiResult<Json<TraceabilityDto>> {
+    let filter = TraceFilter {
+        component_id: q.component_id,
+        feature_id: q.feature_id,
+        gap: q.gap.map(|g| match g {
+            GapParam::Untraced => TraceGap::Untraced,
+            GapParam::Unimplemented => TraceGap::Unimplemented,
+            GapParam::NoElements => TraceGap::NoElements,
+        }),
+    };
+    let trace = state.store.traceability(id, filter).await?;
+    Ok(Json((&trace).into()))
 }

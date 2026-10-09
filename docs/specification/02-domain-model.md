@@ -32,7 +32,7 @@ All entities: `id` (UUID), `name`, `description`, `createdAt`, `updatedAt`, `ver
 - **Model**: `featureId`, `variables[]`, `status` (draft|ready); a state machine formerly called "scenario"
 - **State**: `modelId`, `kind` (normal|initial|final), `position {x,y}`
 - **Transition** (model step): `modelId`, `from`, `to`, `event`, `guard?`, `action?`, `expected?`
-- **TestCase**: `featureId`, `steps[]`, `status`, `priority`, `tags[]`, `origin` (manual|generated|ai), `generatedFromModelId?`
+- **TestCase**: `featureId`, `steps[]`, `status`, `priority`, `tags[]`, `origin` (manual|generated|ai), `generatedFromModelId?`, `implementationUrl?`, `backlogUrl?` (http(s), max 2048 chars). A *requirement* is a backlog item identified by its normalised `backlogUrl`; there is no separate requirement entity.
 - **TestStep**: `order`, `action`, `expected`
 - **Assignment**: links a TestCase to a State or Transition (optionally a test step) of a Model of the same feature
 - **Proposal**: `kind`, `payload` (JSON), `status` (pending|accepted|rejected), `rationale`, `source` (LLM id)

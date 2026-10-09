@@ -633,6 +633,8 @@ pub fn path_to_test_case(
         status: TestCaseStatus::Draft,
         tags: vec![criterion.as_str().to_owned()],
         steps,
+        implementation_url: None,
+        backlog_url: None,
     };
     (data, targets)
 }

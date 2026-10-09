@@ -23,6 +23,19 @@ pub fn check_len(field: &str, value: &str, min: usize, max: usize) -> Result<(),
     Ok(())
 }
 
+/// Validates an optional link; a blank value means no link. Errors name `field` (FR-025).
+pub fn check_link(field: &str, value: Option<String>) -> Result<Option<String>, ApiError> {
+    let Some(raw) = value.filter(|v| !v.trim().is_empty()) else {
+        return Ok(None);
+    };
+    d::links::validate_link(&raw).map(Some).map_err(|e| {
+        ApiError::bad_request(format!("invalid {field}")).with_errors(vec![FieldError {
+            field: field.into(),
+            message: e.to_string(),
+        }])
+    })
+}
+
 // ---------- common ----------
 
 /// Audit fields.
@@ -680,6 +693,7 @@ impl From<&d::Assignment> for AssignmentDto {
 
 /// Test case input.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestCaseInput {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -692,6 +706,10 @@ pub struct TestCaseInput {
     pub status: Option<d::TestCaseStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub implementation_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backlog_url: Option<String>,
     pub steps: Vec<TestStepInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assignments: Option<Vec<AssignmentInput>>,
@@ -703,6 +721,8 @@ impl TestCaseInput {
         self,
     ) -> Result<(d::TestCaseData, Option<Vec<tm_storage::NewAssignment>>), ApiError> {
         check_len("name", &self.name, 1, 300)?;
+        let implementation_url = check_link("implementationUrl", self.implementation_url)?;
+        let backlog_url = check_link("backlogUrl", self.backlog_url)?;
         let assignments = self
             .assignments
             .map(AssignmentInput::into_list)
@@ -725,6 +745,8 @@ impl TestCaseInput {
                         expected: s.expected,
                     })
                     .collect(),
+                implementation_url,
+                backlog_url,
             },
             assignments,
         ))
@@ -739,6 +761,8 @@ impl TestCaseInput {
             priority: data.priority,
             status: Some(data.status),
             tags: Some(data.tags.clone()),
+            implementation_url: data.implementation_url.clone(),
+            backlog_url: data.backlog_url.clone(),
             steps: data
                 .steps
                 .iter()
@@ -772,6 +796,10 @@ pub struct TestCaseDto {
     pub origin: d::Origin,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generated_from_model_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub implementation_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backlog_url: Option<String>,
     pub steps: Vec<TestStepDto>,
     pub assignments: Vec<AssignmentDto>,
 }
@@ -789,6 +817,8 @@ impl From<&d::TestCase> for TestCaseDto {
             tags: t.data.tags.clone(),
             origin: t.origin,
             generated_from_model_id: t.generated_from_model_id,
+            implementation_url: t.data.implementation_url.clone(),
+            backlog_url: t.data.backlog_url.clone(),
             steps: t
                 .data
                 .steps
@@ -824,6 +854,8 @@ impl TestCaseDto {
                     expected: s.expected.clone(),
                 })
                 .collect(),
+            implementation_url: self.implementation_url.clone(),
+            backlog_url: self.backlog_url.clone(),
         }
     }
 }
@@ -1115,4 +1147,152 @@ pub struct AiSettingsInput {
     pub model: Option<String>,
     pub max_tokens_per_request: Option<i32>,
     pub api_key: Option<String>,
+}
+
+// ---------- traceability ----------
+
+/// Model element of a traced test case; exactly one of the two ids is set.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceElementDto {
+    pub model_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transition_id: Option<Uuid>,
+}
+
+/// Test case in a trace.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceTestCaseDto {
+    pub id: Uuid,
+    pub name: String,
+    pub feature_id: Uuid,
+    pub component_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub implementation_url: Option<String>,
+    pub elements: Vec<TraceElementDto>,
+}
+
+impl From<&tm_storage::TraceTestCase> for TraceTestCaseDto {
+    fn from(t: &tm_storage::TraceTestCase) -> Self {
+        Self {
+            id: t.id,
+            name: t.name.clone(),
+            feature_id: t.feature_id,
+            component_id: t.component_id,
+            implementation_url: t.implementation_url.clone(),
+            elements: t
+                .elements
+                .iter()
+                .map(|e| {
+                    let (state_id, transition_id) = match e.target {
+                        d::AssignmentTarget::State(s) => (Some(s), None),
+                        d::AssignmentTarget::Transition(t) => (None, Some(t)),
+                    };
+                    TraceElementDto {
+                        model_id: e.model_id,
+                        state_id,
+                        transition_id,
+                    }
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Backlog item with its test cases.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceItemDto {
+    pub backlog_url: String,
+    pub test_cases: Vec<TraceTestCaseDto>,
+}
+
+/// Counts of a trace.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceSummaryDto {
+    pub backlog_items: i64,
+    pub test_cases: i64,
+    pub untraced: i64,
+    pub unimplemented: i64,
+    pub no_elements: i64,
+}
+
+/// `GET /projects/{projectId}/traceability` response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceabilityDto {
+    pub items: Vec<TraceItemDto>,
+    pub untraced: Vec<TraceTestCaseDto>,
+    pub summary: TraceSummaryDto,
+}
+
+impl From<&tm_storage::Traceability> for TraceabilityDto {
+    fn from(t: &tm_storage::Traceability) -> Self {
+        Self {
+            items: t
+                .items
+                .iter()
+                .map(|i| TraceItemDto {
+                    backlog_url: i.backlog_url.clone(),
+                    test_cases: i.test_cases.iter().map(Into::into).collect(),
+                })
+                .collect(),
+            untraced: t.untraced.iter().map(Into::into).collect(),
+            summary: TraceSummaryDto {
+                backlog_items: t.summary.backlog_items,
+                test_cases: t.summary.test_cases,
+                untraced: t.summary.untraced,
+                unimplemented: t.summary.unimplemented,
+                no_elements: t.summary.no_elements,
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn input(implementation: Option<&str>, backlog: Option<&str>) -> TestCaseInput {
+        serde_json::from_value(serde_json::json!({
+            "name": "t",
+            "steps": [],
+            "implementationUrl": implementation,
+            "backlogUrl": backlog,
+        }))
+        .unwrap()
+    }
+
+    /// FR-025
+    #[test]
+    fn valid_links_become_separate_fields() {
+        let (data, _) = input(Some("https://git/1"), Some(" https://jira/TM-1 "))
+            .into_parts()
+            .unwrap();
+        assert_eq!(data.implementation_url.as_deref(), Some("https://git/1"));
+        assert_eq!(data.backlog_url.as_deref(), Some("https://jira/TM-1"));
+        assert_eq!(data.description, None);
+    }
+
+    /// FR-025: a bad link is rejected and the error names the field.
+    #[test]
+    fn invalid_link_names_the_field() {
+        let err = input(Some("javascript:alert(1)"), None)
+            .into_parts()
+            .unwrap_err();
+        assert_eq!(err.status, axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(err.errors[0].field, "implementationUrl");
+        let err = input(None, Some("ftp://x/y")).into_parts().unwrap_err();
+        assert_eq!(err.errors[0].field, "backlogUrl");
+    }
+
+    #[test]
+    fn blank_link_means_no_link() {
+        let (data, _) = input(Some("  "), Some("")).into_parts().unwrap();
+        assert_eq!((data.implementation_url, data.backlog_url), (None, None));
+    }
 }

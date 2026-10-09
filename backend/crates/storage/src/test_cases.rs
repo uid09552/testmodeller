@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use sqlx::postgres::PgRow;
 use sqlx::types::Json;
 use sqlx::{PgConnection, Row};
+use tm_domain::links::backlog_key;
 use tm_domain::{
     Assignment, AssignmentTarget, Origin, TestCase, TestCaseData, TestCaseStatus, TestStep,
 };
@@ -52,6 +53,8 @@ fn test_case(row: &PgRow) -> Result<TestCase, sqlx::Error> {
             status: parse_col(row, "status")?,
             tags: row.try_get("tags")?,
             steps: steps.0,
+            implementation_url: row.try_get("implementation_url")?,
+            backlog_url: row.try_get("backlog_url")?,
         },
         origin: parse_col(row, "origin")?,
         generated_from_model_id: row.try_get("generated_from_model_id")?,
@@ -85,6 +88,11 @@ fn target_ids(target: AssignmentTarget) -> (Option<Uuid>, Option<Uuid>) {
         AssignmentTarget::State(s) => (Some(s), None),
         AssignmentTarget::Transition(t) => (None, Some(t)),
     }
+}
+
+/// Grouping key of a backlog link, stored beside it.
+fn key_of(url: &Option<String>) -> Option<String> {
+    url.as_deref().and_then(backlog_key)
 }
 
 /// Normalizes step order to 1..n in list order.
@@ -252,8 +260,9 @@ pub(crate) async fn insert_test_case(
     let id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO test_cases (id, feature_id, name, description, preconditions, priority,
-             status, tags, origin, generated_from_model_id, steps)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+             status, tags, origin, generated_from_model_id, steps,
+             implementation_url, backlog_url, backlog_key)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
     )
     .bind(id)
     .bind(feature_id)
@@ -266,6 +275,9 @@ pub(crate) async fn insert_test_case(
     .bind(origin.as_str())
     .bind(generated_from_model_id)
     .bind(Json(numbered(&data.steps)))
+    .bind(&data.implementation_url)
+    .bind(&data.backlog_url)
+    .bind(key_of(&data.backlog_url))
     .execute(&mut *conn)
     .await?;
     insert_assignments(conn, id, assignments).await?;
@@ -344,7 +356,8 @@ impl Store {
         let mut tx = self.pool.begin().await?;
         let feature_id: Option<Uuid> = sqlx::query_scalar(
             "UPDATE test_cases SET name = $3, description = $4, preconditions = $5, priority = $6,
-                 status = $7, tags = $8, steps = $9, version = version + 1, updated_at = now()
+                 status = $7, tags = $8, steps = $9, implementation_url = $10, backlog_url = $11,
+                 backlog_key = $12, version = version + 1, updated_at = now()
              WHERE id = $1 AND version = $2 RETURNING feature_id",
         )
         .bind(id)
@@ -356,6 +369,9 @@ impl Store {
         .bind(data.status.as_str())
         .bind(&data.tags)
         .bind(Json(numbered(&data.steps)))
+        .bind(&data.implementation_url)
+        .bind(&data.backlog_url)
+        .bind(key_of(&data.backlog_url))
         .fetch_optional(&mut *tx)
         .await?;
         let Some(feature_id) = feature_id else {

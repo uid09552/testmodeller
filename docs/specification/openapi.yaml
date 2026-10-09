@@ -20,6 +20,7 @@ tags:
   - name: Assignments
   - name: Generation
   - name: Coverage
+  - name: Traceability
   - name: Export
   - name: AI
   - name: Settings
@@ -465,6 +466,19 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Coverage' } } } }
 
+  /projects/{projectId}/traceability:
+    parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+    get:
+      tags: [Traceability]
+      summary: Trace backlog items to test cases, model elements and implementation links, with gaps
+      parameters:
+        - { name: componentId, in: query, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: featureId, in: query, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: gap, in: query, schema: { type: string, enum: [untraced, unimplemented, no-elements] } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Traceability' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+
   /projects/{projectId}/export:
     parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
     get:
@@ -780,6 +794,8 @@ components:
         priority: { type: string, enum: [low, medium, high] }
         status: { $ref: '#/components/schemas/TestCaseStatus' }
         tags: { type: array, items: { type: string } }
+        implementationUrl: { type: string, format: uri, maxLength: 2048, pattern: '^https?://', description: Optional http(s) link to the implementation }
+        backlogUrl: { type: string, format: uri, maxLength: 2048, pattern: '^https?://', description: Optional http(s) link to the backlog item (the requirement) }
         steps: { type: array, items: { $ref: '#/components/schemas/TestStepInput' } }
         assignments: { type: array, items: { $ref: '#/components/schemas/AssignmentInput' } }
     TestCase:
@@ -795,10 +811,58 @@ components:
             priority: { type: string, enum: [low, medium, high] }
             status: { $ref: '#/components/schemas/TestCaseStatus' }
             tags: { type: array, items: { type: string } }
+            implementationUrl: { type: string, format: uri, maxLength: 2048, pattern: '^https?://', description: Optional http(s) link to the implementation }
+            backlogUrl: { type: string, format: uri, maxLength: 2048, pattern: '^https?://', description: Optional http(s) link to the backlog item (the requirement) }
             origin: { $ref: '#/components/schemas/Origin' }
             generatedFromModelId: { $ref: '#/components/schemas/Id' }
             steps: { type: array, items: { $ref: '#/components/schemas/TestStep' } }
             assignments: { type: array, items: { $ref: '#/components/schemas/Assignment' } }
+    Traceability:
+      type: object
+      required: [items, untraced, summary]
+      properties:
+        items:
+          type: array
+          description: Backlog items, grouped by normalised backlog URL
+          items: { $ref: '#/components/schemas/TraceabilityItem' }
+        untraced:
+          type: array
+          description: Test cases without a backlog link
+          items: { $ref: '#/components/schemas/TraceabilityTestCase' }
+        summary:
+          type: object
+          required: [backlogItems, testCases, untraced, unimplemented, noElements]
+          properties:
+            backlogItems: { type: integer, minimum: 0 }
+            testCases: { type: integer, minimum: 0 }
+            untraced: { type: integer, minimum: 0 }
+            unimplemented: { type: integer, minimum: 0, description: Test cases with a backlog link but no implementation link }
+            noElements: { type: integer, minimum: 0, description: Backlog items whose test cases are assigned to no state or transition }
+    TraceabilityItem:
+      type: object
+      required: [backlogUrl, testCases]
+      properties:
+        backlogUrl: { type: string, format: uri }
+        testCases: { type: array, items: { $ref: '#/components/schemas/TraceabilityTestCase' } }
+    TraceabilityTestCase:
+      type: object
+      required: [id, name, featureId, componentId, elements]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        featureId: { $ref: '#/components/schemas/Id' }
+        componentId: { $ref: '#/components/schemas/Id' }
+        implementationUrl: { type: string, format: uri }
+        elements:
+          type: array
+          description: Exactly one of stateId or transitionId per element
+          items:
+            type: object
+            required: [modelId]
+            properties:
+              modelId: { $ref: '#/components/schemas/Id' }
+              stateId: { $ref: '#/components/schemas/Id' }
+              transitionId: { $ref: '#/components/schemas/Id' }
     TestCasePage:
       type: object
       properties: { items: { type: array, items: { $ref: '#/components/schemas/TestCase' } }, nextCursor: { type: [string, 'null'] } }

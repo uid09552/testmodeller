@@ -128,8 +128,9 @@ export function toModelInput(m: PersistedModel): ModelInput {
 // ── Test cases ───────────────────────────────────────────────────────────────
 
 const CATEGORIES: TestCategory[] = ['unit', 'integration', 'feature'];
-const IMPL = 'Implementation: ';
-const BACKLOG = 'Backlog: ';
+/** Labels earlier versions wrote the links under in the description (read as a fallback only). */
+const LEGACY_IMPL = 'Implementation: ';
+const LEGACY_BACKLOG = 'Backlog: ';
 
 function lines(text: string | undefined): string[] {
   return (text ?? '').split('\n').map(l => l.trim()).filter(Boolean);
@@ -140,9 +141,8 @@ function lines(text: string | undefined): string[] {
  *
  * Given is the precondition; When and Then lines pair up into steps, by
  * position. Category and polarity travel as tags, which also makes them
- * filterable and export as Gherkin tags. The two links have no field of
- * their own, so they go in the description as labelled lines — readable by a
- * person, and parsed back by `testFromApi`.
+ * filterable and export as Gherkin tags. The two links are fields of their
+ * own.
  */
 export function testToInput(t: StateTest, modelId: string, stateId: string): TestCaseInput {
   const when = lines(t.when);
@@ -151,14 +151,11 @@ export function testToInput(t: StateTest, modelId: string, stateId: string): Tes
     action: when[i] ?? '',
     expected: then[i] ?? '',
   }));
-  const links = [
-    t.implementationUrl?.trim() ? IMPL + t.implementationUrl.trim() : null,
-    t.backlogUrl?.trim() ? BACKLOG + t.backlogUrl.trim() : null,
-  ].filter((l): l is string => l !== null);
   return {
     name: t.name?.trim() || 'Test case',
     preconditions: lines(t.given).join('\n') || undefined,
-    description: links.length ? links.join('\n') : undefined,
+    implementationUrl: t.implementationUrl?.trim() || undefined,
+    backlogUrl: t.backlogUrl?.trim() || undefined,
     tags: [t.category, t.polarity],
     steps,
     assignments: [{ modelId, stateId }],
@@ -169,7 +166,8 @@ export function testToInput(t: StateTest, modelId: string, stateId: string): Tes
 export function testFromApi(tc: TestCase, seq: number): StateTest {
   const tags = (tc.tags ?? []).map(t => t.toLowerCase());
   const descLines = (tc.description ?? '').split('\n');
-  const link = (prefix: string) =>
+  // Data saved before the links had fields still has them in the description.
+  const legacy = (prefix: string) =>
     descLines.find(l => l.startsWith(prefix))?.slice(prefix.length).trim() ?? '';
   return {
     id: tc.id,
@@ -180,8 +178,8 @@ export function testFromApi(tc: TestCase, seq: number): StateTest {
     given: tc.preconditions ?? '',
     when: tc.steps.map(s => s.action?.trim()).filter(Boolean).join('\n'),
     then: tc.steps.map(s => s.expected?.trim()).filter(Boolean).join('\n'),
-    implementationUrl: link(IMPL),
-    backlogUrl: link(BACKLOG),
+    implementationUrl: tc.implementationUrl ?? legacy(LEGACY_IMPL),
+    backlogUrl: tc.backlogUrl ?? legacy(LEGACY_BACKLOG),
   };
 }
 

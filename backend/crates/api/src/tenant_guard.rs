@@ -154,6 +154,15 @@ mod tests {
     }
 
     #[test]
+    fn traceability_is_scoped_to_its_project() {
+        let id = Uuid::new_v4();
+        assert_eq!(
+            kinds(&format!("/projects/{id}/traceability")),
+            [TenantScope::Project]
+        );
+    }
+
+    #[test]
     fn routes_without_ids_need_no_lookup() {
         assert!(kinds("/health").is_empty());
         assert!(kinds("/projects").is_empty());

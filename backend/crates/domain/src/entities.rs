@@ -273,6 +273,10 @@ pub struct TestCaseData {
     pub tags: Vec<String>,
     /// Ordered steps.
     pub steps: Vec<TestStep>,
+    /// Optional http(s) link to the implementation.
+    pub implementation_url: Option<String>,
+    /// Optional http(s) link to the backlog item (the requirement).
+    pub backlog_url: Option<String>,
 }
 
 /// A test case belonging to a feature.
