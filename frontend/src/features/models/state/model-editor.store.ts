@@ -3,7 +3,7 @@
  * Provided at model-editor-page level so each editor gets its own instance.
  */
 import { computed, Injectable, signal } from '@angular/core';
-import { fitNodeSize, resetTextMeasure } from './node-fit';
+import { fitNodeSize, resetTextMeasure, singleLine } from './node-fit';
 
 export type StateKind = 'initial' | 'regular' | 'decision' | 'final';
 
@@ -233,6 +233,8 @@ export type AlignMode =
   | 'dist-h' | 'dist-v';
 
 export type SelType = 'node' | 'edge' | 'group';
+
+export type BottomTab = 'scenario' | 'testcases' | 'validation';
 export interface Selection { id: string; type: SelType }
 
 export interface ValidationIssue {
@@ -260,6 +262,30 @@ export class ModelEditorStore {
   readonly nodes  = signal<CanvasNode[]>([]);
   readonly edges  = signal<CanvasEdge[]>([]);
   readonly groups = signal<CanvasGroup[]>([]);
+
+  // ── Validation navigation ─────────────────────────────────────────────────
+  /** Which tab of the bottom panel is showing; shared so other parts can open one. */
+  readonly bottomTab = signal<BottomTab>('scenario');
+  /** Whether the bottom panel is hidden down to its tab strip. */
+  readonly bottomCollapsed = signal(false);
+  /** Asks the canvas to bring an element into view; `n` makes repeats distinct. */
+  readonly revealRequest = signal<{ id: string; n: number } | null>(null);
+
+  /** Show the Validation tab, un-collapsing the panel if need be. */
+  showValidation(): void {
+    this.bottomTab.set('validation');
+    this.bottomCollapsed.set(false);
+  }
+
+  /** Select the state or transition an issue is about and reveal it. */
+  revealIssue(issue: ValidationIssue): void {
+    const id = issue.elementId;
+    if (!id) return;
+    const type: SelType | null = this.nodeById(id) ? 'node' : this.edgeById(id) ? 'edge' : null;
+    if (!type) return;
+    this.select(id, type);
+    this.revealRequest.update(r => ({ id, n: (r?.n ?? 0) + 1 }));
+  }
 
   // ── Selection ─────────────────────────────────────────────────────────────
   /** Everything currently selected. */
@@ -324,7 +350,7 @@ export class ModelEditorStore {
 
     const outgoing = new Set(edges.map(e => e.fromId));
     for (const n of nodes.filter(n => n.kind !== 'final')) {
-      if (!outgoing.has(n.id)) list.push({ code: 'DEAD_END', severity: 'warning', message: `"${n.label}" has no outgoing transitions.`, elementId: n.id });
+      if (!outgoing.has(n.id)) list.push({ code: 'DEAD_END', severity: 'warning', message: `"${singleLine(n.label)}" has no outgoing transitions.`, elementId: n.id });
     }
 
     if (initials.length === 1) {
@@ -337,7 +363,7 @@ export class ModelEditorStore {
         edges.filter(e => e.fromId === id).forEach(e => q.push(e.toId));
       }
       for (const n of nodes.filter(n => !reachable.has(n.id))) {
-        list.push({ code: 'UNREACHABLE_STATE', severity: 'warning', message: `"${n.label}" is unreachable.`, elementId: n.id });
+        list.push({ code: 'UNREACHABLE_STATE', severity: 'warning', message: `"${singleLine(n.label)}" is unreachable.`, elementId: n.id });
       }
     }
 
@@ -591,7 +617,7 @@ export class ModelEditorStore {
       n.tests.map(test => ({
         test,
         nodeId: n.id,
-        nodeLabel: n.label,
+        nodeLabel: singleLine(n.label),
         ref: `${testRefPrefix(this.name())}_${test.seq}`,
       })),
     ),

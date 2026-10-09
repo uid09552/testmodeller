@@ -102,6 +102,13 @@ describe('toModelInput', () => {
     expect(input.transitions?.[0]).toMatchObject({ id: E, from: A, to: B, guard: 'ok' });
   });
 
+  it('keeps line breaks in a state name through a save', () => {
+    const m = model();
+    m.nodes[2] = { ...m.nodes[2], label: 'Home\nscreen\nshown' };
+    const input = toModelInput(m);
+    expect(input.states?.[2].name).toBe('Home\nscreen\nshown');
+  });
+
   it('sends a decision as a normal state', () => {
     expect(toModelInput(model()).states?.map(s => s.kind)).toEqual(['initial', 'normal', 'final']);
   });

@@ -237,3 +237,161 @@ describe('CanvasComponent font loading', () => {
     }
   });
 });
+
+describe('CanvasComponent validation navigation', () => {
+  let store: ModelEditorStore;
+  let fixture: ReturnType<typeof TestBed.createComponent<CanvasComponent>>;
+  let root: HTMLElement;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [CanvasComponent],
+      providers: [ModelEditorStore],
+    }).compileComponents();
+    fixture = TestBed.createComponent(CanvasComponent);
+    store = TestBed.inject(ModelEditorStore);
+    fixture.detectChanges();
+    root = fixture.nativeElement;
+  });
+
+  const badge = () => root.querySelector<HTMLElement>('.badge--status')!;
+
+  it('opens the Validation tab, un-collapsing the panel, when the error badge is clicked', () => {
+    store.bottomCollapsed.set(true);
+    fixture.detectChanges();
+    expect(badge().textContent).toContain('1 error');
+    badge().click();
+    expect(store.bottomTab()).toBe('validation');
+    expect(store.bottomCollapsed()).toBe(false);
+  });
+
+  it('opens it from the warning badge too', () => {
+    store.addNode('initial', 0, 0);
+    fixture.detectChanges();
+    expect(badge().textContent).toContain('warning');
+    badge().click();
+    expect(store.bottomTab()).toBe('validation');
+  });
+
+  it('shows a valid model as a non-interactive indicator', () => {
+    const a = store.addNode('initial', 0, 0);
+    const b = store.addNode('final', 300, 0);
+    store.addEdge(a.id, b.id);
+    fixture.detectChanges();
+    expect(badge().tagName).not.toBe('BUTTON');
+    badge().click();
+    expect(store.bottomTab()).toBe('scenario');
+  });
+
+  it('selects a state for a state issue', () => {
+    const a = store.addNode('initial', 0, 0);
+    const issue = store.issues().find(i => i.elementId === a.id)!;
+    store.revealIssue(issue);
+    expect(store.selection()).toEqual([{ id: a.id, type: 'node' }]);
+  });
+
+  it('selects a transition, not a state, for a transition issue', () => {
+    const a = store.addNode('initial', 0, 0);
+    const b = store.addNode('final', 300, 0);
+    const edge = store.addEdge(a.id, b.id)!;
+    store.revealIssue({ code: 'X', severity: 'error', message: 'x', elementId: edge.id });
+    expect(store.selection()).toEqual([{ id: edge.id, type: 'edge' }]);
+  });
+
+  it('ignores an issue with no element', () => {
+    store.revealIssue({ code: 'X', severity: 'error', message: 'x' });
+    expect(store.selection()).toEqual([]);
+    expect(store.revealRequest()).toBeNull();
+  });
+
+  it('pans an off-screen element into view and leaves a visible one alone', () => {
+    const near = store.addNode('regular', 100, 100);
+    const far = store.addNode('regular', 5000, 5000);
+    const c = fixture.componentInstance;
+    vi.spyOn(c['svgEl']().nativeElement, 'getBoundingClientRect')
+      .mockReturnValue({ width: 800, height: 600 } as DOMRect);
+    c.panX.set(0); c.panY.set(0);
+    c.revealElement(near.id);
+    expect([c.panX(), c.panY()]).toEqual([0, 0]);
+    c.revealElement(far.id);
+    expect(far.x + far.w / 2 + c.panX()).toBeCloseTo(400, 0);
+  });
+});
+
+describe('CanvasComponent multi-line state names', () => {
+  let store: ModelEditorStore;
+  let fixture: ReturnType<typeof TestBed.createComponent<CanvasComponent>>;
+  let c: CanvasComponent;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [CanvasComponent],
+      providers: [ModelEditorStore],
+    }).compileComponents();
+    fixture = TestBed.createComponent(CanvasComponent);
+    store = TestBed.inject(ModelEditorStore);
+    c = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  const key = (k: string, shiftKey = false) =>
+    new KeyboardEvent('keydown', { key: k, shiftKey, cancelable: true });
+
+  it('Shift+Enter leaves the event alone so the textarea inserts a break', () => {
+    const node = store.addNode('regular', 0, 0);
+    c.startEdit(node.id, node.label);
+    const e = key('Enter', true);
+    c.onEditKeydown(e);
+    expect(e.defaultPrevented).toBe(false);
+    expect(c.editNodeId()).toBe(node.id);
+  });
+
+  it('Enter commits the name with its line breaks and drops trailing blank lines', () => {
+    const node = store.addNode('regular', 0, 0);
+    c.startEdit(node.id, node.label);
+    c.onEditInput('Login\nForm\n\n');
+    c.onEditKeydown(key('Enter'));
+    expect(store.nodeById(node.id)!.label).toBe('Login\nForm');
+    expect(c.editNodeId()).toBeNull();
+  });
+
+  it('Escape restores the original name', () => {
+    const node = store.addNode('regular', 0, 0);
+    c.startEdit(node.id, 'State');
+    c.onEditInput('Something else\nentirely');
+    c.onEditKeydown(key('Escape'));
+    expect(store.nodeById(node.id)!.label).toBe('State');
+    expect(c.editNodeId()).toBeNull();
+  });
+
+  it('resizes the state live as breaks are added and removed', () => {
+    const node = store.addNode('regular', 0, 0);
+    c.startEdit(node.id, node.label);
+    c.onEditInput('A\nB\nC\nD');
+    const grown = store.nodeById(node.id)!;
+    expect(grown.h).toBeGreaterThan(node.h);
+    expect(c.editBox(grown).h).toBeLessThanOrEqual(grown.h);
+    c.onEditInput('A');
+    expect(store.nodeById(node.id)!.h).toBe(node.h);
+  });
+
+  it('draws each line of the name as its own line', () => {
+    const node = store.addNode('regular', 0, 0);
+    store.updateNode(node.id, { label: 'One\nTwo\nThree' });
+    fixture.detectChanges();
+    const lines = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.node-label tspan'))
+      .map(t => t.textContent!.trim());
+    expect(lines).toEqual(['One', 'Two', 'Three']);
+  });
+});
+
+describe('multi-line names outside the canvas', () => {
+  it('shows them on one line in validation messages and test labels', async () => {
+    await TestBed.configureTestingModule({ providers: [ModelEditorStore] }).compileComponents();
+    const store = TestBed.inject(ModelEditorStore);
+    const a = store.addNode('initial', 0, 0);
+    store.updateNode(a.id, { label: 'Login\nform' });
+    expect(store.issues().some(i => i.message.includes('"Login form"'))).toBe(true);
+    expect(store.issues().every(i => !i.message.includes('\n'))).toBe(true);
+  });
+});

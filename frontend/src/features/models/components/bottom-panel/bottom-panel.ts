@@ -5,7 +5,6 @@ import {
 } from '../../state/model-editor.store';
 import { TestCaseDialogComponent } from '../test-case-dialog/test-case-dialog';
 
-type Tab = 'scenario' | 'testcases' | 'validation';
 type CategoryFilter = 'all' | TestCategory;
 
 @Component({
@@ -17,7 +16,7 @@ type CategoryFilter = 'all' | TestCategory;
 })
 export class BottomPanelComponent {
   readonly store = inject(ModelEditorStore);
-  readonly activeTab = signal<Tab>('scenario');
+  readonly activeTab = this.store.bottomTab;
 
   // ── Test case list ─────────────────────────────────────────────────────────
   readonly categoryFilters: CategoryFilter[] = ['all', 'unit', 'integration', 'feature'];

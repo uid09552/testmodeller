@@ -99,13 +99,17 @@
   <div class="toolbar__spacer" aria-hidden="true"></div>
 
   @if (store.errorCount() > 0) {
-    <span class="badge badge--status badge--error" role="status" aria-live="polite">
+    <button class="badge badge--status badge--error badge--action" type="button"
+            (click)="store.showValidation()"
+            [attr.aria-label]="store.errorCount() + (store.errorCount() === 1 ? ' error' : ' errors') + ', open validation'">
       {{ store.errorCount() }} error{{ store.errorCount() === 1 ? '' : 's' }}
-    </span>
+    </button>
   } @else if (store.warningCount() > 0) {
-    <span class="badge badge--status badge--warning" role="status" aria-live="polite">
+    <button class="badge badge--status badge--warning badge--action" type="button"
+            (click)="store.showValidation()"
+            [attr.aria-label]="store.warningCount() + (store.warningCount() === 1 ? ' warning' : ' warnings') + ', open validation'">
       {{ store.warningCount() }} warning{{ store.warningCount() === 1 ? '' : 's' }}
-    </span>
+    </button>
   } @else {
     <span class="badge badge--status badge--ok" aria-hidden="true">✓ Valid</span>
   }
@@ -284,18 +288,18 @@
                   [class.node-label--light]="labelIsLight(node)"
                   [attr.x]="node.w / 2" [attr.y]="labelY(node, lines.length)">
               @for (line of lines; track $index) {
-                <tspan [attr.x]="node.w / 2" [attr.dy]="$index === 0 ? 0 : lineHeight">{{ line }}</tspan>
+                <tspan [attr.x]="node.w / 2" [attr.dy]="$index === 0 ? 0 : lineHeight">{{ line || '\u00a0' }}</tspan>
               }
             </text>
           } @else {
             <foreignObject [attr.x]="editBox(node).x" [attr.y]="editBox(node).y"
                            [attr.width]="editBox(node).w" [attr.height]="editBox(node).h">
-              <input #editInput class="node-edit-input"
-                     [value]="editValue()"
-                     (input)="editValue.set($any($event.target).value)"
-                     (blur)="finishEdit()"
-                     (keydown)="onEditKeydown($event)"
-                     xmlns="http://www.w3.org/1999/xhtml" />
+              <textarea #editInput class="node-edit-input" rows="1"
+                        [value]="editValue()"
+                        (input)="onEditInput($any($event.target).value)"
+                        (blur)="finishEdit()"
+                        (keydown)="onEditKeydown($event)"
+                        xmlns="http://www.w3.org/1999/xhtml"></textarea>
             </foreignObject>
           }
 

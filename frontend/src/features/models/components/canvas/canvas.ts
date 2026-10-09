@@ -1,7 +1,7 @@
 import {
   ChangeDetectionStrategy, ChangeDetectorRef,
   Component, ElementRef, HostListener,
-  inject, output, signal, viewChild,
+  effect, inject, output, signal, untracked, viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
@@ -122,6 +122,11 @@ export class CanvasComponent {
   constructor() {
     // Label widths depend on the web font, which may arrive after first paint.
     void document.fonts?.ready.then(() => this.store.refitNodes());
+    // Bring an element into view when something else (e.g. a validation row) asks.
+    effect(() => {
+      const req = this.store.revealRequest();
+      if (req) untracked(() => this.revealElement(req.id));
+    });
   }
 
   // ── Viewport ────────────────────────────────────────────────────────────
@@ -253,6 +258,8 @@ export class CanvasComponent {
   // ── Inline edit ────────────────────────────────────────────────────────
   readonly editNodeId = signal<string | null>(null);
   readonly editValue  = signal('');
+  /** The name before editing began, restored if the edit is cancelled. */
+  private editOriginal = '';
   private svgEl = viewChild.required<ElementRef<SVGSVGElement>>('svgCanvas');
 
   // ── Toolbar actions ───────────────────────────────────────────────────
@@ -588,6 +595,45 @@ export class CanvasComponent {
     this.panY.set(Math.round((view.height / zoom - (maxY - minY)) / 2 - minY));
   }
 
+  /**
+   * Pans, without touching zoom, so the state or transition `id` is on screen.
+   * An element already in view is left where it is.
+   */
+  revealElement(id: string): void {
+    const box = this.elementBox(id);
+    const view = this.svgEl()?.nativeElement.getBoundingClientRect();
+    if (!box || !view || view.width === 0) return;
+    const zoom = this.zoom();
+    const margin = 24;
+    const left = (box.x + this.panX()) * zoom;
+    const right = (box.x + box.w + this.panX()) * zoom;
+    const top = (box.y + this.panY()) * zoom;
+    const bottom = (box.y + box.h + this.panY()) * zoom;
+    if (left >= margin && right <= view.width - margin
+        && top >= margin && bottom <= view.height - margin) return;
+    this.panX.set(Math.round(view.width / zoom / 2 - (box.x + box.w / 2)));
+    this.panY.set(Math.round(view.height / zoom / 2 - (box.y + box.h / 2)));
+    this.cdr.markForCheck();
+  }
+
+  /** Canvas-space bounds of a state, or of the two states a transition joins. */
+  private elementBox(id: string): { x: number; y: number; w: number; h: number } | null {
+    const node = this.store.nodeById(id);
+    const rects = node ? [node] : (() => {
+      const e = this.store.edgeById(id);
+      const ends = e ? [this.store.nodeById(e.fromId), this.store.nodeById(e.toId)] : [];
+      return ends.filter((n): n is CanvasNode => !!n);
+    })();
+    if (rects.length === 0) return null;
+    const x0 = Math.min(...rects.map(n => n.x));
+    const y0 = Math.min(...rects.map(n => n.y));
+    return {
+      x: x0, y: y0,
+      w: Math.max(...rects.map(n => n.x + n.w)) - x0,
+      h: Math.max(...rects.map(n => n.y + n.h)) - y0,
+    };
+  }
+
   // ── Node interaction ──────────────────────────────────────────────────
   onNodeMouseDown(e: MouseEvent, node: CanvasNode): void {
     if (e.button !== 0) return;
@@ -663,7 +709,7 @@ export class CanvasComponent {
   readonly revealTests = output<void>();
 
   /** The inline label editor, while one is open. */
-  private readonly editInput = viewChild<ElementRef<HTMLInputElement>>('editInput');
+  private readonly editInput = viewChild<ElementRef<HTMLTextAreaElement>>('editInput');
 
   // ── Connector (start drawing edge) ────────────────────────────────────
   onConnectorMouseDown(e: MouseEvent, node: CanvasNode, anchor: Anchor): void {
@@ -876,6 +922,7 @@ export class CanvasComponent {
   startEdit(id: string, label: string): void {
     this.editNodeId.set(id);
     this.editValue.set(label);
+    this.editOriginal = label;
     this.cdr.markForCheck();
     // Focus the input once it exists. Without this nothing has focus, so no
     // blur ever fires, editing never ends, and every shortcut that is
@@ -891,17 +938,29 @@ export class CanvasComponent {
   finishEdit(): void {
     const id = this.editNodeId();
     if (!id) return;
+    // trim() also drops trailing blank lines.
     const val = this.editValue().trim() || 'State';
     this.store.updateNode(id, { label: val });
     this.editNodeId.set(null);
   }
 
   cancelEdit(): void {
+    const id = this.editNodeId();
+    if (!id) return;
+    this.store.updateNode(id, { label: this.editOriginal });
     this.editNodeId.set(null);
   }
 
+  /** Typing updates the name as it goes, so the state resizes live. */
+  onEditInput(value: string): void {
+    this.editValue.set(value);
+    const id = this.editNodeId();
+    if (id) this.store.updateNode(id, { label: value });
+  }
+
   onEditKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Enter') { e.preventDefault(); this.finishEdit(); }
+    // Shift+Enter falls through to the textarea and inserts a line break.
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.finishEdit(); }
     if (e.key === 'Escape') { e.preventDefault(); this.cancelEdit(); }
   }
 
@@ -972,7 +1031,9 @@ export class CanvasComponent {
    * label and overlapped the outline.
    */
   editBox(n: CanvasNode): { x: number; y: number; w: number; h: number } {
-    const h = 28;
+    // One line is 28px; each further line adds a line height, within the state.
+    const lines = labelLines(n.label, n.shape).length;
+    const h = Math.min(Math.max(28, lines * LABEL_LINE_H + 12), n.h - 4);
     // Fraction of the width that stays inside the outline at mid-height.
     const frac = n.shape === 'circle'  ? 0.74
                : n.shape === 'diamond' ? 0.58

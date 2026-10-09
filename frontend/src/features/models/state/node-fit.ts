@@ -51,24 +51,34 @@ export const measureLabel: TextMeasure = text => {
   return w;
 };
 
-/** Wraps `label` on spaces so no line exceeds the shape's text width (unless one word does). */
+/**
+ * Splits `label` on its explicit line breaks, then wraps each line on spaces so
+ * none exceeds the shape's text width (unless one word does). Blank lines stay.
+ */
 export function labelLines(label: string, shape: NodeShape, measure: TextMeasure = measureLabel): string[] {
   const max = MAX_TEXT_W[shape];
-  const words = label.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return [''];
   const lines: string[] = [];
-  let line = '';
-  for (const word of words) {
-    const next = line ? `${line} ${word}` : word;
-    if (line && measure(next) > max) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = next;
+  for (const raw of label.split(/\r?\n/)) {
+    const words = raw.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) { lines.push(''); continue; }
+    let line = '';
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && measure(next) > max) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = next;
+      }
     }
+    lines.push(line);
   }
-  lines.push(line);
   return lines;
+}
+
+/** A name on one line, for places that cannot show breaks (messages, tree). */
+export function singleLine(label: string): string {
+  return label.split(/\s*\r?\n\s*/).filter(Boolean).join(' ');
 }
 
 /** Smallest size, not below `min`, in which the wrapped label fits the shape. */

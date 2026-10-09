@@ -218,7 +218,13 @@
               <li class="bp-issue"
                   [class.bp-issue--error]="issue.severity === 'error'"
                   [class.bp-issue--warning]="issue.severity === 'warning'"
-                  [attr.aria-label]="issue.severity + ': ' + issue.message">
+                  [class.bp-issue--nav]="!!issue.elementId"
+                  [attr.role]="issue.elementId ? 'button' : null"
+                  [attr.tabindex]="issue.elementId ? 0 : null"
+                  [attr.aria-label]="issue.severity + ': ' + issue.message"
+                  (click)="store.revealIssue(issue)"
+                  (keydown.enter)="store.revealIssue(issue)"
+                  (keydown.space)="$event.preventDefault(); store.revealIssue(issue)">
                 @if (issue.severity === 'error') {
                   <svg class="bp-issue__icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -235,7 +241,7 @@
                   <span class="bp-issue__msg">{{ issue.message }}</span>
                 </div>
                 @if (issue.elementId) {
-                  <button class="bp-issue__focus" (click)="store.select(issue.elementId!, 'node')"
+                  <button class="bp-issue__focus" (click)="$event.stopPropagation(); store.revealIssue(issue)"
                           title="Select element" aria-label="Focus element">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

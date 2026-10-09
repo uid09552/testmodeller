@@ -138,10 +138,10 @@
 
     <div class="props__body">
       <label class="props__label" for="node-label">Label</label>
-      <input id="node-label" class="props__input"
-             [value]="getNodeLabel(node)"
-             (change)="setNodeLabel(node, $any($event.target).value)"
-             placeholder="State name" />
+      <textarea id="node-label" class="props__textarea" rows="2"
+                [value]="getNodeLabel(node)"
+                (change)="setNodeLabel(node, $any($event.target).value)"
+                placeholder="State name"></textarea>
 
       <label class="props__label" for="node-kind">Kind</label>
       <select id="node-kind" class="props__select"

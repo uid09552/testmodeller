@@ -179,6 +179,7 @@
   transition: background var(--transition-fast);
 
   &:hover { background: var(--clr-surface-50); }
+  &--nav { cursor: pointer; }
 
   &--error   { border-left: 3px solid var(--clr-danger); }
   &--warning { border-left: 3px solid var(--clr-warning); }

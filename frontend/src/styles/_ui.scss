@@ -208,6 +208,15 @@
   &--warning  { background: #fffbeb; color: var(--clr-warning); }
   &--ok       { background: #f0fdf4; color: #16a34a; }
 
+  // Clickable badge (a <button>): keeps the badge look, adds affordance.
+  &--action {
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    &:hover { filter: brightness(.95); }
+    &:focus-visible { outline: 2px solid var(--clr-brand-500); outline-offset: 2px; }
+  }
+
   // Canvas toolbar variant: sentence case, not uppercase tracking.
   &--status {
     font-size: var(--text-xs);

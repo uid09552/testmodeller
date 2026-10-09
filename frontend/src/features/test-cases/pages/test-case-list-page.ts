@@ -3,6 +3,7 @@ import {
 } from '@angular/core';
 import { OrgApi } from '../../../core/api/org-api';
 import { readJson, writeJson } from '../../../core/persistence/local-store';
+import { singleLine } from '../../models/state/node-fit';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
 import { fromRemote, PersistedModel, testToInput } from '../../models/state/model-mapping';
 import {
@@ -147,7 +148,7 @@ export class TestCaseListPageComponent {
           featureName: path.featureName,
           modelId: path.model.id,
           modelName: model.name,
-          stateLabel: node.label,
+          stateLabel: singleLine(node.label),
           nodeId: node.id,
           ref: `${prefix}_${test.seq}`,
           test,
@@ -259,7 +260,7 @@ export class TestCaseListPageComponent {
     if (!model || !node || !test) return null;
     return {
       test,
-      stateName: `${model.name} › ${node.label}`,
+      stateName: `${model.name} › ${singleLine(node.label)}`,
       ref: `${testRefPrefix(model.name)}_${test.seq}`,
     };
   });

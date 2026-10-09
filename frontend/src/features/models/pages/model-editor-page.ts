@@ -45,7 +45,7 @@ export class ModelEditorPageComponent implements OnInit {
 
   // Panel collapse — gives the canvas full width/height on demand.
   readonly propsCollapsed  = signal(false);
-  readonly bottomCollapsed = signal(false);
+  readonly bottomCollapsed = this.store.bottomCollapsed;
 
   /**
    * Which pane the right column shows (docs/specification/06-ui.md). Test

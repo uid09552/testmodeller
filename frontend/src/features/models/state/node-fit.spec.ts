@@ -1,4 +1,4 @@
-import { fitNodeSize, labelLines } from './node-fit';
+import { fitNodeSize, labelLines, singleLine } from './node-fit';
 
 /** Deterministic 7px per character. */
 const m = (t: string) => t.length * 7;
@@ -49,5 +49,37 @@ describe('node-fit', () => {
     const long = fitNodeSize('A rather long state name that wraps', 'rect', RECT, m);
     expect(long.h).toBeGreaterThan(RECT.h);
     expect(fitNodeSize('A', 'rect', RECT, m)).toEqual(RECT);
+  });
+
+  describe('explicit line breaks', () => {
+    it('keeps each line of a name separate', () => {
+      expect(labelLines('Login\nForm\nOpen', 'rect', m)).toEqual(['Login', 'Form', 'Open']);
+    });
+
+    it('sizes stacked short lines for all of them', () => {
+      const size = fitNodeSize('One\nTwo\nThree\nFour', 'rect', RECT, m);
+      expect(size.h).toBe(4 * 16 + 20);
+      expect(size.w).toBe(RECT.w);
+    });
+
+    it('wraps a long line further and counts every resulting line', () => {
+      const long = 'User submits the registration form with valid credentials';
+      const lines = labelLines(`Start\n${long}`, 'rect', m);
+      expect(lines[0]).toBe('Start');
+      expect(lines.length).toBeGreaterThan(2);
+    });
+
+    it('keeps blank lines in the middle', () => {
+      expect(labelLines('A\n\nB', 'rect', m)).toEqual(['A', '', 'B']);
+    });
+
+    it('treats CRLF as one break', () => {
+      expect(labelLines('A\r\nB', 'rect', m)).toEqual(['A', 'B']);
+    });
+
+    it('collapses breaks to spaces for single-line display', () => {
+      expect(singleLine('Login\n  Form\n\nOpen')).toBe('Login Form Open');
+      expect(singleLine('Plain')).toBe('Plain');
+    });
   });
 });

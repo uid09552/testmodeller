@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { singleLine } from '../../state/node-fit';
 import {
   CanvasEdge, CanvasNode, ModelEditorStore, ModelStatus, StateKind,
   NodeShape, NODE_COLORS, GROUP_COLORS, AlignMode, CanvasGroup,
@@ -17,7 +18,7 @@ export class PropertiesPanelComponent {
 
   // ── Node bindings ─────────────────────────────────────────────────────
   getNodeLabel(n: CanvasNode): string { return n.label; }
-  setNodeLabel(n: CanvasNode, v: string): void { this.store.updateNode(n.id, { label: v }); }
+  setNodeLabel(n: CanvasNode, v: string): void { this.store.updateNode(n.id, { label: v.trim() || 'State' }); }
 
   getNodeKind(n: CanvasNode): StateKind { return n.kind; }
   setNodeKind(n: CanvasNode, v: StateKind): void { this.store.updateNode(n.id, { kind: v }); }
@@ -35,7 +36,7 @@ export class PropertiesPanelComponent {
   getEdgeAction(e: CanvasEdge): string { return e.action ?? ''; }
   setEdgeAction(e: CanvasEdge, v: string): void { this.store.updateEdge(e.id, { action: v || undefined }); }
 
-  nodeName(id: string): string { return this.store.nodeById(id)?.label ?? id.slice(0, 8); }
+  nodeName(id: string): string { return singleLine(this.store.nodeById(id)?.label ?? id.slice(0, 8)); }
 
   // ── Model meta ────────────────────────────────────────────────────────
   statusOptions: ModelStatus[] = ['draft', 'review', 'approved'];
