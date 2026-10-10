@@ -35,12 +35,12 @@ describe('ModelPersistenceService layout and variables', () => {
 
   it('restores the stored layout on open', async () => {
     const m = await service.open('m1');
-    expect(m?.nodes[0].color).toBe('#ff0000');
+    expect(m?.nodes[0].style?.stroke).toBe('#ff0000');
   });
 
   it('saves a colour-only change, with the layout', async () => {
     const m = (await service.open('m1'))!;
-    service.schedule({ ...m, nodes: [{ ...m.nodes[0], color: '#00ff00' }] });
+    service.schedule({ ...m, nodes: [{ ...m.nodes[0], style: { stroke: '#00ff00' } }] });
     expect(service.state()).toBe('pending');
     await service.flush();
 

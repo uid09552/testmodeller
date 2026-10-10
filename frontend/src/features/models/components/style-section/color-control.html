@@ -1,0 +1,26 @@
+<div class="color-row" role="group" [attr.aria-label]="label()">
+  <button type="button" class="swatch swatch--default" [class.swatch--on]="isOn(null)"
+          [attr.aria-pressed]="isOn(null)" [title]="label() + ': default'"
+          [attr.aria-label]="label() + ': default'" (click)="pick.emit(null)">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+  </button>
+  @for (c of presets; track c.value) {
+    <button type="button" class="swatch" [class.swatch--on]="isOn(c.value)"
+            [style.background]="c.value" [attr.aria-pressed]="isOn(c.value)"
+            [title]="label() + ': ' + c.name" [attr.aria-label]="label() + ': ' + c.name"
+            (click)="pick.emit(c.value)"></button>
+  }
+  <!-- Custom: the native picker behind a swatch, reachable by keyboard. -->
+  <label class="swatch swatch--custom" [class.swatch--on]="!!custom()"
+         [style.background]="custom()" [title]="label() + ': custom' + (custom() ? ' ' + custom() : '')">
+    @if (!custom()) { <span aria-hidden="true">+</span> }
+    <input type="color" class="swatch__input" [value]="pickerValue()"
+           [attr.aria-label]="label() + ': custom colour'" (change)="onCustom($event)" />
+  </label>
+  @if (isMixed()) {
+    <span class="color-mixed">Mixed</span>
+  } @else if (custom()) {
+    <code class="color-custom-value">{{ custom() }}</code>
+  }
+</div>

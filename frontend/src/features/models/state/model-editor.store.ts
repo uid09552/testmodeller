@@ -3,14 +3,17 @@
  * Provided at model-editor-page level so each editor gets its own instance.
  */
 import { computed, Injectable, signal } from '@angular/core';
-import { fitNodeSize, resetTextMeasure, singleLine } from './node-fit';
+import { fitNodeSize, labelLineH, resetTextMeasure, singleLine, wrapText } from './node-fit';
+import { anchorInset } from './node-shapes';
 import type { StaleReason, StaleTest } from '../../../core/api/org-api';
 import type { ResultStatus, Variable } from '../../../core/api/api.types';
 
 export type StateKind = 'initial' | 'regular' | 'decision' | 'final';
 
-/** UML shape drawn for a state. */
-export type NodeShape = 'circle' | 'rect' | 'diamond';
+/** Shape drawn for a state; presentation only, it never changes the kind. */
+export type NodeShape =
+  | 'circle' | 'rect' | 'diamond'
+  | 'hexagon' | 'parallelogram' | 'cylinder' | 'document';
 
 /** Default shape per kind: start is a circle, steps are rectangles,
  *  decisions are diamonds, and the end state keeps its rectangle. */
@@ -23,9 +26,13 @@ export const SHAPE_FOR_KIND: Record<StateKind, NodeShape> = {
 
 /** Default footprint per shape. */
 export const SIZE_FOR_SHAPE: Record<NodeShape, { w: number; h: number }> = {
-  circle:    { w: 88,  h: 88 },
-  rect:      { w: 144, h: 48 },
-  diamond:   { w: 172, h: 104 },
+  circle:        { w: 88,  h: 88 },
+  rect:          { w: 144, h: 48 },
+  diamond:       { w: 172, h: 104 },
+  hexagon:       { w: 160, h: 56 },
+  parallelogram: { w: 160, h: 52 },
+  cylinder:      { w: 120, h: 72 },
+  document:      { w: 150, h: 60 },
 };
 
 /** Fill presets offered in the quick bar; `null` means "use the kind default". */
@@ -183,8 +190,91 @@ export interface CanvasNode {
   description?: string;
   tests: StateTest[];
   shape: NodeShape;
-  /** Fill override; when unset the kind's default styling applies. */
-  color?: string | null;
+  /** The user's styling; absent keys keep the kind's default look. */
+  style?: ElementStyle;
+}
+
+// ── Element styling (presentation only) ─────────────────────────────────────
+export type LineDash = 'dashed' | 'dotted';
+export type LineWidth = 1 | 2 | 3 | 4;
+export type TextSize = 's' | 'l';
+export type ArrowKind = 'open' | 'line';
+
+/**
+ * How a state, transition or annotation looks. Every key is optional and an
+ * absent key means "default", so choosing "Default" in a control deletes it.
+ */
+export interface ElementStyle {
+  /** Line (outline) colour. */
+  stroke?: string;
+  dash?: LineDash;
+  width?: LineWidth;
+  fill?: string;
+  /** Text colour. */
+  text?: string;
+  /** Font size; absent is normal. */
+  size?: TextSize;
+  bold?: boolean;
+  italic?: boolean;
+  /** Arrowhead of a transition; absent is filled. */
+  arrow?: ArrowKind;
+}
+
+export type StyleKey = keyof ElementStyle;
+export type StyleValue = ElementStyle[StyleKey] | null;
+
+export const STYLE_KEYS: StyleKey[] = ['stroke', 'dash', 'width', 'fill', 'text', 'size', 'bold', 'italic', 'arrow'];
+
+/** The style keys each kind of element supports. */
+export const STYLE_KEYS_FOR: Record<'node' | 'edge' | AnnotationKind, StyleKey[]> = {
+  node: ['stroke', 'dash', 'width', 'fill', 'text', 'size', 'bold', 'italic'],
+  edge: ['stroke', 'dash', 'width', 'text', 'size', 'bold', 'italic', 'arrow'],
+  note: ['stroke', 'dash', 'width', 'fill', 'text', 'size', 'bold', 'italic'],
+  text: ['text', 'size', 'bold', 'italic'],
+};
+
+// ── Annotations (not part of the model) ────────────────────────────────────
+/** A note is a filled box with a folded corner; a text box is bare text. */
+export type AnnotationKind = 'note' | 'text';
+
+/**
+ * A note or text box on the canvas. It explains the diagram and is not part
+ * of the model: it lives only in the layout, and nothing computed from the
+ * model (validation, generation, coverage, AI) ever sees it.
+ */
+export interface CanvasAnnotation {
+  id: string;
+  kind: AnnotationKind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+  style?: ElementStyle;
+}
+
+/** Longest annotation text, so notes cannot crowd out the layout's size limit. */
+export const ANNOTATION_MAX_TEXT = 2000;
+export const ANNOTATION_SIZE: Record<AnnotationKind, { w: number; h: number }> = {
+  note: { w: 168, h: 96 },
+  text: { w: 168, h: 32 },
+};
+export const ANNOTATION_MIN_W = 60;
+/** Inner padding of a note around its text. */
+export const NOTE_PAD = 10;
+
+/** Keys that change how big a label is, and so a state's fitted size. */
+export const TEXT_METRIC_KEYS: StyleKey[] = ['size', 'bold', 'italic'];
+
+/**
+ * `style` with `key` set to `value`, or with `key` removed when `value` is
+ * null, undefined or false. Undefined when nothing is left.
+ */
+export function withStyle(style: ElementStyle | undefined, key: StyleKey, value: StyleValue): ElementStyle | undefined {
+  const next: Record<string, unknown> = { ...(style ?? {}) };
+  if (value === null || value === undefined || value === false) delete next[key];
+  else next[key] = value;
+  return Object.keys(next).length ? next as ElementStyle : undefined;
 }
 
 /** The four connector dots on a state. */
@@ -193,17 +283,17 @@ export type Anchor = 'top' | 'right' | 'bottom' | 'left';
 export const ANCHORS: Anchor[] = ['top', 'right', 'bottom', 'left'];
 
 /**
- * Position of a connector dot.
- *
- * Shape-independent: a rectangle, an inscribed ellipse and a diamond all touch
- * their bounding box at exactly these four points, so one formula serves all.
+ * Position of a connector dot: the middle of a side of the bounding box,
+ * where every shape touches it, moved in to the outline where a shape is
+ * inset there (see `node-shapes.ts`).
  */
 export function anchorPoint(n: CanvasNode, a: Anchor): { x: number; y: number } {
+  const i = anchorInset(n.shape, a, n.w, n.h);
   switch (a) {
-    case 'top':    return { x: n.x + n.w / 2, y: n.y };
-    case 'right':  return { x: n.x + n.w,     y: n.y + n.h / 2 };
-    case 'bottom': return { x: n.x + n.w / 2, y: n.y + n.h };
-    case 'left':   return { x: n.x,           y: n.y + n.h / 2 };
+    case 'top':    return { x: n.x + n.w / 2,     y: n.y + i };
+    case 'right':  return { x: n.x + n.w - i,     y: n.y + n.h / 2 };
+    case 'bottom': return { x: n.x + n.w / 2,     y: n.y + n.h - i };
+    case 'left':   return { x: n.x + i,           y: n.y + n.h / 2 };
   }
 }
 
@@ -239,6 +329,8 @@ export interface CanvasEdge {
   routing?: 'curved' | 'orthogonal';
   /** The label's offset from its default position. */
   labelOffset?: { dx: number; dy: number };
+  /** The user's styling; absent keys keep the default look. */
+  style?: ElementStyle;
 }
 
 /**
@@ -277,7 +369,7 @@ export const COLLAPSED_H = 56;
 export function collapsedNode(g: CanvasGroup): CanvasNode {
   return {
     id: g.id, label: g.label, kind: 'regular', x: g.x, y: g.y,
-    w: COLLAPSED_W, h: COLLAPSED_H, shape: 'rect', color: null, tests: [],
+    w: COLLAPSED_W, h: COLLAPSED_H, shape: 'rect', tests: [],
   };
 }
 export const GROUP_MIN_H = 100;
@@ -292,7 +384,7 @@ export type AlignMode =
   | 'top'  | 'middle'   | 'bottom'
   | 'dist-h' | 'dist-v';
 
-export type SelType = 'node' | 'edge' | 'group';
+export type SelType = 'node' | 'edge' | 'group' | 'annotation';
 
 export type BottomTab = 'scenario' | 'testcases' | 'validation' | 'simulate';
 export interface Selection { id: string; type: SelType }
@@ -307,7 +399,7 @@ export interface ValidationIssue {
   elementId?: string;
 }
 
-interface Snapshot { nodes: CanvasNode[]; edges: CanvasEdge[]; groups: CanvasGroup[] }
+interface Snapshot { nodes: CanvasNode[]; edges: CanvasEdge[]; groups: CanvasGroup[]; annotations: CanvasAnnotation[] }
 
 // ── Coverage overlay ─────────────────────────────────────────────────────────
 /** What the coverage overlay shows; `off` leaves the canvas as it is. */
@@ -360,6 +452,8 @@ export class ModelEditorStore {
   readonly nodes  = signal<CanvasNode[]>([]);
   readonly edges  = signal<CanvasEdge[]>([]);
   readonly groups = signal<CanvasGroup[]>([]);
+  /** Notes and text boxes: layout only, never part of the model. */
+  readonly annotations = signal<CanvasAnnotation[]>([]);
 
   // ── Validation navigation ─────────────────────────────────────────────────
   /** Which tab of the bottom panel is showing; shared so other parts can open one. */
@@ -436,6 +530,18 @@ export class ModelEditorStore {
   readonly selectedNodes = computed(() => {
     const ids = new Set(this.selection().filter(s => s.type === 'node').map(s => s.id));
     return this.nodes().filter(n => ids.has(n.id));
+  });
+
+  /** Selected notes and text boxes, in drawing order. */
+  readonly selectedAnnotations = computed(() => {
+    const ids = new Set(this.selection().filter(s => s.type === 'annotation').map(s => s.id));
+    return this.annotations().filter(a => ids.has(a.id));
+  });
+
+  readonly selectedAnnotation = computed(() => {
+    const s = this.selected();
+    if (!s || s.type !== 'annotation') return null;
+    return this.annotations().find(a => a.id === s.id) ?? null;
   });
 
   readonly selectedGroup = computed(() => {
@@ -533,6 +639,7 @@ export class ModelEditorStore {
       nodes:  structuredClone(this.nodes()),
       edges:  structuredClone(this.edges()),
       groups: structuredClone(this.groups()),
+      annotations: structuredClone(this.annotations()),
     };
   }
   private pushUndo(): void {
@@ -550,6 +657,7 @@ export class ModelEditorStore {
     this.nodes.set(prev.nodes);
     this.edges.set(prev.edges);
     this.groups.set(prev.groups ?? []);
+    this.annotations.set(prev.annotations ?? []);
     this.dirty.set(true);
   }
 
@@ -563,6 +671,7 @@ export class ModelEditorStore {
     this.nodes.set(next.nodes);
     this.edges.set(next.edges);
     this.groups.set(next.groups ?? []);
+    this.annotations.set(next.annotations ?? []);
     this.dirty.set(true);
   }
 
@@ -583,7 +692,7 @@ export class ModelEditorStore {
            : kind === 'final'   ? 'End'
            : kind === 'decision' ? 'Decision?'
            : 'State',
-      kind, x, y, w, h, tests: [], shape: s, color: null,
+      kind, x, y, w, h, tests: [], shape: s,
     };
     this.nodes.update(ns => [...ns, node]);
     this.dirty.set(true);
@@ -611,7 +720,7 @@ export class ModelEditorStore {
       }
       // A state is as big as its label needs, around the same centre.
       if (changes.label !== undefined || next.shape !== n.shape) {
-        const size = fitNodeSize(next.label, next.shape, SIZE_FOR_SHAPE[next.shape]);
+        const size = fitNodeSize(next.label, next.shape, SIZE_FOR_SHAPE[next.shape], next.style);
         if (next.shape === n.shape) {
           next.x = n.x + (n.w - size.w) / 2;
           next.y = n.y + (n.h - size.h) / 2;
@@ -632,7 +741,7 @@ export class ModelEditorStore {
 
   /** `n` resized to fit its label, keeping its centre. */
   private fitted(n: CanvasNode): CanvasNode {
-    const size = fitNodeSize(n.label, n.shape, SIZE_FOR_SHAPE[n.shape]);
+    const size = fitNodeSize(n.label, n.shape, SIZE_FOR_SHAPE[n.shape], n.style);
     if (size.w === n.w && size.h === n.h) return n;
     return {
       ...n, ...size,
@@ -860,7 +969,7 @@ export class ModelEditorStore {
       label: 'State',
       kind: 'regular',
       x, y, w: NODE_W, h: NODE_H, tests: [],
-      shape: 'rect', color: null,
+      shape: 'rect',
     };
     // Point the new node's nearest dot back at the dot the drag came from.
     const origin = fromAnchor ? anchorPoint(source, fromAnchor)
@@ -1153,6 +1262,91 @@ export class ModelEditorStore {
     this.dirty.set(true);
   }
 
+  // ── Annotations (not part of the model) ──────────────────────────────────
+  annotationById(id: string): CanvasAnnotation | undefined {
+    return this.annotations().find(a => a.id === id);
+  }
+
+  /** Places an empty note or text box with its top-left at (x, y). One undo step. */
+  addAnnotation(kind: AnnotationKind, x: number, y: number): CanvasAnnotation {
+    this.pushUndo();
+    const a: CanvasAnnotation = { id: crypto.randomUUID(), kind, x, y, ...ANNOTATION_SIZE[kind], text: '' };
+    this.annotations.update(as => [...as, a]);
+    this.dirty.set(true);
+    return a;
+  }
+
+  /**
+   * Sets an annotation's text, cut at `ANNOTATION_MAX_TEXT` characters, and
+   * grows a note to fit it. Not an undo step (it follows typing); returns
+   * whether the text was cut.
+   */
+  setAnnotationText(id: string, text: string): boolean {
+    const cut = text.length > ANNOTATION_MAX_TEXT;
+    const next = cut ? text.slice(0, ANNOTATION_MAX_TEXT) : text;
+    this.annotations.update(as => as.map(a => a.id === id ? this.fittedAnnotation({ ...a, text: next }) : a));
+    this.dirty.set(true);
+    return cut;
+  }
+
+  /**
+   * Ends editing an annotation's text: trailing blank lines go, and an empty
+   * annotation is removed.
+   */
+  commitAnnotationText(id: string, text: string): void {
+    const trimmed = text.replace(/(\s*\n)+\s*$/, '');
+    if (!trimmed.trim()) { this.removeAnnotation(id); return; }
+    this.setAnnotationText(id, trimmed);
+  }
+
+  moveAnnotation(id: string, x: number, y: number): void {
+    this.annotations.update(as => as.map(a => a.id === id ? { ...a, x, y } : a));
+    this.dirty.set(true);
+  }
+
+  /** Resizes by a handle; a note never gets shorter than its text. Not an undo step. */
+  resizeAnnotation(
+    id: string, handle: ResizeHandle, orig: { x: number; y: number; w: number; h: number },
+    dx: number, dy: number,
+  ): void {
+    let { x, y, w, h } = orig;
+    const minH = 24;
+    if (handle.includes('w')) { w = Math.max(orig.w - dx, ANNOTATION_MIN_W); x = orig.x + orig.w - w; }
+    if (handle.includes('e')) w = Math.max(orig.w + dx, ANNOTATION_MIN_W);
+    if (handle.includes('n')) { h = Math.max(orig.h - dy, minH); y = orig.y + orig.h - h; }
+    if (handle.includes('s')) h = Math.max(orig.h + dy, minH);
+    this.annotations.update(as => as.map(a => a.id === id ? this.fittedAnnotation({ ...a, x, y, w, h }) : a));
+    this.dirty.set(true);
+  }
+
+  removeAnnotation(id: string): void {
+    if (!this.annotationById(id)) return;
+    this.pushUndo();
+    this.annotations.update(as => as.filter(a => a.id !== id));
+    this.selection.update(sel => sel.filter(s => s.id !== id));
+    this.dirty.set(true);
+  }
+
+  /** Annotations whose box intersects a marquee rectangle. */
+  annotationsInRect(x0: number, y0: number, x1: number, y1: number): string[] {
+    const ax = Math.min(x0, x1), bx = Math.max(x0, x1);
+    const ay = Math.min(y0, y1), by = Math.max(y0, y1);
+    return this.annotations()
+      .filter(a => a.x < bx && ax < a.x + a.w && a.y < by && ay < a.y + a.h)
+      .map(a => a.id);
+  }
+
+  /** Lines of an annotation's text, wrapped to its width. */
+  annotationLines(a: CanvasAnnotation): string[] {
+    return wrapText(a.text, a.w - 2 * NOTE_PAD, a.style);
+  }
+
+  /** `a` grown, never shrunk, so its wrapped text fits its height. */
+  private fittedAnnotation(a: CanvasAnnotation): CanvasAnnotation {
+    const need = this.annotationLines(a).length * labelLineH(a.style) + 2 * NOTE_PAD;
+    return need > a.h ? { ...a, h: Math.ceil(need) } : a;
+  }
+
   // ── Mass operations on the selection ──────────────────────────────────────
   deleteSelection(): void {
     const sel = this.selection();
@@ -1161,7 +1355,9 @@ export class ModelEditorStore {
     const nodeIds = new Set(sel.filter(s => s.type === 'node').map(s => s.id));
     const edgeIds = new Set(sel.filter(s => s.type === 'edge').map(s => s.id));
     const groupIds = new Set(sel.filter(s => s.type === 'group').map(s => s.id));
+    const noteIds = new Set(sel.filter(s => s.type === 'annotation').map(s => s.id));
 
+    this.annotations.update(as => as.filter(a => !noteIds.has(a.id)));
     this.nodes.update(ns => ns.filter(n => !nodeIds.has(n.id)));
     this.edges.update(es => es.filter(e =>
       !edgeIds.has(e.id) && !nodeIds.has(e.fromId) && !nodeIds.has(e.toId)));
@@ -1172,17 +1368,52 @@ export class ModelEditorStore {
 
   /** Apply a border colour to every selected state. */
   colorSelection(color: string | null): void {
-    const ids = this.selectedNodes().map(n => n.id);
-    if (ids.length === 0) return;
-    this.pushUndo();
+    this.setStyle(this.selectedNodes().map(n => n.id), 'stroke', color);
+  }
+
+  // ── Styling (presentation only) ───────────────────────────────────────────
+  /**
+   * Sets one style key on every listed element that supports it, as one undo
+   * step. `null` (or `false` for a flag) restores the default. Ids that are
+   * not a state or transition are ignored.
+   */
+  setStyle(ids: string[], key: StyleKey, value: StyleValue): void {
     const set = new Set(ids);
-    this.nodes.update(ns => ns.map(n => set.has(n.id) ? { ...n, color } : n));
+    const nodeHit = this.nodes().some(n => set.has(n.id)) && STYLE_KEYS_FOR.node.includes(key);
+    const edgeHit = this.edges().some(e => set.has(e.id)) && STYLE_KEYS_FOR.edge.includes(key);
+    const noteHit = this.annotations().some(a => set.has(a.id) && STYLE_KEYS_FOR[a.kind].includes(key));
+    if (!nodeHit && !edgeHit && !noteHit) return;
+    this.pushUndo();
+    if (noteHit) {
+      this.annotations.update(as => as.map(a =>
+        set.has(a.id) && STYLE_KEYS_FOR[a.kind].includes(key)
+          ? this.fittedAnnotation({ ...a, style: withStyle(a.style, key, value) })
+          : a));
+    }
+    if (nodeHit) {
+      const refit = TEXT_METRIC_KEYS.includes(key);
+      this.nodes.update(ns => ns.map(n => {
+        if (!set.has(n.id)) return n;
+        const next = { ...n, style: withStyle(n.style, key, value) };
+        return refit ? this.fitted(next) : next;
+      }));
+    }
+    if (edgeHit) {
+      this.edges.update(es => es.map(e =>
+        set.has(e.id) ? { ...e, style: withStyle(e.style, key, value) } : e));
+    }
     this.dirty.set(true);
   }
 
-  /** Align or distribute the selected states. */
+  /** Sets one style key on everything selected. */
+  styleSelection(key: StyleKey, value: StyleValue): void {
+    this.setStyle(this.selection().map(s => s.id), key, value);
+  }
+
+  /** Align or distribute the selected states and annotations. */
   alignSelection(mode: AlignMode): void {
-    const sel = this.selectedNodes();
+    const sel: { id: string; x: number; y: number; w: number; h: number }[] =
+      [...this.selectedNodes(), ...this.selectedAnnotations()];
     if (sel.length < 2) return;
     this.pushUndo();
 
@@ -1213,7 +1444,7 @@ export class ModelEditorStore {
       }
     }
 
-    this.nodes.update(ns => ns.map(n => {
+    const place = <T extends { id: string; x: number; y: number; w: number; h: number }>(n: T): T => {
       if (!ids.has(n.id)) return n;
       switch (mode) {
         case 'left':     return { ...n, x: x0 };
@@ -1225,7 +1456,9 @@ export class ModelEditorStore {
         case 'dist-h':   return { ...n, x: spread.get(n.id)?.x ?? n.x };
         case 'dist-v':   return { ...n, y: spread.get(n.id)?.y ?? n.y };
       }
-    }));
+    };
+    this.nodes.update(ns => ns.map(place));
+    this.annotations.update(as => as.map(place));
     this.dirty.set(true);
   }
 
@@ -1245,6 +1478,14 @@ export class ModelEditorStore {
   /** Replace the selection with these states (used by the marquee). */
   selectNodes(ids: string[]): void {
     this.selection.set(ids.map(id => ({ id, type: 'node' as const })));
+  }
+
+  /** Replace the selection with these states and annotations. */
+  selectItems(nodeIds: string[], annotationIds: string[]): void {
+    this.selection.set([
+      ...nodeIds.map(id => ({ id, type: 'node' as const })),
+      ...annotationIds.map(id => ({ id, type: 'annotation' as const })),
+    ]);
   }
 
   /** Ctrl/Cmd-click: add or remove one element. */
@@ -1353,7 +1594,7 @@ export class ModelEditorStore {
   loadFrom(m: {
     name: string; description: string; scenarioDesc: string; status: ModelStatus;
     nodes: CanvasNode[]; edges: CanvasEdge[]; testSeq: number;
-    groups?: CanvasGroup[]; variables?: Variable[];
+    groups?: CanvasGroup[]; variables?: Variable[]; annotations?: CanvasAnnotation[];
   }): void {
     this.variables.set(m.variables ?? []);
     this.name.set(m.name);
@@ -1365,10 +1606,10 @@ export class ModelEditorStore {
       ...n,
       tests: n.tests ?? [],
       shape: n.shape ?? SHAPE_FOR_KIND[n.kind] ?? 'rect',
-      color: n.color ?? null,
     })));
     this.edges.set(m.edges);
     this.groups.set((m.groups ?? []).map(g => this.migrateGroup(g)));
+    this.annotations.set(m.annotations ?? []);
     this.testSeq.set(m.testSeq || this.nextSeqFrom(m.nodes));
     this.undoStack.set([]);
     this.redoStack.set([]);
@@ -1416,6 +1657,7 @@ export class ModelEditorStore {
       nodes: this.nodes(),
       edges: this.edges(),
       groups: this.groups(),
+      annotations: this.annotations(),
       testSeq: this.testSeq(),
       variables: this.variables(),
     };
@@ -1431,6 +1673,7 @@ export class ModelEditorStore {
     this.nodes.set([]);
     this.edges.set([]);
     this.groups.set([]);
+    this.annotations.set([]);
     this.selection.set([]);
     this.description.set('');
     this.scenarioDesc.set('');

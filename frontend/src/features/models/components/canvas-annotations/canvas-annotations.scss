@@ -1,0 +1,55 @@
+// Notes and text boxes (canvas-annotations). Not part of the model.
+
+.note { cursor: move; &:focus { outline: none; } }
+.note--fixed { cursor: default; }
+
+.note-bg {
+  fill: #fef9c3;           // pale yellow by default
+  stroke: #eab308;
+  stroke-width: 1;
+}
+.note-fold { fill: none; stroke: #eab308; stroke-width: 1; pointer-events: none; }
+
+.note-box { fill: transparent; stroke: none; }
+.note--text.note--selected .note-box,
+.note--text:focus-visible .note-box { stroke: var(--clr-brand-400); stroke-dasharray: 4 3; }
+
+.note--selected .note-bg, .note:focus-visible .note-bg {
+  filter: drop-shadow(0 0 2px var(--clr-brand-500));
+}
+
+.note-text {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  fill: var(--clr-text-900);
+  pointer-events: none;
+}
+
+.note-handle {
+  fill: var(--clr-surface-0);
+  stroke: var(--clr-brand-500);
+  stroke-width: 1.5;
+  &--nw, &--se { cursor: nwse-resize; }
+  &--ne, &--sw { cursor: nesw-resize; }
+  &--n, &--s { cursor: ns-resize; }
+  &--e, &--w { cursor: ew-resize; }
+}
+
+.note-edit {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 8px 9px;
+  border: 2px solid var(--clr-brand-500);
+  border-radius: 2px;
+  font: 13px var(--font-sans);
+  line-height: 16px;
+  background: #fffef0;
+  resize: none;
+  outline: none;
+}
+.note-edit__msg {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--clr-warning);
+}

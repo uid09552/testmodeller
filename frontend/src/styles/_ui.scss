@@ -1027,7 +1027,7 @@
   }
 }
 
-.shape-row { display: flex; gap: 4px; }
+.shape-row { display: flex; flex-wrap: wrap; gap: 4px; }
 .color-row { display: flex; flex-wrap: wrap; gap: 5px; }
 
 // ── Test-case link chips ──────────────────────────────────────────────────────

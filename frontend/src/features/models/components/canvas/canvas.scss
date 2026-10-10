@@ -408,15 +408,6 @@
   background: var(--clr-surface-200);
 }
 
-.qb-colors {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 3px;
-  transition: opacity var(--transition-fast);
-
-  &--disabled { opacity: .35; }
-}
-
 .edge-drawing--reconnect {
   stroke: var(--clr-brand-500);
   stroke-dasharray: 5 4;
@@ -576,7 +567,7 @@
   &:focus-visible { outline: none; .group-box__bg { stroke-width: 3; } }
 }
 .node-group:focus-visible { outline: none; }
-.node-group:focus-visible .node-bg { stroke: var(--clr-brand-500); stroke-width: 3; }
+.node-group:focus-visible .node-bg { stroke: var(--clr-brand-500) !important; stroke-width: 3 !important; }
 
 // Overlays on the canvas: search, shortcut help, minimap.
 .canvas-overlay { position: absolute; z-index: 5; }
@@ -587,9 +578,10 @@
 
 .snap-guide { stroke: var(--clr-brand-500); stroke-width: 1; stroke-dasharray: 4 3; pointer-events: none; }
 
-// Highlighted test path (see canvas-edges for transitions).
-.node-group--on-path .node-bg { stroke: var(--clr-brand-600); stroke-width: 3; }
-.node-group--dimmed { opacity: .3; .node-bg { stroke-dasharray: 3 4; } }
+// Highlighted test path (see canvas-edges for transitions). Cues beat the
+// user's inline style with !important, as in canvas-edges.
+.node-group--on-path .node-bg { stroke: var(--clr-brand-600) !important; stroke-width: 3 !important; stroke-dasharray: none !important; }
+.node-group--dimmed { opacity: .3; .node-bg { stroke-dasharray: 3 4 !important; } }
 .path-badge { rect { fill: var(--clr-brand-600); } text { fill: #fff; font-size: 10px; font-weight: 700; } }
 .path-banner {
   position: absolute; z-index: 5; top: 10px; left: 50%; transform: translateX(-50%);
@@ -601,5 +593,5 @@
 // Present mode (read-only): editing controls are removed, not just disabled.
 :host(.readonly) .edit-only { display: none !important; }
 
-.node-group--sim-current .node-bg { stroke: #15803d; stroke-width: 3; }
+.node-group--sim-current .node-bg { stroke: #15803d !important; stroke-width: 3 !important; stroke-dasharray: none !important; }
 .sim-badge { rect { fill: #15803d; } text { fill: #fff; font-size: 10px; font-weight: 700; text-anchor: middle; } }
