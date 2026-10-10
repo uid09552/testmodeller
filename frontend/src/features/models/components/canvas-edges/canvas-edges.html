@@ -1,3 +1,25 @@
+<!-- Arrowheads for styled transitions: one marker per kind and colour in use. -->
+@if (markers().length) {
+  <svg:defs>
+    @for (m of markers(); track m.id) {
+      <svg:marker [attr.id]="m.id" markerWidth="7" markerHeight="5" viewBox="0 0 10 7"
+                  refX="9" refY="3.5" orient="auto">
+        @switch (m.kind) {
+          @case ('open') {
+            <svg:polygon points="1 1,9 3.5,1 6" class="edge-marker-open" [style.stroke]="m.colour" />
+          }
+          @case ('line') {
+            <svg:polyline points="1 0.5,9 3.5,1 6.5" class="edge-marker-line" [style.stroke]="m.colour" />
+          }
+          @default {
+            <svg:polygon points="0 0,10 3.5,0 7" [style.fill]="m.colour" />
+          }
+        }
+      </svg:marker>
+    }
+  </svg:defs>
+}
+
 <!-- Presentation only (pointer-events: none) except the label and the
      handles, which must stay grabbable above the states. -->
 @for (edge of store.edges(); track edge.id) {
@@ -9,8 +31,8 @@
            [class.edge-group--dimmed]="store.highlight() && !store.pathSteps(edge.id)"
            [class.edge-group--sim-enabled]="store.simulation()?.enabled?.has(edge.id)"
            [class.edge-group--sim-blocked]="store.simulation()?.blocked?.has(edge.id)">
-      <svg:path class="edge-line" [attr.d]="g.d"
-                [attr.marker-end]="selected(edge) ? 'url(#arrow-selected)' : 'url(#arrow)'" />
+      <svg:path class="edge-line" [attr.d]="g.d" [style]="linePaint(edge)"
+                [attr.marker-end]="'url(#' + markerOf(edge) + ')'" />
 
       @if (needsLeader(g)) {
         <svg:line class="edge-leader"
@@ -24,15 +46,24 @@
         <svg:rect class="edge-label-bg"
                   [attr.x]="g.label.x - 36" [attr.y]="g.label.y - 10"
                   width="72" height="18" rx="9" />
-        <svg:text class="edge-label" [attr.x]="g.label.x" [attr.y]="g.label.y + 4">
+        <svg:text class="edge-label" [style]="labelPaint(edge)" [attr.x]="g.label.x" [attr.y]="g.label.y + 4">
           {{ edge.label }}
         </svg:text>
         @if (edge.guard) {
-          <svg:text class="edge-guard" [attr.x]="g.label.x" [attr.y]="g.label.y + 20">
+          <svg:text class="edge-guard" [style]="guardPaint(edge)" [attr.x]="g.label.x" [attr.y]="g.label.y + 20">
             [{{ edge.guard }}]
           </svg:text>
         }
       </svg:g>
+
+      <!-- Uncovered under the coverage overlay: a "0" marker besides the
+           amber dash, so the cue survives any user line style. -->
+      @if (store.isUncoveredTransition(edge.id)) {
+        <svg:g class="edge-gap-marker" [attr.transform]="'translate(' + (g.label.x - 46) + ',' + g.label.y + ')'">
+          <svg:circle r="8" />
+          <svg:text y="3.5">0</svg:text>
+        </svg:g>
+      }
 
       @if (store.pathSteps(edge.id)?.length) {
         <svg:g class="path-badge" [attr.transform]="'translate(' + (g.label.x + 38) + ',' + (g.label.y - 9) + ')'">

@@ -15,25 +15,13 @@
     </header>
     <div class="props__body">
       <p class="props__empty-hint">
-        {{ store.selectedNodes().length }} state(s) selected. Use the bar on the
-        canvas to align, colour or group them.
+        {{ store.selectionCount() }} elements selected. Style changes apply to
+        all of them; align and group work on the states.
       </p>
 
-      <span class="props__label">Border colour</span>
-      <div class="color-row">
-        @for (c of colors; track c.name) {
-          <button class="swatch swatch--ring"
-                  [class.swatch--default]="c.value === null"
-                  [style.border-color]="c.value"
-                  [title]="c.value ? c.name + ' border' : 'Default border'"
-                  (click)="store.colorSelection(c.value)">
-            @if (c.value === null) {
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                   stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
-            }
-          </button>
-        }
-      </div>
+      @if (styleTargets().length) {
+        <tm-style-section [targets]="styleTargets()" (changed)="applyStyle($event)" />
+      }
 
       <span class="props__label">Align</span>
       <div class="align-grid">
@@ -158,39 +146,16 @@
         @for (sh of shapes; track sh.value) {
           <button class="shape-btn" [class.shape-btn--on]="node.shape === sh.value"
                   role="radio" [attr.aria-checked]="node.shape === sh.value"
-                  [title]="sh.label"
+                  [title]="sh.label" [attr.aria-label]="sh.label"
                   (click)="store.updateNode(node.id, { shape: sh.value })">
-            @switch (sh.value) {
-              @case ('circle') {
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/></svg>
-              }
-              @case ('diamond') {
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><polygon points="12,4 20,12 12,20 4,12"/></svg>
-              }
-              @default {
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="7" width="18" height="10" rx="2"/></svg>
-              }
-            }
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+              <path [attr.d]="shapeIcon(sh.value).d" [attr.transform]="shapeIcon(sh.value).transform" />
+            </svg>
           </button>
         }
       </div>
 
-      <span class="props__label">Border colour</span>
-      <div class="color-row">
-        @for (c of colors; track c.name) {
-          <button class="swatch swatch--ring"
-                  [class.swatch--default]="c.value === null"
-                  [class.swatch--on]="(node.color ?? null) === c.value"
-                  [style.border-color]="c.value"
-                  [title]="c.value ? c.name + ' border' : 'Default border'"
-                  (click)="store.updateNode(node.id, { color: c.value })">
-            @if (c.value === null) {
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                   stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
-            }
-          </button>
-        }
-      </div>
+      <tm-style-section [targets]="styleTargets()" (changed)="applyStyle($event)" />
 
       <label class="props__label" for="node-desc">Description</label>
       <textarea id="node-desc" class="props__textarea" rows="3"
@@ -289,10 +254,38 @@
         </button>
       }
 
+      <tm-style-section [targets]="styleTargets()" (changed)="applyStyle($event)" />
+
       <div class="props__meta">
         <span class="props__meta-label">ID</span>
         <code class="props__meta-val">{{ edge.id.slice(0, 8) }}…</code>
       </div>
+    </div>
+  }
+
+  <!-- ── Note or text box (not part of the model) ─────────────────────── -->
+  @else if (store.selectedAnnotation(); as note) {
+    <header class="props__head">
+      <span class="props__kind-badge">{{ note.kind === 'note' ? 'note' : 'text' }}</span>
+      <h2 class="props__title">{{ note.kind === 'note' ? 'Note' : 'Text' }}</h2>
+      <button class="props__delete" [title]="'Delete ' + (note.kind === 'note' ? 'note' : 'text') + ' (Del)'"
+              [attr.aria-label]="'Delete ' + (note.kind === 'note' ? 'note' : 'text')"
+              (click)="store.removeAnnotation(note.id)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+        </svg>
+      </button>
+    </header>
+
+    <div class="props__body">
+      <label class="props__label" for="note-text">Text</label>
+      <textarea id="note-text" class="props__textarea" rows="4" [attr.maxlength]="maxNoteText"
+                [value]="note.text" placeholder="Write a note…"
+                (change)="setNoteText(note, $any($event.target).value)"></textarea>
+      <p class="props__hint">Not part of the model: tests, validation and AI ignore it.</p>
+
+      <tm-style-section [targets]="styleTargets()" (changed)="applyStyle($event)" />
     </div>
   }
 

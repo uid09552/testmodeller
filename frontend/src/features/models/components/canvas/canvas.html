@@ -308,6 +308,9 @@
         }
       }
 
+      <!-- ── Notes and text boxes: above the groups, below the states ── -->
+      <g tmCanvasAnnotations [readonly]="readonly()" (grab)="onAnnotationGrab($event)"></g>
+
       <!-- ── Transition hit layer ─────────────────────────────────── -->
       <!-- Click targets only, BELOW the states. The visible lines are drawn
            above the states further down; keeping the fat hit paths down here
@@ -349,38 +352,48 @@
            tabindex="0"
            (keydown.enter)="store.select(node.id, 'node')">
 
-          <!-- ── Body by shape; colour overrides the kind default ── -->
-          @switch (node.shape) {
-            @case ('circle') {
-              @if (node.kind === 'initial') {
-                <ellipse class="node-ring" [attr.cx]="node.w / 2" [attr.cy]="node.h / 2"
-                         [attr.rx]="node.w / 2 + 4" [attr.ry]="node.h / 2 + 4" />
+          <!-- ── Body by shape; the user's style overrides the kind default ── -->
+          @if (isPathShape(node)) {
+            <path class="node-bg"
+                  [class.node-bg--initial]="node.kind === 'initial'"
+                  [class.node-bg--final]="node.kind === 'final'"
+                  [class.node-bg--decision]="node.kind === 'decision'"
+                  [class.node-bg--outlined]="!!node.style?.stroke"
+                  [attr.d]="shapePathOf(node)"
+                  [style]="nodePaint(node)" />
+          } @else {
+            @switch (node.shape) {
+              @case ('circle') {
+                @if (node.kind === 'initial') {
+                  <ellipse class="node-ring" [attr.cx]="node.w / 2" [attr.cy]="node.h / 2"
+                           [attr.rx]="node.w / 2 + 4" [attr.ry]="node.h / 2 + 4" />
+                }
+                <ellipse class="node-bg"
+                         [class.node-bg--initial]="node.kind === 'initial'"
+                         [class.node-bg--final]="node.kind === 'final'"
+                         [class.node-bg--outlined]="!!node.style?.stroke"
+                         [attr.cx]="node.w / 2" [attr.cy]="node.h / 2"
+                         [attr.rx]="node.w / 2" [attr.ry]="node.h / 2"
+                         [style]="nodePaint(node)" />
               }
-              <ellipse class="node-bg"
-                       [class.node-bg--initial]="node.kind === 'initial'"
-                       [class.node-bg--final]="node.kind === 'final'"
-                       [class.node-bg--outlined]="!!node.color"
-                       [attr.cx]="node.w / 2" [attr.cy]="node.h / 2"
-                       [attr.rx]="node.w / 2" [attr.ry]="node.h / 2"
-                       [style.stroke]="node.color" />
-            }
-            @case ('diamond') {
-              <polygon class="node-bg"
-                       [class.node-bg--decision]="node.kind === 'decision'"
-                       [class.node-bg--outlined]="!!node.color"
-                       [attr.points]="diamondPoints(node)"
-                       [style.stroke]="node.color" />
-            }
-            @default {
-              <rect class="node-bg"
-                    [class.node-bg--initial]="node.kind === 'initial'"
-                    [class.node-bg--final]="node.kind === 'final'"
-                    [class.node-bg--outlined]="!!node.color"
-                    [attr.width]="node.w" [attr.height]="node.h" rx="8" ry="8"
-                    [style.stroke]="node.color" />
-              @if (node.kind === 'final') {
-                <rect class="node-final-inner" x="4" y="4"
-                      [attr.width]="node.w - 8" [attr.height]="node.h - 8" rx="5" ry="5" />
+              @case ('diamond') {
+                <polygon class="node-bg"
+                         [class.node-bg--decision]="node.kind === 'decision'"
+                         [class.node-bg--outlined]="!!node.style?.stroke"
+                         [attr.points]="diamondPoints(node)"
+                         [style]="nodePaint(node)" />
+              }
+              @default {
+                <rect class="node-bg"
+                      [class.node-bg--initial]="node.kind === 'initial'"
+                      [class.node-bg--final]="node.kind === 'final'"
+                      [class.node-bg--outlined]="!!node.style?.stroke"
+                      [attr.width]="node.w" [attr.height]="node.h" rx="8" ry="8"
+                      [style]="nodePaint(node)" />
+                @if (node.kind === 'final') {
+                  <rect class="node-final-inner" x="4" y="4"
+                        [attr.width]="node.w - 8" [attr.height]="node.h - 8" rx="5" ry="5" />
+                }
               }
             }
           }
@@ -389,9 +402,10 @@
             @let lines = labelLines(node);
             <text class="node-label"
                   [class.node-label--light]="labelIsLight(node)"
+                  [style]="labelPaint(node)"
                   [attr.x]="node.w / 2" [attr.y]="labelY(node, lines.length)">
               @for (line of lines; track $index) {
-                <tspan [attr.x]="node.w / 2" [attr.dy]="$index === 0 ? 0 : lineHeight">{{ line || '\u00a0' }}</tspan>
+                <tspan [attr.x]="node.w / 2" [attr.dy]="$index === 0 ? 0 : lineHeightOf(node)">{{ line || '\u00a0' }}</tspan>
               }
             </text>
           } @else {
@@ -592,25 +606,25 @@
 
     <div class="qb-sep"></div>
 
-    <!-- Border colour for the selected state -->
-    <div class="qb-colors" [class.qb-colors--disabled]="!store.selectedNode()">
-      @for (c of colors; track c.name) {
-        <button class="swatch swatch--sm swatch--ring"
-                [class.swatch--default]="c.value === null"
-                [class.swatch--on]="(store.selectedNode()?.color ?? null) === c.value"
-                [style.border-color]="c.value"
-                [disabled]="!store.selectedNode()"
-                [title]="c.value ? c.name + ' border' : 'Default border'"
-                (click)="applyColor(c.value)">
-          @if (c.value === null) {
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2.5" stroke-linecap="round">
-              <line x1="5" y1="19" x2="19" y2="5"/>
-            </svg>
-          }
-        </button>
-      }
-    </div>
+    <!-- Notes and text boxes: not part of the model. -->
+    @for (item of annotationTools; track item.kind) {
+      <button class="qb-tool" draggable="true"
+              [class.qb-tool--dragging]="dragKind() === item.kind"
+              (dragstart)="onPaletteDragStart($event, item.kind)"
+              (dragend)="onPaletteDragEnd()"
+              [title]="item.label + ' — drag onto the canvas'"
+              [attr.aria-label]="item.label">
+        @if (item.kind === 'note') {
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="1.6" stroke-linejoin="round">
+            <path d="M4 4h12l4 4v12H4z" fill="#fef9c3"/><path d="M16 4v4h4"/>
+          </svg>
+        } @else {
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M5 6h14M12 6v13M9 19h6"/>
+          </svg>
+        }
+      </button>
+    }
   </div>
 
   <!-- ── Selection bar: mass operations on a multi-selection ── -->
@@ -672,7 +686,7 @@
   @if (store.nodes().length === 0) {
     <div class="canvas-hint">
       <p>Double-click the canvas to add a state, or use the toolbar above.</p>
-      <p class="canvas-hint__sub">Drag a shape from the palette, or pull a blue dot onto empty canvas.<br/>Drag on empty space to select several · Shift-drag or middle-drag to pan.</p>
+      <p class="canvas-hint__sub">Drag a shape or a note from the palette, or pull a blue dot onto empty canvas.<br/>Drag on empty space to select several · Shift-drag or middle-drag to pan.</p>
     </div>
   }
 </div><!-- /canvas-wrap -->
@@ -716,18 +730,15 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
           Add Transition
         </button>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('shape-circle')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>
-          Make Circle
-        </button>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('shape-rect')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="10" rx="2"/></svg>
-          Make Rectangle
-        </button>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('shape-diamond')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12,4 20,12 12,20 4,12"/></svg>
-          Make Diamond
-        </button>
+        @for (sh of shapes; track sh.value) {
+          <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('shape-' + sh.value)"
+                  [class.ctx-item--checked]="store.nodeById(menu.targetId!)?.shape === sh.value">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path [attr.d]="shapeIcon(sh.value).d" [attr.transform]="shapeIcon(sh.value).transform" />
+            </svg>
+            Make {{ sh.label }}
+          </button>
+        }
         <div class="ctx-sep"></div>
         <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('add-test')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4"/></svg>

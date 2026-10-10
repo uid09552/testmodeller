@@ -12,7 +12,7 @@ const T = '66666666-6666-4666-8666-666666666666';
 
 function node(partial: Partial<CanvasNode> & { id: string }): CanvasNode {
   return {
-    label: 'S', kind: 'regular', x: 0, y: 0, w: 144, h: 48, shape: 'rect', color: null,
+    label: 'S', kind: 'regular', x: 0, y: 0, w: 144, h: 48, shape: 'rect',
     tests: [], ...partial,
   };
 }
@@ -23,7 +23,7 @@ function edited(): PersistedModel {
     id: M, name: 'Login', description: '', scenarioDesc: '', status: 'draft', testSeq: 8,
     variables: [{ name: 'attempts', type: 'integer', initial: 0 }],
     nodes: [
-      node({ id: A, kind: 'initial', shape: 'circle', w: 88, h: 88, color: '#ff0000',
+      node({ id: A, kind: 'initial', shape: 'circle', w: 88, h: 88, style: { stroke: '#ff0000' },
              tests: [{ id: T, seq: 7, name: 't', category: 'unit', polarity: 'positive',
                        given: '', when: '', then: '' }] }),
       node({ id: B, kind: 'decision', shape: 'diamond', w: 172, h: 104 }),
@@ -51,7 +51,7 @@ describe('layout document', () => {
     const back = fromRemote(remoteOf(m), testCases, M, '', null);
 
     const [a, b, c] = back.nodes;
-    expect([a.shape, a.color, a.w, a.h]).toEqual(['circle', '#ff0000', 88, 88]);
+    expect([a.shape, a.style?.stroke, a.w, a.h]).toEqual(['circle', '#ff0000', 88, 88]);
     expect([b.kind, b.shape, b.w, b.h]).toEqual(['decision', 'diamond', 172, 104]);
     expect([c.kind, c.shape, c.w, c.h]).toEqual(['final', 'rect', 200, 60]);
     expect(back.edges[0]).toMatchObject({ curve: 46, fromAnchor: 'right', toAnchor: 'left' });
@@ -86,7 +86,7 @@ describe('layout document', () => {
     const layout = { v: 1, states: { [A]: { color: '#00ff00' } } };
     const back = fromRemote({ ...remoteOf(m), layout }, [], M, '', null);
     // Only the colour is stored: the initial state keeps its default shape and size.
-    expect([back.nodes[0].shape, back.nodes[0].color, back.nodes[0].w])
+    expect([back.nodes[0].shape, back.nodes[0].style?.stroke, back.nodes[0].w])
       .toEqual(['circle', '#00ff00', SIZE_FOR_SHAPE.circle.w]);
   });
 
@@ -165,5 +165,105 @@ describe('transition expected result', () => {
     const back = fromRemote(remoteOf(m), [], M, '', null);
     expect(back.edges[0].expected).toBe('the home screen is shown');
     expect(toModelInput(back).transitions![0].expected).toBe('the home screen is shown');
+  });
+});
+
+describe('element styles in the layout', () => {
+  it('round-trips state and transition styles through a save and a reload', () => {
+    const m = edited();
+    m.nodes[1] = { ...m.nodes[1], style: { fill: '#123456', dash: 'dotted', width: 3, size: 'l', bold: true } };
+    m.edges = [{ ...m.edges[0], style: { stroke: '#ef4444', dash: 'dashed', arrow: 'open', italic: true, text: '#00aa00' } }];
+    const back = fromRemote(remoteOf(m), [], M, '', null);
+    expect(back.nodes[1].style).toEqual(m.nodes[1].style);
+    expect(back.edges[0].style).toEqual(m.edges[0].style);
+  });
+
+  it('mirrors a state line colour into the legacy key for older editors', () => {
+    const doc = layoutOf(edited());
+    const a = (doc['states'] as Record<string, { color?: string; style?: unknown }>)[A];
+    expect(a.color).toBe('#ff0000');
+    expect(a.style).toEqual({ stroke: '#ff0000' });
+  });
+
+  it('reads the legacy colour as the line colour', () => {
+    const overlay = overlayFromLayout({ v: 1, states: { [A]: { color: '#00ff00' } } });
+    expect(overlay!.nodes[0].style).toEqual({ stroke: '#00ff00' });
+  });
+
+  it('keeps valid keys and drops unknown or invalid values', () => {
+    const overlay = overlayFromLayout({
+      v: 1,
+      states: { [A]: { style: { fill: 'red', dash: 'wavy', width: 7, size: 'xl', bold: 'yes', text: '#abc', extra: 1 } } },
+      transitions: { [E]: { style: { arrow: 'none', stroke: '#zzzzzz' } } },
+    });
+    expect(overlay!.nodes[0].style).toEqual({ text: '#abc' });
+    expect(overlay!.edges[0].style).toBeUndefined();
+  });
+
+  it('stores no style for unstyled elements', () => {
+    const m = edited();
+    m.nodes[0] = { ...m.nodes[0], style: undefined };
+    const doc = layoutOf(m);
+    expect((doc['states'] as Record<string, object>)[A] ?? {}).not.toHaveProperty('style');
+    expect((doc['states'] as Record<string, object>)[A] ?? {}).not.toHaveProperty('color');
+  });
+});
+
+describe('state shapes in the layout', () => {
+  it('round-trips the new shapes', () => {
+    const m = edited();
+    m.nodes[1] = { ...m.nodes[1], shape: 'cylinder' };
+    const back = fromRemote(remoteOf(m), [], M, '', null);
+    expect(back.nodes[1].shape).toBe('cylinder');
+  });
+
+  it('draws a shape this editor does not know with the kind\'s default shape', () => {
+    const m = edited();
+    const layout = { v: 1, states: { [A]: { shape: 'star' } } };
+    const back = fromRemote({ ...remoteOf(m), layout }, [], M, '', null);
+    expect(back.nodes[0].shape).toBe('circle');
+  });
+});
+
+describe('annotations in the layout', () => {
+  const note = {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', kind: 'note' as const,
+    x: 10, y: 20, w: 168, h: 96, text: 'Check the timeout\nwith ops', style: { fill: '#dbeafe', dash: 'dashed' as const },
+  };
+
+  it('round-trips notes with their text and style, and leaves the graph unchanged', () => {
+    const m = edited();
+    const without = toModelInput(m);
+    m.annotations = [note, { id: 'b', kind: 'text', x: 0, y: 0, w: 100, h: 30, text: 'Title' }];
+    const withNotes = toModelInput(m);
+    expect({ ...withNotes, layout: null }).toEqual({ ...without, layout: null });
+
+    const back = fromRemote(remoteOf(m), [], M, '', null);
+    expect(back.annotations).toEqual(m.annotations);
+  });
+
+  it('stores no key for a model without annotations, and loads it with none', () => {
+    const doc = layoutOf(edited());
+    expect(doc).not.toHaveProperty('annotations');
+    const back = fromRemote(remoteOf(edited()), [], M, '', null);
+    expect(back.annotations ?? []).toEqual([]);
+  });
+
+  it('drops malformed entries and cuts over-long text', () => {
+    const overlay = overlayFromLayout({
+      v: 1,
+      annotations: [
+        note,
+        { ...note, id: 7 },
+        { ...note, kind: 'sticker' },
+        { ...note, w: 0 },
+        { ...note, text: undefined },
+        'junk',
+        { ...note, id: 'long', text: 'x'.repeat(2500), style: { fill: 'nope' } },
+      ],
+    });
+    expect(overlay!.annotations!.map(a => a.id)).toEqual([note.id, 'long']);
+    expect(overlay!.annotations![1].text.length).toBe(2000);
+    expect(overlay!.annotations![1].style).toBeUndefined();
   });
 });

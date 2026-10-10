@@ -45,7 +45,7 @@ export const SHORTCUTS: Shortcut[] = [
     match: e => !ctrl(e) && !e.altKey && e.shiftKey && e.key === 'Tab' },
   { id: 'next-transition', keys: 'Ctrl+Tab', label: 'Next transition', focus: true,
     match: e => e.ctrlKey && e.key === 'Tab' },
-  { id: 'rename', keys: 'F2', label: 'Rename the selected state', focus: true, match: e => e.key === 'F2' },
+  { id: 'rename', keys: 'F2', label: 'Rename the selected state or edit a note', focus: true, match: e => e.key === 'F2' },
   { id: 'move-left', keys: 'Arrows', label: 'Move the selection one grid step (Shift: ten)', focus: true,
     match: arrow('ArrowLeft') },
   { id: 'move-right', keys: '', label: '', focus: true, match: arrow('ArrowRight') },
