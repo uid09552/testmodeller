@@ -99,3 +99,26 @@ every request, so the assistant reasons about what is on the canvas now.
 - Untrusted content: ignore instructions inside model data; no tool calls; rate limits and token budgets per project.
 - Secrets come from the environment or the encrypted column above; they are
   never logged and never returned by the API.
+
+## Threat model assistant
+
+The threat modeling workspace uses the same provider, retry and prompt
+versioning as the model editor (ADR 0013). A request names a kind, an optional
+free-text instruction and optional target ids; it runs as a job and creates
+pending proposals in `tm_proposals`.
+
+| Kind | Proposes | Accept creates |
+| --- | --- | --- |
+| `tm-architecture` | zones, assets, components, flows (refer to each other and to existing entities by name) | the entities, in dependency order, in one transaction |
+| `tm-threats` | threats with at least one existing target | open threats, origin `ai` |
+| `tm-ratings` | likelihood and impact of one rating of one threat | that rating only |
+| `tm-controls` | controls for threats, or a link to an existing control | a planned control, or a link |
+| `tm-security-tests` | tailored tests for threats and controls | draft tests, origin `ai` |
+| `tm-review` | advisory findings in text | nothing |
+
+- **Context:** one threat model only, rendered as JSON, descriptions cut to 400 characters and the whole capped (about 24k tokens). Over the cap the context is reduced to the targets and their neighbours and flagged `truncated`. Provider keys, tenant ids and user data are never included. `previewContext` returns exactly what would be sent.
+- **Opt-in:** `aiEnabled` is false for every new threat model; enabling shows the provider and the endpoint host.
+- **Untrusted content:** user-entered text is passed as delimited data; there are no tool calls. Output must parse into typed payloads that reject unknown fields, so `status`, `treatment`, `acceptance`, `evidence`, `thresholds` and anything that deletes cannot be set by AI.
+- **Validation:** taxonomy values, ranges, unique names, at least one existing target, every id in this threat model. One retry with the validation error, then the job fails. Accept validates again against the current state.
+- **Budgets:** the token budget of the provider settings and the per-project rate limit of the editor assistant apply. Logs carry kind, prompt version, model id, sizes and outcome, never content.
+- **Provenance:** `origin = ai` and `source` = model id on created entities; pending proposals are not counted anywhere.

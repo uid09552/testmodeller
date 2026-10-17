@@ -71,6 +71,19 @@ See [09-threat-modeling.md](09-threat-modeling.md).
 - FR-074 Generate draft security tests from threats and controls with versioned templates, without duplicates; mark generated tests stale when their threat or control link goes away.
 - FR-075 Record manual results of security tests and export the filtered list as CSV and Gherkin.
 - FR-076 Summarise the threat model: counts, crossings, threats by status and level, matrix, verified controls, threats without controls, controls without tests.
+- FR-077 Rate a residual risk per threat (likelihood × impact, analyst-entered, never derived); flag a residual above the current rating and a residual below it without a verified control; offer inherent, current and residual views of the matrix and register. (`residual-risk`)
+- FR-078 Attach evidence (kind, title, link or note, date, reviewer) to controls and security test results; a control becomes verified only with evidence, and loses it again when its last evidence is deleted. (`control-evidence`)
+- FR-079 Record a review-by date for verified controls and flag overdue verification. (`control-evidence`)
+- FR-080 Record risk acceptance with rationale, approver, date and a mandatory expiry of at most 3 years; an expired acceptance reads as open with a flag; list acceptances expiring within 30 days. (`risk-acceptance-governance`)
+- FR-081 Freeze the threat model as a named immutable baseline, open it read-only, compare it with the live model and delete it. (`threat-model-baselines`)
+- FR-082 Produce a printable assessment report (live or baseline) with a sign-off block and export it as Markdown. (`tra-report`)
+- FR-083 Show completeness findings on the Overview as a list, not a score. (`tra-report`)
+- FR-084 Record threat source, detection, existing mitigations and confidence on threats, classification, location, retention and encryption at rest on assets, data classification, authorization model and entry-point on flows; warn when sensitive data flows towards a less trusted zone. (`threat-model-detail-fields`)
+- FR-085 Request AI proposals for a threat model (architecture, threats, ratings, controls, security tests, review) as an asynchronous job; refused without a provider or without AI enabled for the threat model. (`threat-model-ai-proposals`)
+- FR-086 Validate AI output against the domain rules with one bounded retry, accept or reject proposals individually (editing allowed), revalidating on accept; accepting a rating changes only that rating. (`threat-model-ai-proposals`)
+- FR-087 Mark entities created from AI proposals with origin `ai` and the model id, and keep pending proposals out of counts and matrices. (`threat-model-ai-proposals`)
+- FR-088 Offer a chat panel in the threat model workspace with kind inference, focus on a selected entity, proposal cards and clear error and disabled states. (`threat-model-ai-chat`)
+- FR-089 Keep AI assistance off per threat model until enabled, show and cap the context sent, treat model text as data, forbid AI from verifying controls, adding evidence, accepting or dismissing risks, setting treatments or thresholds and deleting anything, and respect budgets and rate limits. (`threat-model-ai-safeguards`)
 
 ### Authentication and tenancy
 See [08-usermanagement.md](08-usermanagement.md).

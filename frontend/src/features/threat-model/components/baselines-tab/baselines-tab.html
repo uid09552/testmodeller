@@ -1,0 +1,63 @@
+<form class="card" (submit)="$event.preventDefault(); create()">
+  <h2>Create a baseline</h2>
+  <p class="field__hint">A baseline freezes the threat model as it is now, so you can refer to what was assessed at a release. It cannot be edited afterwards.</p>
+  <label class="field"><span class="field__label">Name</span>
+    <input class="input" name="baselineName" required placeholder="Release 2.3 review" [ngModel]="name()" (ngModelChange)="name.set($event)" /></label>
+  <label class="field"><span class="field__label">Note<span class="field__opt">optional</span></span>
+    <input class="input" name="baselineNote" [ngModel]="note()" (ngModelChange)="note.set($event)" /></label>
+  <button class="btn btn--primary" type="submit" [disabled]="!name().trim()">Create baseline</button>
+</form>
+
+@if (message(); as m) { <p role="alert">{{ m }}</p> }
+
+<table class="tm-table" aria-label="Baselines">
+  <thead><tr><th>Name</th><th>Created</th><th>By</th><th>Threats</th><th>Controls</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+  <tbody>
+    @for (b of store.baselines(); track b.id) {
+      <tr>
+        <td>{{ b.name }}@if (b.note) { <br /><span class="field__hint">{{ b.note }}</span> }</td>
+        <td>{{ b.createdAt.slice(0, 10) }}</td><td>{{ b.createdBy || '—' }}</td>
+        <td>{{ b.threatCount }}</td><td>{{ b.controlCount }}</td>
+        <td>
+          <button class="btn btn--secondary btn--sm" type="button" (click)="open(b)">Open</button>
+          <button class="btn btn--secondary btn--sm" type="button" (click)="compare(b)">Compare</button>
+          <button class="btn btn--secondary btn--sm" type="button" (click)="remove(b)">Delete</button>
+        </td>
+      </tr>
+    } @empty {
+      <tr><td colspan="6" class="field__hint">No baselines yet.</td></tr>
+    }
+  </tbody>
+</table>
+
+@if (comparing(); as c) {
+  <section class="card" aria-label="Comparison">
+    <h2>Baseline "{{ c.baseline.name }}" compared with the live model</h2>
+    <table class="tm-table" aria-label="Threats per current level">
+      <thead><tr><th>Current level</th><th>Baseline</th><th>Live</th></tr></thead>
+      <tbody>
+        @for (l of levels; track l) {
+          <tr><td>{{ l === 'not-assessed' ? 'Not assessed' : levelText($any(l)) }}</td>
+            <td>{{ c.result.levelsBaseline[l] || 0 }}</td><td>{{ c.result.levelsLive[l] || 0 }}</td></tr>
+        }
+      </tbody>
+    </table>
+    <h3>Added ({{ c.result.added.length }})</h3>
+    <ul>@for (t of c.result.added; track t.id) { <li>{{ t.displayId }} {{ t.title }}</li> } @empty { <li class="field__hint">None.</li> }</ul>
+    <h3>Removed ({{ c.result.removed.length }})</h3>
+    <ul>@for (t of c.result.removed; track t.id) { <li>{{ t.displayId }} {{ t.title }}</li> } @empty { <li class="field__hint">None.</li> }</ul>
+    <h3>Changed ({{ c.result.changed.length }})</h3>
+    <ul>
+      @for (t of c.result.changed; track t.id) {
+        <li>{{ t.displayId }} {{ t.title }}:
+          @for (ch of t.changes; track ch.field) { {{ fieldText[ch.field] ?? ch.field }} {{ ch.before ?? '—' }} → {{ ch.after ?? '—' }}; }</li>
+      } @empty { <li class="field__hint">None.</li> }
+    </ul>
+    <h3>Controls whose status changed ({{ c.result.controlsChanged.length }})</h3>
+    <ul>
+      @for (x of c.result.controlsChanged; track x.id) { <li>{{ x.displayId }}: {{ label(x.before) }} → {{ label(x.after) }}</li> }
+      @empty { <li class="field__hint">None.</li> }
+    </ul>
+    <button class="btn btn--secondary" type="button" (click)="comparing.set(null)">Close</button>
+  </section>
+}

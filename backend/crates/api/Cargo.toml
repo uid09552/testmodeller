@@ -37,6 +37,7 @@ testcontainers-modules.workspace = true
 quick-xml.workspace = true
 
 [dev-dependencies]
+sqlx.workspace = true
 tower.workspace = true
 http-body-util.workspace = true
 async-trait.workspace = true

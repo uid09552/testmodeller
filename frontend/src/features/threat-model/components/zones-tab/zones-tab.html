@@ -11,6 +11,7 @@
   <tm-editor-drawer [properties]="propertiesTpl()" [(tab)]="drawerTab" [heading]="e.item ? 'Zone ' + e.item.name : 'New zone'" [busy]="editor.busy()"
                     [canDelete]="!!e.item" [error]="editor.error()"
                     (save)="editor.save()" (closed)="editor.close()" (remove)="editor.remove(deleteText(e.item))">
+    @if (e.item?.origin === 'ai') { <p><tm-ai-badge origin="ai" [source]="e.item!.source" /> Created from an AI proposal.</p> }
     <label class="field"><span class="field__label">Name</span>
       <input class="input" name="name" required [(ngModel)]="e.draft.name" /></label>
     <label class="field"><span class="field__label">Kind</span>

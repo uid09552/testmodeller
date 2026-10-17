@@ -38,6 +38,8 @@
       }
     </div>
 
+    <tm-ai-chat-window [selectedId]="query().get('select')" />
+
     <div class="tmw__panel" role="tabpanel" id="tm-panel" [attr.aria-labelledby]="'tm-tab-' + tab()">
       @switch (tab()) {
         @case ('overview') { <tm-overview-tab /> }
@@ -50,6 +52,8 @@
         @case ('risks') { <tm-risks-tab /> }
         @case ('controls') { <tm-controls-tab [selectId]="query().get('select')" /> }
         @case ('security-tests') { <tm-security-tests-tab [selectId]="query().get('select')" /> }
+        @case ('baselines') { <tm-baselines-tab /> }
+        @case ('report') { <tm-report-tab [baselineId]="query().get('baseline')" /> }
       }
     </div>
   } @else if (store.loading()) {

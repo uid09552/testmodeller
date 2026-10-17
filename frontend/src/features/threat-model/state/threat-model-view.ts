@@ -4,7 +4,7 @@
  * docs/specification/09-threat-modeling.md and 06-ui.md.
  */
 import {
-  ArchComponent, ArchComponentType, ArchLayer, Flow, RiskLevel, SecurityTest, Threat,
+  ArchComponent, ArchComponentType, ArchLayer, ControlFlag, Flow, RiskLevel, SecurityTest, Threat,
   ThreatFlag, ThreatTarget,
 } from '../../../core/api/threat-model-api';
 
@@ -20,6 +20,8 @@ export const TABS = [
   { slug: 'risks', label: 'Risks' },
   { slug: 'controls', label: 'Controls' },
   { slug: 'security-tests', label: 'Security Tests' },
+  { slug: 'baselines', label: 'Baselines' },
+  { slug: 'report', label: 'Report' },
 ] as const;
 export type TabSlug = (typeof TABS)[number]['slug'];
 
@@ -60,6 +62,11 @@ export function layerOf(t: ArchComponentType): ArchLayer {
   return TYPE_GROUPS.find(g => g.types.includes(t))?.layer ?? 'logic';
 }
 
+/** Marks something that came from an accepted AI proposal; text, never colour alone. */
+export function aiMark(x: { origin?: string; source?: string | null }): string {
+  return x.origin === 'ai' ? ' ✦ AI' : '';
+}
+
 /** Risk level as a symbol and a word, never colour alone. */
 export const LEVEL_TEXT: Record<RiskLevel, string> = {
   low: '▁ Low', moderate: '▃ Moderate', high: '▆ High', critical: '█ Critical',
@@ -83,6 +90,19 @@ export const FLAG_TEXT: Record<ThreatFlag, string> = {
   'unsupported-reduction': 'Current risk lower than inherent without an implemented control',
   overdue: 'Overdue',
   'failing-test': '✗ Failing test',
+  'residual-above-current': 'Residual risk above current risk',
+  'unsupported-residual': 'Residual risk lower than current without a verified control',
+  'acceptance-expired': 'Risk acceptance expired',
+};
+
+/** Flags the Risks tab explains: the residual ones and a lapsed acceptance. */
+export function isRiskFlag(f: ThreatFlag): boolean {
+  return f === 'residual-above-current' || f === 'unsupported-residual' || f === 'acceptance-expired';
+}
+
+export const CONTROL_FLAG_TEXT: Record<ControlFlag, string> = {
+  'verification-overdue': 'Verification overdue',
+  'verified-without-evidence': 'Verified without evidence',
 };
 
 /** Likelihood and impact scale names (09-threat-modeling.md). */
@@ -119,13 +139,15 @@ export function csv(rows: (string | number | null | undefined)[][]): string {
 
 /** Risk register: one row per assessed threat. */
 export function riskRegisterCsv(threats: Threat[]): string {
-  const assessed = threats.filter(t => t.inherent || t.current);
+  const assessed = threats.filter(t => t.inherent || t.current || t.residual);
   return csv([
     ['id', 'title', 'status', 'inherentScore', 'inherentLevel', 'currentScore', 'currentLevel',
-      'treatment', 'riskOwner', 'dueDate'],
+      'residualScore', 'residualLevel', 'treatment', 'riskOwner', 'dueDate', 'acceptedBy',
+      'acceptanceExpires', 'origin', 'source'],
     ...assessed.map(t => [
-      t.displayId, t.title, t.status, t.inherentScore, t.inherentLevel, t.currentScore,
-      t.currentLevel, t.treatment, t.riskOwner, t.dueDate,
+      t.displayId, t.title, t.effectiveStatus ?? t.status, t.inherentScore, t.inherentLevel,
+      t.currentScore, t.currentLevel, t.residualScore, t.residualLevel, t.treatment, t.riskOwner,
+      t.dueDate, t.acceptedBy, t.acceptanceExpires, t.origin, t.source,
     ]),
   ]);
 }
@@ -134,11 +156,11 @@ export function riskRegisterCsv(threats: Threat[]): string {
 export function securityTestsCsv(tests: SecurityTest[], threats: Threat[]): string {
   const ids = (xs: string[]) => xs.map(id => threats.find(t => t.id === id)?.displayId ?? id).join(' ');
   return csv([
-    ['id', 'title', 'type', 'status', 'threats', 'preconditions', 'steps', 'lastResult'],
+    ['id', 'title', 'type', 'status', 'threats', 'preconditions', 'steps', 'lastResult', 'origin', 'source'],
     ...tests.map(t => [
       t.displayId, t.title, t.type, t.status, ids(t.threatIds), t.preconditions.join('; '),
       t.steps.map((s, i) => `${i + 1}. ${s.action} => ${s.expected}`).join(' | '),
-      t.lastResult?.outcome ?? '',
+      t.lastResult?.outcome ?? '', t.origin, t.source,
     ]),
   ]);
 }

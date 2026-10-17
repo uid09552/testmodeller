@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ThreatModelInput } from '../../../../core/api/threat-model-api';
+import { CompletenessFinding, ThreatModelInput } from '../../../../core/api/threat-model-api';
 import { errorMessage, ThreatModelStore } from '../../state/threat-model.store';
 import { label, LEVEL_ORDER, levelText } from '../../state/threat-model-view';
 import { WorkspaceNav } from '../../state/workspace-nav';
@@ -42,6 +42,13 @@ export class OverviewTabComponent {
         assumptions: m.assumptions ?? '', exclusions: m.exclusions ?? '',
       }));
     });
+  }
+
+  /** Opens the entity a finding is about, in the tab that edits it. */
+  openFinding(f: CompletenessFinding): void {
+    const tab = f.entityKind === 'component' ? 'components' : f.entityKind === 'flow' ? 'data-flows'
+      : f.entityKind === 'control' ? 'controls' : 'threats';
+    this.nav.go(tab, { select: f.entityId });
   }
 
   async save(): Promise<void> {

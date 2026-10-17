@@ -1,0 +1,173 @@
+<aside class="aic" aria-label="AI assistant">
+  @if (!store.aiEnabled()) {
+    <section class="aic__off" aria-label="AI assistance is off">
+      <p>AI assistance is off for this threat model.</p>
+      <p class="field__hint">When it is on, architecture details of this threat model (names, descriptions, flows, threats, controls) are sent to the AI provider configured for TestModeller. Nothing the assistant suggests is applied until you accept it.</p>
+      @if (enabling(); as e) {
+        <p role="alert" class="aic__notice">
+          Architecture details will be sent to <strong>{{ e.provider }}</strong>
+          @if (e.endpointHost) { at <strong>{{ e.endpointHost }}</strong> }.
+          @if (e.provider === 'none') { No provider is configured yet, so nothing can be asked until one is set in the AI settings. }
+        </p>
+        <button class="btn btn--primary" type="button" (click)="confirmEnable()">Enable AI assistance</button>
+        <button class="btn btn--secondary" type="button" (click)="enabling.set(null)">Cancel</button>
+      } @else {
+        <button class="btn btn--primary" type="button" (click)="startEnable()">Enable AI assistance…</button>
+      }
+      @if (notice(); as n) { <p role="alert">{{ n }}</p> }
+    </section>
+  } @else if (provider() === 'none') {
+    <section class="aic__off" aria-label="No AI provider">
+      <p>No AI provider is configured.</p>
+      <p class="field__hint">Set one in the AI settings (<code>TM_AI_PROVIDER</code>), then ask again.</p>
+      <button class="btn btn--secondary" type="button" (click)="disable()">Turn AI assistance off</button>
+    </section>
+  } @else {
+    <div class="aic__log" role="log" aria-live="polite" aria-label="Conversation">
+      @for (e of transcript.entries(); track e.id) {
+        @switch (e.role) {
+          @case ('user') {
+            <p class="aic__msg aic__msg--user"><span class="aic__who">You ({{ kindLabel[e.kind] }})</span> {{ e.text }}</p>
+          }
+          @case ('pending') { <p class="aic__msg" role="status">Thinking…</p> }
+          @case ('error') { <p class="aic__msg aic__msg--error" role="alert">{{ e.text }}</p> }
+          @case ('info') { <p class="aic__msg">{{ e.text }}</p> }
+          @case ('assistant') {
+            @for (p of e.proposals; track p.id) {
+              <article class="aic__card card" [attr.aria-label]="kindLabel[p.kind] + ' proposal'">
+                <h3>{{ kindLabel[p.kind] }}
+                  @if (p.status !== 'pending') { <span class="aic__status">· {{ label(p.status) }}</span> }
+                </h3>
+
+                @switch (p.kind) {
+                  @case ('tm-architecture') {
+                    @if (data(p)['zones']?.length) {
+                      <h4>New zones</h4>
+                      <ul>@for (z of data(p)['zones']; track z.name) { <li>{{ z.name }} ({{ label(z.kind) }}, trust {{ z.trustLevel }})</li> }</ul>
+                    }
+                    @if (data(p)['assets']?.length) {
+                      <h4>New assets</h4>
+                      <ul>@for (a of data(p)['assets']; track a.name) { <li>{{ a.name }} ({{ label(a.category) }})</li> }</ul>
+                    }
+                    @if (data(p)['components']?.length) {
+                      <h4>New components</h4>
+                      <ul>@for (c of data(p)['components']; track c.name) { <li>{{ c.name }} ({{ label(c.type) }}@if (c.zone) { , {{ c.zone }} })</li> }</ul>
+                    }
+                    @if (data(p)['flows']?.length) {
+                      <h4>New data flows</h4>
+                      <ul>@for (f of data(p)['flows']; track $index) { <li>{{ f.source }} → {{ f.target }} ({{ label(f.relationship) }})</li> }</ul>
+                    }
+                    @if (existingRefs(p).length) {
+                      <h4>Uses what already exists</h4>
+                      <ul>@for (r of existingRefs(p); track r) { <li>{{ r }}</li> }</ul>
+                    }
+                  }
+                  @case ('tm-threats') {
+                    <p><strong>{{ data(p)['title'] }}</strong> — {{ label(data(p)['category']) }}</p>
+                    <p class="field__hint">On {{ targetsText(data(p)['targets']) || '—' }}</p>
+                    @if (data(p)['scenario']) { <p>{{ data(p)['scenario'] }}</p> }
+                  }
+                  @case ('tm-ratings') {
+                    <p><strong>{{ threatName(data(p)['threatId']) }}</strong></p>
+                    <p>{{ label(data(p)['rating']) }} risk: {{ oldRating(p) }} → <strong>{{ data(p)['likelihood'] }} × {{ data(p)['impact'] }} = {{ data(p)['likelihood'] * data(p)['impact'] }}</strong></p>
+                  }
+                  @case ('tm-controls') {
+                    @if (data(p)['linkControlId']) {
+                      <p>Link <strong>{{ controlName(data(p)['linkControlId']) }}</strong> to:</p>
+                    } @else {
+                      <p><strong>{{ data(p)['name'] }}</strong> ({{ label(data(p)['type']) }}, {{ label(data(p)['category']) }}), planned</p>
+                      @if (data(p)['description']) { <p>{{ data(p)['description'] }}</p> }
+                      <p class="field__hint">Addresses:</p>
+                    }
+                    <ul>@for (id of data(p)['threatIds']; track id) { <li>{{ threatName(id) }}</li> }</ul>
+                  }
+                  @case ('tm-security-tests') {
+                    <p><strong>{{ data(p)['title'] }}</strong> ({{ label(data(p)['type']) }}), draft</p>
+                    <ol>@for (s of data(p)['steps'] ?? []; track $index) { <li>{{ s.action }} → {{ s.expected }}</li> }</ol>
+                    <p class="field__hint">Verifies: @for (id of data(p)['threatIds']; track id) { {{ threatName(id) }}; }</p>
+                  }
+                  @case ('tm-review') {
+                    <ul>
+                      @for (f of data(p)['findings']; track $index) {
+                        <li>{{ f.text }}
+                          @for (id of f.entityIds ?? []; track id) {
+                            <button class="link-btn" type="button" (click)="openEntity(id)">{{ entityLabel(id) }}</button>
+                          }
+                        </li>
+                      }
+                    </ul>
+                  }
+                }
+
+                @if (p.rationale) { <p class="field__hint">Why: {{ p.rationale }}</p> }
+                <p class="field__hint">Proposed by {{ p.source || 'the model' }}</p>
+
+                @if (edits()[p.id] !== undefined) {
+                  <label class="field"><span class="field__label">Edit the proposal (JSON)</span>
+                    <textarea class="textarea" rows="8" [attr.name]="'edit-' + p.id"
+                              [value]="edits()[p.id]" (input)="setEdit(p, $any($event.target).value)"></textarea></label>
+                }
+                @if (cardErrors()[p.id]; as err) { <p role="alert" class="aic__msg--error">{{ err }}</p> }
+
+                @if (p.status === 'pending' && isActionable(p)) {
+                  <div class="aic__actions">
+                    <button class="btn btn--primary btn--sm" type="button" (click)="accept(p)">Accept</button>
+                    @if (edits()[p.id] === undefined) {
+                      <button class="btn btn--secondary btn--sm" type="button" (click)="startEdit(p)">Edit</button>
+                    } @else {
+                      <button class="btn btn--secondary btn--sm" type="button" (click)="cancelEdit(p)">Cancel edit</button>
+                    }
+                    <button class="btn btn--secondary btn--sm" type="button" (click)="reject(p)">Reject</button>
+                  </div>
+                } @else if (p.status === 'accepted') {
+                  <p>Accepted. <button class="link-btn" type="button" (click)="openResult(p)">Open</button></p>
+                } @else if (p.status === 'rejected') {
+                  <p class="field__hint">Rejected.</p>
+                }
+              </article>
+            }
+          }
+        }
+      } @empty {
+        <p class="field__hint">Ask what could go wrong, describe your architecture, or ask for ratings, controls or tests. For example: "what could go wrong with the payment API?" or "suggest controls for THR-3".</p>
+      }
+    </div>
+
+    @if (preview(); as pv) {
+      <section class="card aic__preview" aria-label="Context preview">
+        <h3>What would be sent</h3>
+        <p class="field__hint">To {{ pv.provider }}@if (pv.endpointHost) { at {{ pv.endpointHost }} }.
+          @if (pv.truncated) { <strong>The context was cut down to fit: only the focus and its neighbours are included.</strong> }</p>
+        <pre class="aic__context">{{ pv.context }}</pre>
+        <button class="btn btn--secondary btn--sm" type="button" (click)="preview.set(null)">Close preview</button>
+      </section>
+    }
+
+    <form class="aic__form" (submit)="$event.preventDefault(); send()">
+      <div class="aic__row">
+      <label class="field"><span class="field__label">About<span class="field__opt">optional</span></span>
+        <select class="select" name="focus" [ngModel]="focusId()" (ngModelChange)="focusId.set($event)">
+          <option value="">Nothing in particular</option>
+          @for (g of groups; track g) {
+            @if (optionsOf(g).length) {
+              <optgroup [label]="g">@for (o of optionsOf(g); track o.id) { <option [value]="o.id">{{ o.text }}</option> }</optgroup>
+            }
+          }
+        </select></label>
+      <label class="field"><span class="field__label">Ask for</span>
+        <select class="select" name="kind" [ngModel]="kindChoice()" (ngModelChange)="kindChoice.set($event)">
+          <option value="">Automatic ({{ kindLabel[inferred()] }})</option>
+          @for (k of kinds; track k) { <option [value]="k">{{ kindLabel[k] }}</option> }
+        </select></label>
+      </div>
+      <label class="field"><span class="field__label">Message</span>
+        <textarea class="textarea" name="message" rows="2" maxlength="8000" [ngModel]="message()" (ngModelChange)="message.set($event)"></textarea></label>
+      @if (notice(); as n) { <p role="alert">{{ n }}</p> }
+      <div class="aic__actions">
+        <button class="btn btn--primary" type="submit" [disabled]="busy() || !message().trim()">Send</button>
+        <button class="btn btn--secondary" type="button" (click)="showContext()">Preview context</button>
+        <button class="btn btn--secondary" type="button" (click)="disable()">Turn off</button>
+      </div>
+    </form>
+  }
+</aside>

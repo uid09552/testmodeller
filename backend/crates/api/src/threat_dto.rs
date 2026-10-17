@@ -7,8 +7,9 @@ use std::collections::{BTreeMap, HashMap};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use tm_domain::threat::{
-    self as t, arch, risk, staleness, ArchComponentType, AssetCategory, CiaLevel, ControlCategory,
-    ControlStatus, ControlType, Criticality, FlowRelationship, RiskLevel, RiskTreatment,
+    self as t, arch, assurance, risk, staleness, AiOrigin, ArchComponentType, AssetCategory,
+    CiaLevel, Classification, Confidence, ControlCategory, ControlFlag, ControlStatus, ControlType,
+    Criticality, EvidenceKind, EvidenceOwnerKind, FlowRelationship, RiskLevel, RiskTreatment,
     RuleExplanation, SecurityTestOrigin, SecurityTestOutcome, SecurityTestStatus, SecurityTestStep,
     SecurityTestType, StrideCategory, TargetKind, ThreatFlag, ThreatModelError, ThreatOrigin,
     ThreatStatus, TriState, ZoneKind,
@@ -18,6 +19,11 @@ use uuid::Uuid;
 
 use crate::dto::{check_len, AuditDto};
 use crate::error::{ApiError, FieldError};
+
+/// Origin of entities stored before AI proposals existed.
+fn manual_origin() -> AiOrigin {
+    AiOrigin::Manual
+}
 
 /// Domain validation error as a 422 naming its field.
 pub fn invalid(e: ThreatModelError) -> ApiError {
@@ -56,13 +62,17 @@ pub struct ThreatModelInput {
     pub exclusions: Option<String>,
     #[serde(default)]
     pub thresholds: Option<Vec<ThresholdDto>>,
+    /// Absent keeps the stored value (off for a new threat model).
+    #[serde(default)]
+    pub ai_enabled: Option<bool>,
 }
 
 impl ThreatModelInput {
-    /// Validates; absent thresholds mean `fallback`.
+    /// Validates; absent thresholds mean `fallback`, an absent `aiEnabled` means `current_ai`.
     pub fn into_parts(
         self,
         fallback: t::Thresholds,
+        current_ai: bool,
     ) -> Result<(t::ThreatModelFields, t::Thresholds), ApiError> {
         check_len("name", &self.name, 1, 200)?;
         let thresholds = match self.thresholds {
@@ -86,6 +96,7 @@ impl ThreatModelInput {
                 objectives: self.objectives,
                 assumptions: self.assumptions,
                 exclusions: self.exclusions,
+                ai_enabled: self.ai_enabled.unwrap_or(current_ai),
             },
             thresholds,
         ))
@@ -107,6 +118,8 @@ pub struct ThreatModelDto {
     pub thresholds: Vec<ThresholdDto>,
     pub layout: Option<serde_json::Value>,
     pub layout_version: i32,
+    #[serde(default)]
+    pub ai_enabled: bool,
 }
 
 impl From<&t::ThreatModel> for ThreatModelDto {
@@ -131,6 +144,7 @@ impl From<&t::ThreatModel> for ThreatModelDto {
                 .collect(),
             layout: m.layout.clone(),
             layout_version: m.layout_version,
+            ai_enabled: m.fields.ai_enabled,
         }
     }
 }
@@ -202,6 +216,10 @@ pub struct ZoneDto {
     pub description: Option<String>,
     pub kind: ZoneKind,
     pub trust_level: u8,
+    #[serde(default = "manual_origin")]
+    pub origin: AiOrigin,
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 // ---------- components ----------
@@ -273,6 +291,10 @@ pub struct ArchComponentDto {
     pub asset_ids: Vec<Uuid>,
     pub layer: t::ArchLayer,
     pub warnings: Vec<WarningDto>,
+    #[serde(default = "manual_origin")]
+    pub origin: AiOrigin,
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 // ---------- assets ----------
@@ -295,6 +317,14 @@ pub struct AssetInput {
     pub availability: Option<CiaLevel>,
     #[serde(default)]
     pub personal_data: bool,
+    #[serde(default)]
+    pub classification: Option<Classification>,
+    #[serde(default)]
+    pub data_location: Option<String>,
+    #[serde(default)]
+    pub retention: Option<String>,
+    #[serde(default = "default_unknown")]
+    pub encryption_at_rest: TriState,
 }
 
 impl AssetInput {
@@ -310,6 +340,10 @@ impl AssetInput {
             integrity: self.integrity,
             availability: self.availability,
             personal_data: self.personal_data,
+            classification: self.classification,
+            data_location: blank_to_none(self.data_location),
+            retention: blank_to_none(self.retention),
+            encryption_at_rest: self.encryption_at_rest,
         })
     }
 }
@@ -328,9 +362,17 @@ pub struct AssetDto {
     pub integrity: Option<CiaLevel>,
     pub availability: Option<CiaLevel>,
     pub personal_data: bool,
+    pub classification: Option<Classification>,
+    pub data_location: Option<String>,
+    pub retention: Option<String>,
+    pub encryption_at_rest: TriState,
     pub component_ids: Vec<Uuid>,
     pub flow_ids: Vec<Uuid>,
     pub warnings: Vec<WarningDto>,
+    #[serde(default = "manual_origin")]
+    pub origin: AiOrigin,
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 // ---------- flows ----------
@@ -362,6 +404,12 @@ pub struct FlowInput {
     pub encrypted: TriState,
     #[serde(default)]
     pub asset_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub data_classification: Option<Classification>,
+    #[serde(default)]
+    pub authorization_model: Option<String>,
+    #[serde(default)]
+    pub entry_point: bool,
 }
 
 impl FlowInput {
@@ -383,6 +431,9 @@ impl FlowInput {
             authentication,
             encrypted: self.encrypted,
             asset_ids: self.asset_ids,
+            data_classification: self.data_classification,
+            authorization_model: blank_to_none(self.authorization_model),
+            entry_point: self.entry_point,
         })
     }
 }
@@ -412,8 +463,15 @@ pub struct FlowDto {
     pub authentication: String,
     pub encrypted: TriState,
     pub asset_ids: Vec<Uuid>,
+    pub data_classification: Option<Classification>,
+    pub authorization_model: Option<String>,
+    pub entry_point: bool,
     pub crossing: CrossingDto,
     pub warnings: Vec<WarningDto>,
+    #[serde(default = "manual_origin")]
+    pub origin: AiOrigin,
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 // ---------- threats ----------
@@ -468,6 +526,18 @@ pub struct ThreatInput {
     pub inherent: Option<RatingDto>,
     #[serde(default)]
     pub current: Option<RatingDto>,
+    #[serde(default)]
+    pub residual: Option<RatingDto>,
+    #[serde(default)]
+    pub threat_source: Option<String>,
+    #[serde(default)]
+    pub detection: Option<String>,
+    #[serde(default)]
+    pub existing_mitigations: Option<String>,
+    #[serde(default)]
+    pub confidence: Option<Confidence>,
+    #[serde(default)]
+    pub acceptance_expires: Option<NaiveDate>,
     #[serde(default = "default_undecided")]
     pub treatment: RiskTreatment,
     #[serde(default)]
@@ -511,6 +581,12 @@ impl ThreatInput {
             dismiss_reason: blank_to_none(self.dismiss_reason),
             inherent: rating(self.inherent, "inherent")?,
             current: rating(self.current, "current")?,
+            residual: rating(self.residual, "residual")?,
+            threat_source: blank_to_none(self.threat_source),
+            detection: blank_to_none(self.detection),
+            existing_mitigations: blank_to_none(self.existing_mitigations),
+            confidence: self.confidence,
+            acceptance_expires: self.acceptance_expires,
             treatment: self.treatment,
             risk_owner: blank_to_none(self.risk_owner),
             due_date: self.due_date,
@@ -540,6 +616,13 @@ pub struct ThreatDto {
     pub dismiss_reason: Option<String>,
     pub inherent: Option<RatingDto>,
     pub current: Option<RatingDto>,
+    pub residual: Option<RatingDto>,
+    pub threat_source: Option<String>,
+    pub detection: Option<String>,
+    pub existing_mitigations: Option<String>,
+    pub confidence: Option<Confidence>,
+    pub acceptance_expires: Option<NaiveDate>,
+    pub accepted_on: Option<NaiveDate>,
     pub treatment: RiskTreatment,
     pub risk_owner: Option<String>,
     pub due_date: Option<NaiveDate>,
@@ -551,7 +634,15 @@ pub struct ThreatDto {
     pub current_score: Option<u8>,
     pub inherent_level: Option<RiskLevel>,
     pub current_level: Option<RiskLevel>,
+    pub residual_score: Option<u8>,
+    pub residual_level: Option<RiskLevel>,
+    pub effective_status: ThreatStatus,
+    pub affected_boundaries: Vec<CrossingDto>,
     pub flags: Vec<ThreatFlag>,
+    /// Why a residual flag is shown (the linked controls that are not verified).
+    pub residual_facts: Vec<String>,
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 /// `ThreatBulkStatus`.
@@ -595,6 +686,8 @@ pub struct ControlInput {
     #[serde(default)]
     pub acceptance_criteria: Option<String>,
     #[serde(default)]
+    pub review_by: Option<NaiveDate>,
+    #[serde(default)]
     pub component_ids: Vec<Uuid>,
     #[serde(default)]
     pub threat_ids: Vec<Uuid>,
@@ -612,6 +705,7 @@ impl ControlInput {
             status: self.status,
             owner: blank_to_none(self.owner),
             acceptance_criteria: blank_to_none(self.acceptance_criteria),
+            review_by: self.review_by,
             component_ids: self.component_ids,
             threat_ids: self.threat_ids,
         })
@@ -633,10 +727,17 @@ pub struct ControlDto {
     pub status: ControlStatus,
     pub owner: Option<String>,
     pub acceptance_criteria: Option<String>,
+    pub review_by: Option<NaiveDate>,
     pub component_ids: Vec<Uuid>,
     pub threat_ids: Vec<Uuid>,
     pub verified_at: Option<DateTime<Utc>>,
     pub security_test_ids: Vec<Uuid>,
+    pub evidence_count: usize,
+    pub flags: Vec<ControlFlag>,
+    #[serde(default = "manual_origin")]
+    pub origin: AiOrigin,
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 // ---------- security tests ----------
@@ -754,6 +855,8 @@ pub struct SecurityTestDto {
     pub template_version: Option<i32>,
     pub stale: Option<String>,
     pub last_result: Option<ResultDto>,
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 /// Body of `POST …/security-tests/generate`.
@@ -812,6 +915,304 @@ pub struct SummaryDto {
     pub controls_without_test: Vec<RefLabel>,
     pub warning_count: usize,
     pub overdue_count: usize,
+    pub residual_matrix: Vec<MatrixCell>,
+    pub completeness: Vec<FindingDto>,
+    pub expiring_acceptances: Vec<RefLabel>,
+    pub expired_acceptances: usize,
+    pub verification_overdue: usize,
+}
+
+/// `CompletenessFinding`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FindingDto {
+    pub code: String,
+    pub message: String,
+    pub entity_kind: String,
+    pub entity_id: Uuid,
+}
+
+// ---------- evidence ----------
+
+/// `EvidenceInput`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvidenceInput {
+    pub kind: EvidenceKind,
+    pub title: String,
+    #[serde(default)]
+    pub link: Option<String>,
+    #[serde(default)]
+    pub note: Option<String>,
+    pub evidence_date: NaiveDate,
+    #[serde(default)]
+    pub reviewer: Option<String>,
+}
+
+impl EvidenceInput {
+    /// Validates.
+    pub fn into_fields(self) -> Result<assurance::EvidenceFields, ApiError> {
+        check_len("title", &self.title, 1, 300)?;
+        if let Some(l) = &self.link {
+            check_len("link", l, 0, 2000)?;
+        }
+        if let Some(n) = &self.note {
+            check_len("note", n, 0, 4000)?;
+        }
+        let f = assurance::EvidenceFields {
+            kind: self.kind,
+            title: self.title,
+            link: blank_to_none(self.link),
+            note: blank_to_none(self.note),
+            evidence_date: self.evidence_date,
+            reviewer: blank_to_none(self.reviewer),
+        };
+        assurance::check_evidence(&f).map_err(invalid)?;
+        Ok(f)
+    }
+}
+
+/// `Evidence`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvidenceDto {
+    #[serde(flatten)]
+    pub audit: AuditDto,
+    pub kind: EvidenceKind,
+    pub title: String,
+    pub link: Option<String>,
+    pub note: Option<String>,
+    pub evidence_date: NaiveDate,
+    pub reviewer: Option<String>,
+    pub owner_kind: EvidenceOwnerKind,
+    pub owner_id: Uuid,
+}
+
+impl From<&assurance::Evidence> for EvidenceDto {
+    fn from(e: &assurance::Evidence) -> Self {
+        Self {
+            audit: (&e.audit).into(),
+            kind: e.fields.kind,
+            title: e.fields.title.clone(),
+            link: e.fields.link.clone(),
+            note: e.fields.note.clone(),
+            evidence_date: e.fields.evidence_date,
+            reviewer: e.fields.reviewer.clone(),
+            owner_kind: e.owner_kind,
+            owner_id: e.owner_id,
+        }
+    }
+}
+
+// ---------- baselines ----------
+
+/// Version of the snapshot format.
+pub const SNAPSHOT_VERSION: i32 = 1;
+
+/// `BaselineInput`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BaselineInput {
+    pub name: String,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// `Baseline`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BaselineDto {
+    pub id: Uuid,
+    pub name: String,
+    pub note: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub created_by: Option<String>,
+    pub threat_count: i32,
+    pub control_count: i32,
+    pub schema_version: i32,
+}
+
+impl From<&tm_storage::BaselineMeta> for BaselineDto {
+    fn from(m: &tm_storage::BaselineMeta) -> Self {
+        Self {
+            id: m.id,
+            name: m.name.clone(),
+            note: m.note.clone(),
+            created_at: m.created_at,
+            created_by: m.created_by.clone(),
+            threat_count: m.threat_count,
+            control_count: m.control_count,
+            schema_version: m.schema_version,
+        }
+    }
+}
+
+/// `ThreatModelSnapshot`: the read model of one threat model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotDto {
+    pub threat_model: ThreatModelDto,
+    pub zones: Vec<ZoneDto>,
+    pub components: Vec<ArchComponentDto>,
+    pub assets: Vec<AssetDto>,
+    pub flows: Vec<FlowDto>,
+    pub threats: Vec<ThreatDto>,
+    pub controls: Vec<ControlDto>,
+    pub security_tests: Vec<SecurityTestDto>,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceDto>,
+}
+
+impl SnapshotDto {
+    /// Refreshes what depends on the clock and on the stored ratings: scores,
+    /// levels and effective status. Flags and warnings stay as they were when
+    /// the snapshot was taken.
+    pub fn refresh(&mut self, today: NaiveDate) {
+        let thresholds = thresholds_of(&self.threat_model);
+        let score = |r: &Option<RatingDto>| r.map(|r| r.likelihood * r.impact);
+        let level = |s: Option<u8>| s.map(|s| thresholds.level(s));
+        for th in &mut self.threats {
+            th.inherent_score = score(&th.inherent);
+            th.current_score = score(&th.current);
+            th.residual_score = score(&th.residual);
+            th.inherent_level = level(th.inherent_score);
+            th.current_level = level(th.current_score);
+            th.residual_level = level(th.residual_score);
+            let lapsed = th.status == ThreatStatus::Accepted
+                && th.acceptance_expires.is_some_and(|d| d < today);
+            th.effective_status = if lapsed {
+                ThreatStatus::Open
+            } else {
+                th.status
+            };
+        }
+    }
+
+    /// Digests for the comparison.
+    pub fn digests(&self) -> (Vec<assurance::ThreatDigest>, Vec<assurance::ControlDigest>) {
+        let threats = self
+            .threats
+            .iter()
+            .map(|t| assurance::ThreatDigest {
+                id: t.audit.id,
+                display_id: t.display_id.clone(),
+                title: t.title.clone(),
+                status: t.effective_status.to_string(),
+                inherent: t.inherent_level.map(|l| l.to_string()),
+                current: t.current_level.map(|l| l.to_string()),
+                residual: t.residual_level.map(|l| l.to_string()),
+                treatment: t.treatment.to_string(),
+            })
+            .collect();
+        let controls = self
+            .controls
+            .iter()
+            .map(|c| assurance::ControlDigest {
+                id: c.audit.id,
+                display_id: c.display_id.clone(),
+                status: c.status.to_string(),
+            })
+            .collect();
+        (threats, controls)
+    }
+}
+
+fn thresholds_of(m: &ThreatModelDto) -> t::Thresholds {
+    t::Thresholds::new(
+        m.thresholds
+            .iter()
+            .map(|x| t::Threshold {
+                level: x.level,
+                min: x.min,
+                max: x.max,
+            })
+            .collect(),
+    )
+    .unwrap_or_default()
+}
+
+/// `BaselineDetail`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BaselineDetailDto {
+    #[serde(flatten)]
+    pub meta: BaselineDto,
+    pub snapshot: SnapshotDto,
+}
+
+/// `ComparedThreat`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComparedThreatDto {
+    pub id: Uuid,
+    pub display_id: String,
+    pub title: String,
+    pub changes: Vec<FieldChangeDto>,
+}
+
+/// One entry of `ComparedThreat.changes`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldChangeDto {
+    pub field: String,
+    pub before: Option<String>,
+    pub after: Option<String>,
+}
+
+/// Entry of `BaselineComparison.controlsChanged`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControlChangeDto {
+    pub id: Uuid,
+    pub display_id: String,
+    pub before: String,
+    pub after: String,
+}
+
+/// `BaselineComparison`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComparisonDto {
+    pub added: Vec<ComparedThreatDto>,
+    pub removed: Vec<ComparedThreatDto>,
+    pub changed: Vec<ComparedThreatDto>,
+    pub controls_changed: Vec<ControlChangeDto>,
+    pub levels_baseline: BTreeMap<String, usize>,
+    pub levels_live: BTreeMap<String, usize>,
+}
+
+impl From<assurance::Comparison> for ComparisonDto {
+    fn from(c: assurance::Comparison) -> Self {
+        let threat = |x: assurance::ComparedThreat| ComparedThreatDto {
+            id: x.id,
+            display_id: x.display_id,
+            title: x.title,
+            changes: x
+                .changes
+                .into_iter()
+                .map(|c| FieldChangeDto {
+                    field: c.field.to_owned(),
+                    before: c.before,
+                    after: c.after,
+                })
+                .collect(),
+        };
+        Self {
+            added: c.added.into_iter().map(threat).collect(),
+            removed: c.removed.into_iter().map(threat).collect(),
+            changed: c.changed.into_iter().map(threat).collect(),
+            controls_changed: c
+                .controls_changed
+                .into_iter()
+                .map(|x| ControlChangeDto {
+                    id: x.id,
+                    display_id: x.display_id,
+                    before: x.before,
+                    after: x.after,
+                })
+                .collect(),
+            levels_baseline: c.levels_baseline,
+            levels_live: c.levels_live,
+        }
+    }
 }
 
 // ---------- the view: aggregate → DTOs ----------
@@ -822,6 +1223,7 @@ pub struct View<'a> {
     today: NaiveDate,
     threats: HashMap<Uuid, &'a t::Threat>,
     controls: HashMap<Uuid, &'a t::Control>,
+    evidence_counts: HashMap<Uuid, usize>,
 }
 
 impl<'a> View<'a> {
@@ -832,6 +1234,13 @@ impl<'a> View<'a> {
             today,
             threats: agg.threats.iter().map(|x| (x.audit.id, x)).collect(),
             controls: agg.controls.iter().map(|x| (x.audit.id, x)).collect(),
+            evidence_counts: {
+                let mut m = HashMap::new();
+                for e in &agg.evidence {
+                    *m.entry(e.owner_id).or_insert(0) += 1;
+                }
+                m
+            },
         }
     }
 
@@ -848,6 +1257,8 @@ impl<'a> View<'a> {
     /// The zone DTO.
     pub fn zone(&self, z: &t::Zone) -> ZoneDto {
         ZoneDto {
+            origin: z.provenance.origin,
+            source: z.provenance.source.clone(),
             audit: (&z.audit).into(),
             name: z.fields.name.clone(),
             description: z.fields.description.clone(),
@@ -860,6 +1271,8 @@ impl<'a> View<'a> {
     pub fn component(&self, c: &t::ArchComponent) -> ArchComponentDto {
         let f = &c.fields;
         ArchComponentDto {
+            origin: c.provenance.origin,
+            source: c.provenance.source.clone(),
             audit: (&c.audit).into(),
             name: f.name.clone(),
             description: f.description.clone(),
@@ -881,6 +1294,8 @@ impl<'a> View<'a> {
     pub fn asset(&self, a: &t::Asset) -> AssetDto {
         let f = &a.fields;
         AssetDto {
+            origin: a.provenance.origin,
+            source: a.provenance.source.clone(),
             audit: (&a.audit).into(),
             name: f.name.clone(),
             description: f.description.clone(),
@@ -890,6 +1305,10 @@ impl<'a> View<'a> {
             integrity: f.integrity,
             availability: f.availability,
             personal_data: f.personal_data,
+            classification: f.classification,
+            data_location: f.data_location.clone(),
+            retention: f.retention.clone(),
+            encryption_at_rest: f.encryption_at_rest,
             component_ids: self.agg.arch.components_with_asset(a.audit.id),
             flow_ids: self.agg.arch.flows_with_asset(a.audit.id),
             warnings: warnings(arch::asset_warnings(&self.agg.arch, a)),
@@ -901,6 +1320,8 @@ impl<'a> View<'a> {
         let f = &fl.fields;
         let c = arch::crossing(&self.agg.arch, fl);
         FlowDto {
+            origin: fl.provenance.origin,
+            source: fl.provenance.source.clone(),
             audit: (&fl.audit).into(),
             source_id: f.source_id,
             target_id: f.target_id,
@@ -911,6 +1332,9 @@ impl<'a> View<'a> {
             authentication: f.authentication.clone(),
             encrypted: f.encrypted,
             asset_ids: f.asset_ids.clone(),
+            data_classification: f.data_classification,
+            authorization_model: f.authorization_model.clone(),
+            entry_point: f.entry_point,
             crossing: CrossingDto {
                 crosses: c.crosses,
                 direction: c.direction.map(|d| d.as_str().to_owned()),
@@ -934,6 +1358,36 @@ impl<'a> View<'a> {
         r.map(|r| self.agg.model.thresholds.level(r.score()))
     }
 
+    /// The trust-boundary crossings a threat is exposed to: the crossing flows
+    /// it targets, or those of the components it targets.
+    fn affected_boundaries(&self, th: &t::Threat) -> Vec<CrossingDto> {
+        let a = &self.agg.arch;
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for target in &th.fields.targets {
+            let flows: Vec<&t::Flow> = match target.kind {
+                TargetKind::Flow => a.flow(target.id).into_iter().collect(),
+                TargetKind::Component => a
+                    .flows
+                    .iter()
+                    .filter(|f| f.fields.source_id == target.id || f.fields.target_id == target.id)
+                    .collect(),
+            };
+            for f in flows {
+                let c = arch::crossing(a, f);
+                if c.crosses && seen.insert(f.audit.id) {
+                    out.push(CrossingDto {
+                        crosses: true,
+                        direction: c.direction.map(|d| d.as_str().to_owned()),
+                        from_trust: c.from_trust,
+                        to_trust: c.to_trust,
+                    });
+                }
+            }
+        }
+        out
+    }
+
     /// The threat DTO.
     pub fn threat_dto(&self, th: &t::Threat) -> ThreatDto {
         let f = &th.fields;
@@ -944,6 +1398,7 @@ impl<'a> View<'a> {
             })
         };
         ThreatDto {
+            source: th.source_model.clone(),
             audit: (&th.audit).into(),
             display_id: th.display_id(),
             title: f.title.clone(),
@@ -966,6 +1421,13 @@ impl<'a> View<'a> {
             dismiss_reason: f.dismiss_reason.clone(),
             inherent: rating(f.inherent),
             current: rating(f.current),
+            residual: rating(f.residual),
+            threat_source: f.threat_source.clone(),
+            detection: f.detection.clone(),
+            existing_mitigations: f.existing_mitigations.clone(),
+            confidence: f.confidence,
+            acceptance_expires: f.acceptance_expires,
+            accepted_on: th.accepted_on,
             treatment: f.treatment,
             risk_owner: f.risk_owner.clone(),
             due_date: f.due_date,
@@ -977,14 +1439,72 @@ impl<'a> View<'a> {
             current_score: f.current.map(t::Rating::score),
             inherent_level: self.level(f.inherent),
             current_level: self.level(f.current),
+            residual_score: f.residual.map(t::Rating::score),
+            residual_level: self.level(f.residual),
+            effective_status: risk::effective_status(th, self.today),
+            affected_boundaries: self.affected_boundaries(th),
             flags: risk::threat_flags(th, &self.controls, &self.tests_of(th.audit.id), self.today),
+            residual_facts: risk::unsupported_residual_facts(th, &self.controls),
         }
+    }
+
+    fn evidence_count(&self, id: Uuid) -> usize {
+        self.evidence_counts.get(&id).copied().unwrap_or(0)
+    }
+
+    /// Evidence DTOs of the aggregate.
+    pub fn evidence(&self) -> Vec<EvidenceDto> {
+        self.agg.evidence.iter().map(Into::into).collect()
+    }
+
+    /// The whole read model, as stored in a baseline.
+    pub fn snapshot(&self) -> SnapshotDto {
+        let a = self.agg;
+        SnapshotDto {
+            threat_model: (&a.model).into(),
+            zones: a.arch.zones.iter().map(|x| self.zone(x)).collect(),
+            components: a
+                .arch
+                .components
+                .iter()
+                .map(|x| self.component(x))
+                .collect(),
+            assets: a.arch.assets.iter().map(|x| self.asset(x)).collect(),
+            flows: a.arch.flows.iter().map(|x| self.flow(x)).collect(),
+            threats: a.threats.iter().map(|x| self.threat_dto(x)).collect(),
+            controls: a.controls.iter().map(|x| self.control(x)).collect(),
+            security_tests: a.tests.iter().map(|x| self.test(x)).collect(),
+            evidence: self.evidence(),
+        }
+    }
+
+    /// Digests of the live model for the comparison with a baseline.
+    pub fn digests(&self) -> (Vec<assurance::ThreatDigest>, Vec<assurance::ControlDigest>) {
+        let threats = self
+            .agg
+            .threats
+            .iter()
+            .map(|x| assurance::threat_digest(x, &self.agg.model.thresholds, self.today))
+            .collect();
+        let controls = self
+            .agg
+            .controls
+            .iter()
+            .map(|c| assurance::ControlDigest {
+                id: c.audit.id,
+                display_id: c.display_id(),
+                status: c.fields.status.to_string(),
+            })
+            .collect();
+        (threats, controls)
     }
 
     /// The control DTO.
     pub fn control(&self, c: &t::Control) -> ControlDto {
         let f = &c.fields;
         ControlDto {
+            origin: c.provenance.origin,
+            source: c.provenance.source.clone(),
             audit: (&c.audit).into(),
             display_id: c.display_id(),
             name: f.name.clone(),
@@ -994,9 +1514,12 @@ impl<'a> View<'a> {
             status: f.status,
             owner: f.owner.clone(),
             acceptance_criteria: f.acceptance_criteria.clone(),
+            review_by: f.review_by,
             component_ids: f.component_ids.clone(),
             threat_ids: f.threat_ids.clone(),
             verified_at: c.verified_at,
+            evidence_count: self.evidence_count(c.audit.id),
+            flags: assurance::control_flags(c, self.evidence_count(c.audit.id), self.today),
             security_test_ids: self
                 .agg
                 .tests
@@ -1011,6 +1534,7 @@ impl<'a> View<'a> {
     pub fn test(&self, s: &t::SecurityTest) -> SecurityTestDto {
         let f = &s.fields;
         SecurityTestDto {
+            source: s.source_model.clone(),
             audit: (&s.audit).into(),
             display_id: s.display_id(),
             title: f.title.clone(),
@@ -1042,13 +1566,32 @@ impl<'a> View<'a> {
         }
         let mut inherent: HashMap<(u8, u8), usize> = HashMap::new();
         let mut current: HashMap<(u8, u8), usize> = HashMap::new();
+        let mut residual: HashMap<(u8, u8), usize> = HashMap::new();
         let mut without_control = Vec::new();
         let mut overdue = 0;
+        let mut expiring = Vec::new();
+        let mut expired = 0;
         for th in &agg.threats {
+            let status = risk::effective_status(th, self.today);
             *threats_by_status
-                .entry(th.fields.status.as_str().to_owned())
+                .entry(status.as_str().to_owned())
                 .or_default() += 1;
-            if th.fields.status != ThreatStatus::Open {
+            if risk::acceptance_expired(th, self.today) {
+                expired += 1;
+            }
+            if th.fields.status == ThreatStatus::Accepted {
+                if let Some(d) = th.fields.acceptance_expires {
+                    if d >= self.today
+                        && d <= self.today + chrono::Duration::days(assurance::EXPIRING_DAYS)
+                    {
+                        expiring.push(RefLabel {
+                            id: th.audit.id,
+                            label: format!("{} {}", th.display_id(), th.fields.title),
+                        });
+                    }
+                }
+            }
+            if status != ThreatStatus::Open {
                 continue;
             }
             let level = self
@@ -1060,6 +1603,9 @@ impl<'a> View<'a> {
             }
             if let Some(r) = th.fields.current {
                 *current.entry((r.likelihood, r.impact)).or_default() += 1;
+            }
+            if let Some(r) = th.fields.residual {
+                *residual.entry((r.likelihood, r.impact)).or_default() += 1;
             }
             let flags = risk::threat_flags(th, &self.controls, &[], self.today);
             if flags.contains(&ThreatFlag::NoControl) {
@@ -1119,6 +1665,32 @@ impl<'a> View<'a> {
             controls_without_test,
             warning_count: arch::warning_count(&agg.arch),
             overdue_count: overdue,
+            residual_matrix: matrix(&residual),
+            completeness: assurance::completeness(
+                &agg.arch,
+                &agg.threats,
+                &agg.controls,
+                &self.evidence_counts,
+                self.today,
+            )
+            .into_iter()
+            .map(|f| FindingDto {
+                code: f.code.to_owned(),
+                message: f.message,
+                entity_kind: f.entity_kind.to_owned(),
+                entity_id: f.entity_id,
+            })
+            .collect(),
+            expiring_acceptances: expiring,
+            expired_acceptances: expired,
+            verification_overdue: agg
+                .controls
+                .iter()
+                .filter(|c| {
+                    assurance::control_flags(c, self.evidence_count(c.audit.id), self.today)
+                        .contains(&ControlFlag::VerificationOverdue)
+                })
+                .count(),
         }
     }
 }
@@ -1143,6 +1715,7 @@ mod tests {
     fn aggregate() -> ThreatModelAggregate {
         let z0 = t::Zone {
             audit: audit(),
+            provenance: t::Provenance::default(),
             fields: t::ZoneFields {
                 name: "Internet".into(),
                 description: None,
@@ -1152,6 +1725,7 @@ mod tests {
         };
         let z3 = t::Zone {
             audit: audit(),
+            provenance: t::Provenance::default(),
             fields: t::ZoneFields {
                 name: "Internal".into(),
                 description: None,
@@ -1161,6 +1735,7 @@ mod tests {
         };
         let comp = |name: &str, zone: Uuid| t::ArchComponent {
             audit: audit(),
+            provenance: t::Provenance::default(),
             fields: t::ArchComponentFields {
                 name: name.into(),
                 description: None,
@@ -1179,6 +1754,7 @@ mod tests {
         let api = comp("API", z3.audit.id);
         let flow = t::Flow {
             audit: audit(),
+            provenance: t::Provenance::default(),
             fields: t::FlowFields {
                 source_id: web.audit.id,
                 target_id: api.audit.id,
@@ -1189,6 +1765,9 @@ mod tests {
                 authentication: "unknown".into(),
                 encrypted: TriState::Unknown,
                 asset_ids: vec![],
+                data_classification: None,
+                authorization_model: None,
+                entry_point: false,
             },
         };
         let threat = t::Threat {
@@ -1217,14 +1796,22 @@ mod tests {
                     likelihood: 3,
                     impact: 4,
                 }),
+                residual: None,
+                threat_source: None,
+                detection: None,
+                existing_mitigations: None,
+                confidence: None,
                 treatment: RiskTreatment::Mitigate,
                 risk_owner: None,
                 due_date: NaiveDate::from_ymd_opt(2026, 1, 1),
                 acceptance_rationale: None,
                 accepted_by: None,
+                acceptance_expires: None,
             },
             origin: ThreatOrigin::Manual,
             explanation: None,
+            accepted_on: None,
+            source_model: None,
         };
         ThreatModelAggregate {
             model: t::ThreatModel {
@@ -1247,6 +1834,7 @@ mod tests {
             threats: vec![threat],
             controls: vec![],
             tests: vec![],
+            evidence: vec![],
             rule_keys: Default::default(),
         }
     }
@@ -1344,5 +1932,89 @@ mod tests {
             (f.authentication.as_str(), f.encrypted),
             ("unknown", TriState::Unknown)
         );
+    }
+
+    #[test]
+    fn threat_maps_effective_status_residual_and_boundaries() {
+        let mut agg = aggregate();
+        agg.threats[0].fields.residual = t::Rating::new(2, 2, "residual").ok();
+        agg.threats[0].fields.treatment = RiskTreatment::Accept;
+        agg.threats[0].fields.status = ThreatStatus::Accepted;
+        agg.threats[0].fields.acceptance_expires = NaiveDate::from_ymd_opt(2026, 10, 16);
+        let v = View::new(&agg, NaiveDate::from_ymd_opt(2026, 10, 17).unwrap());
+        let d = v.threat_dto(&agg.threats[0]);
+        assert_eq!(d.status, ThreatStatus::Accepted);
+        assert_eq!(d.effective_status, ThreatStatus::Open);
+        assert!(d.flags.contains(&ThreatFlag::AcceptanceExpired));
+        assert_eq!(d.residual_score, Some(4));
+        assert_eq!(d.residual_level, Some(RiskLevel::Low));
+        assert_eq!(d.affected_boundaries.len(), 1);
+    }
+
+    #[test]
+    fn snapshot_refresh_recomputes_levels_and_lapsed_acceptance() {
+        let agg = aggregate();
+        let v = View::new(&agg, NaiveDate::from_ymd_opt(2026, 10, 17).unwrap());
+        let mut snap = v.snapshot();
+        snap.threats[0].current_level = None;
+        snap.threats[0].status = ThreatStatus::Accepted;
+        snap.threats[0].acceptance_expires = NaiveDate::from_ymd_opt(2026, 10, 1);
+        snap.refresh(NaiveDate::from_ymd_opt(2026, 10, 17).unwrap());
+        assert_eq!(snap.threats[0].current_level, Some(RiskLevel::High));
+        assert_eq!(snap.threats[0].effective_status, ThreatStatus::Open);
+        let json = serde_json::to_value(&snap).unwrap();
+        let back: SnapshotDto = serde_json::from_value(json).unwrap();
+        assert_eq!(back.threats.len(), 1);
+    }
+
+    #[test]
+    fn ai_flag_is_kept_unless_the_input_says_otherwise() {
+        let input = |ai: Option<bool>| ThreatModelInput {
+            name: "TM".into(),
+            scope: None,
+            objectives: None,
+            assumptions: None,
+            exclusions: None,
+            thresholds: None,
+            ai_enabled: ai,
+        };
+        let parts = |ai, current| {
+            input(ai)
+                .into_parts(t::Thresholds::default(), current)
+                .unwrap()
+                .0
+                .ai_enabled
+        };
+        assert!(parts(None, true), "absent keeps the stored value");
+        assert!(!parts(None, false));
+        assert!(!parts(Some(false), true), "explicit off wins");
+        assert!(parts(Some(true), false), "explicit on wins");
+    }
+
+    #[test]
+    fn old_snapshots_without_provenance_still_read() {
+        let agg = aggregate();
+        let v = View::new(&agg, NaiveDate::from_ymd_opt(2026, 10, 17).unwrap());
+        let mut json = serde_json::to_value(v.snapshot()).unwrap();
+        // Threats and tests always had an origin; the others gained it with AI.
+        for (list, had_origin) in [
+            ("zones", false),
+            ("components", false),
+            ("assets", false),
+            ("flows", false),
+            ("controls", false),
+            ("threats", true),
+            ("securityTests", true),
+        ] {
+            for item in json[list].as_array_mut().unwrap() {
+                let o = item.as_object_mut().unwrap();
+                if !had_origin {
+                    o.remove("origin");
+                }
+                o.remove("source");
+            }
+        }
+        let back: SnapshotDto = serde_json::from_value(json).expect("a baseline from before AI");
+        assert_eq!(back.zones[0].origin, AiOrigin::Manual);
     }
 }

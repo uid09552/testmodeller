@@ -5,7 +5,8 @@ import { FormsModule } from '@angular/forms';
 import { Zone, ZoneInput, ZoneKind } from '../../../../core/api/threat-model-api';
 import { EditorState, orNull } from '../../state/editor-state';
 import { ThreatModelStore } from '../../state/threat-model.store';
-import { label } from '../../state/threat-model-view';
+import { label, aiMark } from '../../state/threat-model-view';
+import { AiBadgeComponent } from '../ai-badge/ai-badge';
 import { EditorDrawerComponent } from '../editor-drawer/editor-drawer';
 import { Column, EntityTableComponent } from '../entity-table/entity-table';
 
@@ -17,7 +18,7 @@ export const ZONE_KINDS: ZoneKind[] = [
 /** Exposure zones and their trust level (FR-062). */
 @Component({
   selector: 'tm-zones-tab',
-  imports: [FormsModule, EntityTableComponent, EditorDrawerComponent],
+  imports: [AiBadgeComponent, FormsModule, EntityTableComponent, EditorDrawerComponent],
   templateUrl: './zones-tab.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -40,7 +41,7 @@ export class ZonesTabComponent {
   });
 
   readonly columns = computed<Column<Zone>[]>(() => [
-    { key: 'name', label: 'Name', text: z => z.name },
+    { key: 'name', label: 'Name', text: z => z.name + aiMark(z) },
     { key: 'kind', label: 'Kind', text: z => label(z.kind) },
     { key: 'trust', label: 'Trust level', text: z => `${z.trustLevel}`, sort: z => z.trustLevel },
     { key: 'members', label: 'Components', text: z => `${this.members().get(z.id) ?? 0}`,

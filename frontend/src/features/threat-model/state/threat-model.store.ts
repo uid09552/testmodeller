@@ -2,8 +2,8 @@ import { computed, inject, Injectable, signal } from '@angular/core';
 import { ApiError } from '../../../core/api/api-error';
 import { ThreatModelIndex } from './threat-model-index';
 import {
-  ArchComponent, Asset, CollectionName, Collections, Control, Flow, SecurityTest, Threat,
-  ThreatModel, ThreatModelApi, ThreatModelInput, ThreatModelSummary, Zone,
+  ArchComponent, Asset, Baseline, BaselineComparison, BaselineDetail, BaselineInput, CollectionName, Collections, Control, Flow, SecurityTest, Threat,
+  Evidence, EvidenceInput, TmContextPreview, TmJob, TmProposal, TmProposalKind, ThreatModel, ThreatModelApi, ThreatModelInput, ThreatModelSummary, Zone,
 } from '../../../core/api/threat-model-api';
 
 /** What a reader is told when someone else saved first (412). */
@@ -43,6 +43,10 @@ export class ThreatModelStore {
   readonly controls = signal<Control[]>([]);
   readonly tests = signal<SecurityTest[]>([]);
   readonly summary = signal<ThreatModelSummary | null>(null);
+  readonly baselines = signal<Baseline[]>([]);
+  /** Pending AI proposals of this threat model; they are not part of any count. */
+  readonly proposals = signal<TmProposal[]>([]);
+  readonly aiEnabled = computed(() => this.model()?.aiEnabled ?? false);
 
   readonly id = computed(() => this.model()?.id ?? null);
   private generation = 0;
@@ -84,13 +88,15 @@ export class ThreatModelStore {
     this.controls.set([]);
     this.tests.set([]);
     this.summary.set(null);
+    this.baselines.set([]);
+    this.proposals.set([]);
   }
 
   /** Reloads every collection and the summary. */
   async refresh(gen = this.generation): Promise<void> {
     const id = this.id();
     if (!id) return;
-    const [model, zones, components, assets, flows, threats, controls, tests, summary] = await Promise.all([
+    const [model, zones, components, assets, flows, threats, controls, tests, summary, baselines, proposals] = await Promise.all([
       this.api.ofProject(this.projectId()!),
       this.api.list(id, 'zones'),
       this.api.list(id, 'components'),
@@ -100,6 +106,8 @@ export class ThreatModelStore {
       this.api.list(id, 'controls'),
       this.api.list(id, 'security-tests'),
       this.api.summary(id),
+      this.api.baselines(id),
+      this.api.tmProposals(id, 'pending'),
     ]);
     if (gen !== this.generation) return;
     this.model.set(model);
@@ -112,6 +120,8 @@ export class ThreatModelStore {
     this.controls.set(controls);
     this.tests.set(tests);
     this.summary.set(summary);
+    this.baselines.set(baselines);
+    this.proposals.set(proposals);
   }
 
   /** Runs a write, reloads, and reports failure in `error` as well as by rethrowing. */
@@ -176,6 +186,80 @@ export class ThreatModelStore {
 
   bulkTestStatus(ids: string[], status: SecurityTest['status']) {
     return this.write(id => this.api.bulkTestStatus(id, ids, status));
+  }
+
+  // ── AI assistance (FR-085 to FR-089) ─────────────────────────────────
+
+  /** Turns AI assistance on or off for this threat model. */
+  setAiEnabled(on: boolean): Promise<ThreatModel> {
+    const m = this.model()!;
+    return this.write(id => this.api.update(id, m.version, {
+      name: m.name, scope: m.scope, objectives: m.objectives, assumptions: m.assumptions,
+      exclusions: m.exclusions, thresholds: m.thresholds, aiEnabled: on,
+    }));
+  }
+
+  /** The context a request would send, and where it would go. No provider is called. */
+  async previewContext(kind: TmProposalKind, targetIds: string[] = []): Promise<TmContextPreview> {
+    const r = await this.api.tmRequest(this.id()!, { kind, targetIds, previewContext: true });
+    return r as TmContextPreview;
+  }
+
+  /**
+   * Asks for proposals and waits for the job. Resolves with the new proposals;
+   * a failed job rejects with the reason the server gave.
+   */
+  async requestProposals(
+    kind: TmProposalKind, prompt: string, targetIds: string[],
+  ): Promise<TmProposal[]> {
+    const id = this.id()!;
+    const started = await this.api.tmRequest(id, { kind, prompt: prompt || undefined, targetIds }) as TmJob;
+    const job = await this.api.awaitJob(started.id);
+    if (job.status === 'failed') throw new Error(job.error?.detail ?? 'The AI job failed.');
+    const found = await Promise.all((job.proposalIds ?? []).map(p => this.api.tmGetProposal(id, p)));
+    this.proposals.update(list => [...found, ...list]);
+    return found;
+  }
+
+  /**
+   * Accepts a proposal, with an edited payload if given. The workspace is
+   * reloaded afterwards, so what was created shows up everywhere.
+   */
+  async acceptProposal(proposalId: string, payload?: unknown): Promise<TmProposal> {
+    return this.write(id => this.api.tmAccept(id, proposalId, payload));
+  }
+
+  rejectProposal(proposalId: string, reason?: string): Promise<TmProposal> {
+    return this.write(id => this.api.tmReject(id, proposalId, reason));
+  }
+
+  /** Evidence is read on demand: it is only shown for the control being edited. */
+  controlEvidence(controlId: string): Promise<Evidence[]> {
+    return this.api.controlEvidence(this.id()!, controlId);
+  }
+
+  addControlEvidence(controlId: string, input: EvidenceInput) {
+    return this.write(id => this.api.addControlEvidence(id, controlId, input));
+  }
+
+  deleteEvidence(evidenceId: string) {
+    return this.write(id => this.api.deleteEvidence(id, evidenceId));
+  }
+
+  createBaseline(input: BaselineInput) {
+    return this.write(id => this.api.createBaseline(id, input));
+  }
+
+  deleteBaseline(baselineId: string) {
+    return this.write(id => this.api.deleteBaseline(id, baselineId));
+  }
+
+  baseline(baselineId: string): Promise<BaselineDetail> {
+    return this.api.baseline(this.id()!, baselineId);
+  }
+
+  compareBaseline(baselineId: string): Promise<BaselineComparison> {
+    return this.api.compareBaseline(this.id()!, baselineId);
   }
 
   recordResult(testId: string, outcome: 'passed' | 'failed' | 'not-run', note?: string, executedAt?: string) {

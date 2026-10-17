@@ -318,7 +318,12 @@ export class ThreatDiagramComponent {
   }
 
   edgeLabel(e: { f: Flow; name: string }): string {
-    return `Flow ${e.name}${e.f.label ? ', ' + e.f.label : ''}${e.f.crossing.crosses ? ', crosses trust boundary' : ''}`;
+    return `Flow ${e.name}${e.f.label ? ', ' + e.f.label : ''}${e.f.entryPoint ? ', entry point' : ''}${e.f.crossing.crosses ? ', crosses trust boundary' : ''}`;
+  }
+
+  /** The label drawn on a flow: its own text, prefixed with ⇥ for an entry point. */
+  edgeText(f: Flow): string {
+    return (f.entryPoint ? '⇥ ' : '') + (f.label ?? '');
   }
 
   private nameOf(s: Sel): string {

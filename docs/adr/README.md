@@ -23,3 +23,5 @@ Use [0000-template.md](0000-template.md). Number sequentially.
 | [0009](0009-test-result-import.md) | Importing test results: matching by tag, parsing safely | Accepted |
 | [0010](0010-editor-layout-is-opaque.md) | The editor's layout is stored with the model, opaque to the backend | Accepted |
 | [0011](0011-threat-model-entities-and-security-tests.md) | Threat models have their own entities, and security tests are a separate list | Accepted |
+| [0012](0012-residual-risk-and-baselines.md) | Residual risk is entered by the analyst, and baselines are immutable snapshots | Accepted |
+| [0013](0013-threat-model-proposals-store.md) | Threat model proposals have their own store and share the job mechanism | Accepted |

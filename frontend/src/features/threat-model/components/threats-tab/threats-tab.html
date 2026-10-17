@@ -40,6 +40,7 @@
                     [busy]="editor.busy()" [canDelete]="!!e.item" [error]="editor.error()"
                     (save)="editor.save()" (closed)="editor.close()"
                     (remove)="editor.remove('Delete threat ' + e.item?.displayId + '?')">
+    @if (e.item?.origin === 'ai') { <p><tm-ai-badge origin="ai" [source]="e.item!.source" /> Created from an AI proposal.</p> }
     @if (e.item?.status === 'candidate') {
       <p class="tt__candidate">◌ Candidate — suggested by a rule. Confirm it to make it an open threat, or dismiss it.</p>
     }
@@ -87,6 +88,27 @@
       <textarea class="textarea" name="preconditions" rows="2" [(ngModel)]="e.draft.preconditions"></textarea></label>
     <label class="field"><span class="field__label">Consequences<span class="field__opt">optional</span></span>
       <textarea class="textarea" name="consequences" rows="2" [(ngModel)]="e.draft.consequences"></textarea></label>
+    <label class="field"><span class="field__label">Threat source<span class="field__opt">optional</span></span>
+      <input class="input" name="source" placeholder="external attacker, malicious tenant admin…" [(ngModel)]="e.draft.threatSource" /></label>
+    <label class="field"><span class="field__label">Existing mitigations<span class="field__opt">optional</span></span>
+      <textarea class="textarea" name="mitigations" rows="2" [(ngModel)]="e.draft.existingMitigations"></textarea></label>
+    <label class="field"><span class="field__label">Detection opportunities<span class="field__opt">optional</span></span>
+      <textarea class="textarea" name="detection" rows="2" [(ngModel)]="e.draft.detection"></textarea></label>
+    <label class="field"><span class="field__label">Confidence in this assessment<span class="field__opt">optional</span></span>
+      <select class="select" name="confidence" [(ngModel)]="e.draft.confidence">
+        <option [ngValue]="null">Not set</option>
+        @for (c of confidences; track c) { <option [ngValue]="c">{{ label(c) }}</option> }
+      </select></label>
+    @if (e.item?.affectedBoundaries?.length) {
+      <section aria-label="Affected trust boundaries">
+        <h3 class="field__label">Affected trust boundaries</h3>
+        <ul>
+          @for (b of e.item!.affectedBoundaries; track $index) {
+            <li>⇢ trust {{ b.fromTrust ?? 'no zone' }} → {{ b.toTrust ?? 'no zone' }} ({{ label(b.direction) }})</li>
+          }
+        </ul>
+      </section>
+    }
     <tm-multi-pick legend="Affected assets" [options]="assetOptions()" [(value)]="e.draft.assetIds" />
     <tm-multi-pick legend="Addressed by controls" [options]="controlOptions()" [(value)]="e.draft.controlIds"
                    emptyText="No controls yet." />

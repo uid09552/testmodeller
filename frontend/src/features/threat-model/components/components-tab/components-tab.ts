@@ -6,7 +6,8 @@ import { ArchComponent, ArchComponentInput, Criticality } from '../../../../core
 import { ExplorerStore } from '../../../explorer/state/explorer.store';
 import { EditorState, orNull } from '../../state/editor-state';
 import { ThreatModelStore } from '../../state/threat-model.store';
-import { label, TYPE_GROUPS } from '../../state/threat-model-view';
+import { label, TYPE_GROUPS, aiMark } from '../../state/threat-model-view';
+import { AiBadgeComponent } from '../ai-badge/ai-badge';
 import { EditorDrawerComponent } from '../editor-drawer/editor-drawer';
 import { Column, EntityTableComponent } from '../entity-table/entity-table';
 import { MultiPickComponent } from '../multi-pick/multi-pick';
@@ -14,7 +15,7 @@ import { MultiPickComponent } from '../multi-pick/multi-pick';
 /** Architecture components (FR-061). Not the project's Components; it may link to one. */
 @Component({
   selector: 'tm-components-tab',
-  imports: [FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent],
+  imports: [AiBadgeComponent, FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent],
   templateUrl: './components-tab.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -55,7 +56,7 @@ export class ComponentsTabComponent {
   }
 
   readonly columns = computed<Column<ArchComponent>[]>(() => [
-    { key: 'name', label: 'Name', text: c => c.name },
+    { key: 'name', label: 'Name', text: c => c.name + aiMark(c) },
     { key: 'type', label: 'Type', text: c => label(c.type) },
     { key: 'zone', label: 'Zone', text: c => this.zoneName(c.zoneId) },
     { key: 'exposure', label: 'Exposure', text: c => (c.internetFacing ? 'Internet-facing' : 'Internal') },

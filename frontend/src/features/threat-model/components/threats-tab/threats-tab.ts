@@ -3,14 +3,16 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
-  RiskLevel, StrideCategory, Threat, ThreatInput, ThreatStatus,
+  Confidence, RiskLevel, StrideCategory, Threat, ThreatInput, ThreatStatus,
 } from '../../../../core/api/threat-model-api';
 import { EditorState, orNull } from '../../state/editor-state';
 import { threatInput } from '../../state/inputs';
 import { errorMessage, ThreatModelStore } from '../../state/threat-model.store';
-import { FLAG_TEXT, label, levelText, targetName } from '../../state/threat-model-view';
+import { FLAG_TEXT, label, levelText, targetName, aiMark } from '../../state/threat-model-view';
+import { AiBadgeComponent } from '../ai-badge/ai-badge';
 import { EditorDrawerComponent } from '../editor-drawer/editor-drawer';
 import { Column, EntityTableComponent } from '../entity-table/entity-table';
+import { crossingText } from '../flows-tab/flows-tab';
 import { MultiPickComponent } from '../multi-pick/multi-pick';
 
 export const CATEGORIES: StrideCategory[] = [
@@ -24,7 +26,7 @@ type ThreatDraft = ThreatInput & { targetIds: string[] };
 /** Threats, manual or suggested by STRIDE rules (FR-068, FR-069). */
 @Component({
   selector: 'tm-threats-tab',
-  imports: [FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent],
+  imports: [AiBadgeComponent, FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent],
   templateUrl: './threats-tab.html',
   styleUrl: './threats-tab.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -39,6 +41,8 @@ export class ThreatsTabComponent {
   readonly levels: RiskLevel[] = ['low', 'moderate', 'high', 'critical'];
   readonly label = label;
   readonly flagText = FLAG_TEXT;
+  readonly confidences: Confidence[] = ['low', 'medium', 'high'];
+  readonly crossingText = crossingText;
 
   readonly status = signal('');
   readonly category = signal('');
@@ -69,11 +73,11 @@ export class ThreatsTabComponent {
     && (!this.target() || t.targets.some(x => x.id === this.target()))));
 
   readonly columns = computed<Column<Threat>[]>(() => [
-    { key: 'title', label: 'Threat', text: t => `${t.displayId} ${t.title}`, sort: t => Number(t.displayId.slice(4)) },
+    { key: 'title', label: 'Threat', text: t => `${t.displayId} ${t.title}${aiMark(t)}`, sort: t => Number(t.displayId.slice(4)) },
     { key: 'category', label: 'Category', text: t => label(t.category) },
     { key: 'targets', label: 'Targets', text: t => t.targets.map(x => this.tname(x.kind, x.id)).join(', ') },
-    { key: 'status', label: 'Status', text: t => (t.status === 'candidate' ? '◌ Candidate' : label(t.status)) },
-    { key: 'origin', label: 'Origin', text: t => (t.origin === 'rule' ? 'Rule' : 'Manual') },
+    { key: 'status', label: 'Status', text: t => (t.status === 'candidate' ? '◌ Candidate' : label(t.effectiveStatus ?? t.status)) },
+    { key: 'origin', label: 'Origin', text: t => (t.origin === 'rule' ? 'Rule' : t.origin === 'ai' ? '✦ AI' : 'Manual') },
     { key: 'risk', label: 'Current risk', text: t => levelText(t.currentLevel), sort: t => t.currentScore ?? -1 },
     { key: 'flags', label: 'Flags', text: t => t.flags.map(f => FLAG_TEXT[f]).join('; ') },
   ]);
@@ -88,6 +92,8 @@ export class ThreatsTabComponent {
         scenario: orNull(input.scenario), attackerObjective: orNull(input.attackerObjective),
         preconditions: orNull(input.preconditions), consequences: orNull(input.consequences),
         dismissReason: orNull(input.dismissReason),
+        threatSource: orNull(input.threatSource ?? ''), detection: orNull(input.detection ?? ''),
+        existingMitigations: orNull(input.existingMitigations ?? ''),
       }, item ?? undefined);
     },
     t => this.store.remove('threats', t.id),
@@ -109,6 +115,7 @@ export class ThreatsTabComponent {
       title: '', category: 'spoofing', scenario: '', attackerObjective: '', preconditions: '',
       consequences: '', targets: [], targetIds: this.target() ? [this.target()] : [], assetIds: [],
       controlIds: [], status: 'open', dismissReason: '', inherent: null, current: null,
+      threatSource: '', detection: '', existingMitigations: '', confidence: null,
       treatment: 'undecided',
     });
   }

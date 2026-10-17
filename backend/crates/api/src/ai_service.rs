@@ -35,6 +35,10 @@ pub struct AiService {
     api_key: RwLock<Option<String>>,
     /// Seals the key for the database.
     secrets: Arc<SecretStore>,
+    /// Recent threat model requests per threat model, for the rate limit.
+    tm_requests: std::sync::Mutex<
+        std::collections::HashMap<Uuid, std::collections::VecDeque<std::time::Instant>>,
+    >,
 }
 
 /// Everything a background job needs.
@@ -73,6 +77,7 @@ impl AiService {
                 .unwrap_or_default(),
             api_key: RwLock::new(api_key.filter(|k| !k.is_empty())),
             secrets,
+            tm_requests: std::sync::Mutex::default(),
         }
     }
 
@@ -389,6 +394,228 @@ pub fn acceptance_for(proposal: &Proposal, payload: &serde_json::Value) -> ApiRe
                 feature_id,
                 text: input.scenario_description,
             })
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Threat model assistant (ADR 0013)
+// ---------------------------------------------------------------------------
+
+/// Requests one threat model may make per window.
+const TM_REQUESTS_PER_WINDOW: usize = 10;
+/// The rate limit window.
+const TM_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Validated threat model proposal request.
+pub struct TmJobRequest {
+    /// What to propose.
+    pub kind: tm_ai::tm::TmKind,
+    /// User instruction.
+    pub prompt: Option<String>,
+    /// Entities the request is about.
+    pub target_ids: Vec<Uuid>,
+    /// Number of proposals.
+    pub count: Option<u32>,
+}
+
+/// The context a request would send, and where it would go.
+pub struct TmPreview {
+    /// The rendered context.
+    pub context: tm_ai::tm::RenderedContext,
+    /// Configured provider.
+    pub provider: String,
+    /// Host of the provider endpoint.
+    pub endpoint_host: Option<String>,
+}
+
+fn context_input(agg: &tm_storage::ThreatModelAggregate) -> tm_ai::tm::TmContextInput<'_> {
+    tm_ai::tm::TmContextInput {
+        model: &agg.model.fields,
+        thresholds: &agg.model.thresholds,
+        arch: &agg.arch,
+        threats: &agg.threats,
+        controls: &agg.controls,
+        tests: &agg.tests,
+    }
+}
+
+/// Host part of an http(s) URL.
+fn host_of(url: &str) -> Option<String> {
+    let rest = url.split_once("://")?.1;
+    let host = rest.split(['/', '?', '#']).next()?;
+    let host = host.rsplit('@').next()?;
+    (!host.is_empty()).then(|| host.to_owned())
+}
+
+/// Every entity id of the threat model, for checking request targets.
+fn all_ids(agg: &tm_storage::ThreatModelAggregate) -> std::collections::HashSet<Uuid> {
+    let mut ids = std::collections::HashSet::new();
+    ids.extend(agg.arch.zones.iter().map(|x| x.audit.id));
+    ids.extend(agg.arch.components.iter().map(|x| x.audit.id));
+    ids.extend(agg.arch.assets.iter().map(|x| x.audit.id));
+    ids.extend(agg.arch.flows.iter().map(|x| x.audit.id));
+    ids.extend(agg.threats.iter().map(|x| x.audit.id));
+    ids.extend(agg.controls.iter().map(|x| x.audit.id));
+    ids.extend(agg.tests.iter().map(|x| x.audit.id));
+    ids
+}
+
+impl AiService {
+    /// The context a request of `kind` would send; no provider is called.
+    pub async fn preview_tm_context(
+        &self,
+        threat_model: Uuid,
+        kind: tm_ai::tm::TmKind,
+        targets: &[Uuid],
+    ) -> ApiResult<TmPreview> {
+        let agg = self.store.load_threat_model(threat_model).await?;
+        let settings = self.store.get_ai_settings().await?;
+        Ok(TmPreview {
+            context: tm_ai::tm::render(kind, &context_input(&agg), targets),
+            provider: settings.provider.to_string(),
+            endpoint_host: settings.base_url.as_deref().and_then(host_of),
+        })
+    }
+
+    fn check_tm_rate(&self, threat_model: Uuid) -> ApiResult<()> {
+        let now = std::time::Instant::now();
+        let mut all = self
+            .tm_requests
+            .lock()
+            .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "rate limiter failed"))?;
+        let q = all.entry(threat_model).or_default();
+        while q
+            .front()
+            .is_some_and(|t| now.duration_since(*t) > TM_WINDOW)
+        {
+            q.pop_front();
+        }
+        if q.len() >= TM_REQUESTS_PER_WINDOW {
+            return Err(ApiError::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                "too many AI requests for this threat model; try again in a minute",
+            ));
+        }
+        q.push_back(now);
+        Ok(())
+    }
+
+    /// Validates a threat model request, creates a job and runs it in the background.
+    pub async fn start_tm_job(
+        self: &Arc<Self>,
+        tenant: &str,
+        threat_model: Uuid,
+        req: TmJobRequest,
+    ) -> ApiResult<Job> {
+        let agg = self.store.load_threat_model(threat_model).await?;
+        if !agg.model.fields.ai_enabled {
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                "AI assistance is not enabled for this threat model; an editor can enable it in the workspace",
+            ));
+        }
+        let settings = self.store.get_ai_settings().await?;
+        let Some(provider) = self.provider(&settings).await else {
+            return Err(ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "no AI provider configured; see Settings",
+            ));
+        };
+        let known = all_ids(&agg);
+        if let Some(id) = req.target_ids.iter().find(|id| !known.contains(id)) {
+            return Err(ApiError::unprocessable(format!(
+                "targetIds: {id} is not in this threat model"
+            )));
+        }
+        self.check_tm_rate(threat_model)?;
+        let max_tokens = settings
+            .max_tokens_per_request
+            .and_then(|t| u32::try_from(t).ok())
+            .filter(|t| *t > 0)
+            .unwrap_or(DEFAULT_MAX_TOKENS);
+        let job = self.store.create_job(tenant).await?;
+        let service = Arc::clone(self);
+        let job_id = job.id;
+        tokio::spawn(async move {
+            service
+                .run_tm_job(job_id, threat_model, agg, req, max_tokens, provider)
+                .await;
+        });
+        Ok(job)
+    }
+
+    async fn run_tm_job(
+        &self,
+        job_id: Uuid,
+        threat_model: Uuid,
+        agg: tm_storage::ThreatModelAggregate,
+        req: TmJobRequest,
+        max_tokens: u32,
+        provider: Box<dyn LlmProvider>,
+    ) {
+        tracing::info!(%job_id, kind = req.kind.as_str(), prompt_version = tm_ai::tm::TM_PROMPT_VERSION, "threat model AI job started");
+        if let Err(e) = self
+            .store
+            .update_job(job_id, JobStatus::Running, &[], None)
+            .await
+        {
+            tracing::error!(%job_id, error = %e, "cannot mark job running");
+        }
+        let model_id = provider.model_id();
+        let request = tm_ai::tm::TmRequest {
+            kind: req.kind,
+            context: context_input(&agg),
+            prompt: req.prompt.as_deref(),
+            targets: &req.target_ids,
+            count: req.count.unwrap_or(5),
+        };
+        let (system_len, user_len) = {
+            let (s, u, _) = tm_ai::tm::render_prompt(&request);
+            (s.len(), u.len())
+        };
+        let outcome =
+            tm_ai::tm::generate_tm_proposals(provider.as_ref(), &request, max_tokens).await;
+        let result = match outcome {
+            Ok(drafts) => {
+                let items: Vec<tm_storage::NewTmProposal> = drafts
+                    .into_iter()
+                    .map(|d| tm_storage::NewTmProposal {
+                        kind: req.kind.as_str().to_owned(),
+                        payload: d.payload.to_json(),
+                        rationale: d.rationale,
+                        source: Some(model_id.clone()),
+                        prompt_version: Some(tm_ai::tm::TM_PROMPT_VERSION.to_owned()),
+                        target_ids: req.target_ids.clone(),
+                    })
+                    .collect();
+                self.store
+                    .create_tm_proposals(threat_model, items)
+                    .await
+                    .map(|rows| rows.into_iter().map(|r| r.id).collect::<Vec<_>>())
+                    .map_err(|e| e.to_string())
+            }
+            Err(e) => Err(e.to_string()),
+        };
+        // Sizes and outcome only: never prompt, context or answer content.
+        match &result {
+            Ok(ids) => {
+                tracing::info!(%job_id, kind = req.kind.as_str(), model = %model_id, system_len, user_len, proposals = ids.len(), "threat model AI job succeeded");
+                let _ = self
+                    .store
+                    .update_job(job_id, JobStatus::Succeeded, ids, None)
+                    .await;
+            }
+            Err(msg) => {
+                // The reason goes to the user through the job; it can quote names from the
+                // threat model, so it is not logged.
+                let _ = msg;
+                tracing::warn!(%job_id, kind = req.kind.as_str(), model = %model_id, system_len, user_len, "threat model AI job failed");
+                let _ = self
+                    .store
+                    .update_job(job_id, JobStatus::Failed, &[], Some(msg))
+                    .await;
+            }
         }
     }
 }

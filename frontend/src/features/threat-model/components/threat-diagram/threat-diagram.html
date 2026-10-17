@@ -65,12 +65,12 @@
               <path [attr.d]="e.g.d" class="dg__edge-line" [style]="edgePaint(e.e)"
                     [attr.marker-end]="'url(#' + markerOf(e.e) + ')'"
                     [attr.marker-start]="e.f.bidirectional ? 'url(#' + markerOf(e.e) + ')' : null" />
-              @if (e.f.label) {
+              @if (edgeText(e.f).trim()) {
                 <!-- A background behind the label, as in the model editor, so the line does not cross it. -->
-                <rect class="dg__edge-label-bg" [attr.x]="e.g.label.x - labelWidth(e.f.label) / 2" [attr.y]="e.g.label.y - 9"
-                      [attr.width]="labelWidth(e.f.label)" height="18" rx="4" />
+                <rect class="dg__edge-label-bg" [attr.x]="e.g.label.x - labelWidth(edgeText(e.f)) / 2" [attr.y]="e.g.label.y - 9"
+                      [attr.width]="labelWidth(edgeText(e.f))" height="18" rx="4" />
                 <text [attr.x]="e.g.label.x" [attr.y]="e.g.label.y + 4" class="dg__edge-label"
-                      [style]="edgeLabelPaint(e.e)">{{ e.f.label }}</text>
+                      [style]="edgeLabelPaint(e.e)">{{ edgeText(e.f) }}</text>
               }
               @if (e.marker; as m) {
                 <g class="dg__boundary" [attr.transform]="'translate(' + m.x + ' ' + m.y + ')'">

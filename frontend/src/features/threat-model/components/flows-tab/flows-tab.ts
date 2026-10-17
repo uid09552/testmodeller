@@ -2,10 +2,11 @@ import {
   ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, TemplateRef, untracked,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Flow, FlowInput, FlowRelationship, TriState } from '../../../../core/api/threat-model-api';
+import { Classification, Flow, FlowInput, FlowRelationship, TriState } from '../../../../core/api/threat-model-api';
 import { EditorState, orNull } from '../../state/editor-state';
 import { ThreatModelStore } from '../../state/threat-model.store';
-import { label, targetName } from '../../state/threat-model-view';
+import { label, targetName, aiMark } from '../../state/threat-model-view';
+import { AiBadgeComponent } from '../ai-badge/ai-badge';
 import { EditorDrawerComponent } from '../editor-drawer/editor-drawer';
 import { Column, EntityTableComponent } from '../entity-table/entity-table';
 import { MultiPickComponent } from '../multi-pick/multi-pick';
@@ -28,7 +29,7 @@ type FlowDraft = FlowInput & { authMode: AuthMode; method: string };
 /** Data flows between components; crossings are computed by the server (FR-064, FR-065). */
 @Component({
   selector: 'tm-flows-tab',
-  imports: [FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent],
+  imports: [AiBadgeComponent, FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent],
   templateUrl: './flows-tab.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -42,6 +43,7 @@ export class FlowsTabComponent {
   readonly drawerTab = signal<'details' | 'properties'>('details');
   readonly relationships = RELATIONSHIPS;
   readonly tri: TriState[] = ['unknown', 'yes', 'no'];
+  readonly classifications: Classification[] = ['public', 'internal', 'confidential', 'restricted'];
   readonly label = label;
   readonly crossingOnly = signal(false);
 
@@ -54,11 +56,12 @@ export class FlowsTabComponent {
   }
 
   readonly columns = computed<Column<Flow>[]>(() => [
-    { key: 'flow', label: 'Flow', text: f => this.name(f) + (f.label ? ` — ${f.label}` : '') },
+    { key: 'flow', label: 'Flow', text: f => this.name(f) + (f.label ? ` — ${f.label}` : '') + aiMark(f) },
     { key: 'rel', label: 'Relationship', text: f => label(f.relationship) },
     { key: 'protocol', label: 'Protocol', text: f => f.protocol ?? '—' },
     { key: 'auth', label: 'Authentication', text: f => f.authentication },
     { key: 'enc', label: 'Encrypted', text: f => label(f.encrypted) },
+    { key: 'entry', label: 'Entry point', text: f => (f.entryPoint ? '⇥ Yes' : 'No'), sort: f => (f.entryPoint ? 0 : 1) },
     { key: 'crossing', label: 'Trust boundary', text: f => crossingText(f), sort: f => (f.crossing.crosses ? 0 : 1) },
     { key: 'warnings', label: 'Warnings', text: f => f.warnings.map(w => `⚠ ${w.message}`).join('; ') },
   ]);
@@ -69,6 +72,7 @@ export class FlowsTabComponent {
       const authentication = authMode === 'method' ? method.trim() || 'unknown' : authMode;
       return this.store.save('flows', {
         ...input, authentication, label: orNull(input.label), protocol: orNull(input.protocol),
+        authorizationModel: orNull(input.authorizationModel ?? ''),
       }, item ?? undefined);
     },
     f => this.store.remove('flows', f.id),
@@ -89,7 +93,8 @@ export class FlowsTabComponent {
     this.editor.open(null, {
       sourceId: source, targetId: target, relationship: 'calls',
       label: '', protocol: '', bidirectional: false, authentication: 'unknown', encrypted: 'unknown',
-      assetIds: [], authMode: 'unknown', method: '',
+      assetIds: [], authMode: 'unknown', method: '', dataClassification: null,
+      authorizationModel: '', entryPoint: false,
     });
   }
 
@@ -101,6 +106,8 @@ export class FlowsTabComponent {
       protocol: f.protocol ?? '', bidirectional: f.bidirectional, authentication: f.authentication,
       encrypted: f.encrypted, assetIds: [...f.assetIds], authMode,
       method: authMode === 'method' ? f.authentication : '',
+      dataClassification: f.dataClassification ?? null, authorizationModel: f.authorizationModel ?? '',
+      entryPoint: f.entryPoint ?? false,
     });
   }
 

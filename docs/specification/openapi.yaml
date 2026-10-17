@@ -977,6 +977,112 @@ paths:
         '201': { description: Recorded, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityTestResult' } } } }
         '422': { $ref: '#/components/responses/Problem' }
 
+  /threat-models/{threatModelId}/controls/{itemId}/evidence:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Evidence of a control, newest first
+      responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Evidence' } } } } }, '404': { $ref: '#/components/responses/Problem' } }
+    post:
+      tags: [ThreatModel]
+      summary: Add evidence to a control
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EvidenceInput' } } } }
+      responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Evidence' } } } }, '422': { $ref: '#/components/responses/Problem' } }
+  /threat-models/{threatModelId}/security-tests/{itemId}/results/{resultId}/evidence:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' }, { name: resultId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } } ]
+    get:
+      tags: [ThreatModel]
+      summary: Evidence of a security test result
+      responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Evidence' } } } } }, '404': { $ref: '#/components/responses/Problem' } }
+    post:
+      tags: [ThreatModel]
+      summary: Add evidence to a security test result
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EvidenceInput' } } } }
+      responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Evidence' } } } }, '422': { $ref: '#/components/responses/Problem' } }
+  /threat-models/{threatModelId}/evidence/{itemId}:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    delete:
+      tags: [ThreatModel]
+      summary: Delete evidence. A verified control left without evidence becomes implemented.
+      responses: { '204': { description: Deleted }, '404': { $ref: '#/components/responses/Problem' } }
+
+  /threat-models/{threatModelId}/baselines:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: List baselines, newest first (without snapshot)
+      responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Baseline' } } } } } }
+    post:
+      tags: [ThreatModel]
+      summary: Freeze the current threat model as an immutable baseline (name unique, at most 50)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BaselineInput' } } } }
+      responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Baseline' } } } }, '409': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
+  /threat-models/{threatModelId}/baselines/{itemId}:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: The baseline with its snapshot
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BaselineDetail' } } } }, '404': { $ref: '#/components/responses/Problem' } }
+    delete:
+      tags: [ThreatModel]
+      summary: Delete a baseline
+      responses: { '204': { description: Deleted } }
+  /threat-models/{threatModelId}/baselines/{itemId}/compare:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Compare a baseline with the live threat model
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BaselineComparison' } } } }, '404': { $ref: '#/components/responses/Problem' } }
+
+  /threat-models/{threatModelId}/ai/proposals:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    get:
+      tags: [AI]
+      summary: List the AI proposals of a threat model, newest first
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/ProposalStatus' } }
+        - { name: kind, in: query, schema: { $ref: '#/components/schemas/TmProposalKind' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TmProposal' } } } } }
+    post:
+      tags: [AI]
+      summary: Request AI proposals for a threat model. Runs asynchronously; poll the job. With previewContext the context that would be sent is returned and no provider is called.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TmProposalRequest' } } } }
+      responses:
+        '200': { description: The context that would be sent (previewContext), content: { application/json: { schema: { $ref: '#/components/schemas/TmContextPreview' } } } }
+        '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+  /threat-models/{threatModelId}/ai/proposals/{itemId}:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    get:
+      tags: [AI]
+      summary: Get an AI proposal of a threat model
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TmProposal' } } } }, '404': { $ref: '#/components/responses/Problem' } }
+  /threat-models/{threatModelId}/ai/proposals/{itemId}/accept:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    post:
+      tags: [AI]
+      summary: Accept a proposal, optionally with an edited payload. The payload is validated like a manual create against the current state; on failure the proposal stays pending.
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { payload: { type: object } } } } }
+      responses:
+        '200': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/TmProposal' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /threat-models/{threatModelId}/ai/proposals/{itemId}/reject:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    post:
+      tags: [AI]
+      summary: Reject a proposal; nothing is created
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { reason: { type: string, maxLength: 2000 } } } } }
+      responses:
+        '200': { description: Rejected, content: { application/json: { schema: { $ref: '#/components/schemas/TmProposal' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+
 components:
   parameters:
     ProjectId: { name: projectId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
@@ -1496,16 +1602,21 @@ components:
     TriState: { type: string, enum: ['yes', 'no', unknown] }
     StrideCategory: { type: string, enum: [spoofing, tampering, repudiation, information-disclosure, denial-of-service, elevation-of-privilege] }
     ThreatStatus: { type: string, enum: [candidate, open, mitigated, accepted, dismissed] }
-    ThreatOrigin: { type: string, enum: [manual, rule] }
+    ThreatOrigin: { type: string, enum: [manual, rule, ai] }
+    AiOrigin: { type: string, enum: [manual, ai], description: How an architecture entity or control came into existence }
     RiskLevel: { type: string, enum: [low, moderate, high, critical] }
     RiskTreatment: { type: string, enum: [undecided, mitigate, avoid, transfer, accept] }
-    ThreatFlag: { type: string, enum: [no-control, planned-controls-only, unsupported-reduction, overdue, failing-test] }
+    ThreatFlag: { type: string, enum: [no-control, planned-controls-only, unsupported-reduction, overdue, failing-test, residual-above-current, unsupported-residual, acceptance-expired] }
+    ControlFlag: { type: string, enum: [verification-overdue, verified-without-evidence] }
+    Confidence: { type: string, enum: [low, medium, high] }
+    Classification: { type: string, enum: [public, internal, confidential, restricted] }
+    EvidenceKind: { type: string, enum: [document, test-report, scan, configuration, review, other] }
     ControlType: { type: string, enum: [preventive, detective, corrective, compensating] }
     ControlCategory: { type: string, enum: [identity-access, data-protection, application-network, detection-response, secure-development] }
     ControlStatus: { type: string, enum: [planned, implemented, verified] }
     SecurityTestType: { type: string, enum: [negative-authorization, authentication, input-validation, transport-security, configuration-review, resilience, logging-audit, other] }
     SecurityTestStatus: { type: string, enum: [draft, ready, obsolete] }
-    SecurityTestOrigin: { type: string, enum: [manual, generated] }
+    SecurityTestOrigin: { type: string, enum: [manual, generated, ai] }
     SecurityTestOutcome: { type: string, enum: [passed, failed, not-run] }
 
     Warning:
@@ -1536,6 +1647,7 @@ components:
           type: array
           description: Must cover 1–25 contiguously without overlap; omitted on create means the defaults
           items: { $ref: '#/components/schemas/RiskThreshold' }
+        aiEnabled: { type: boolean, default: false, description: AI assistance for this threat model; off until an editor enables it }
     ThreatModel:
       allOf:
         - { $ref: '#/components/schemas/Audit' }
@@ -1575,6 +1687,19 @@ components:
         controlsWithoutTest: { type: array, items: { $ref: '#/components/schemas/RefLabel' } }
         warningCount: { type: integer }
         overdueCount: { type: integer }
+        residualMatrix: { type: array, items: { $ref: '#/components/schemas/MatrixCell' } }
+        completeness: { type: array, items: { $ref: '#/components/schemas/CompletenessFinding' } }
+        expiringAcceptances: { type: array, items: { $ref: '#/components/schemas/RefLabel' }, description: Accepted threats expiring within 30 days }
+        expiredAcceptances: { type: integer }
+        verificationOverdue: { type: integer }
+    CompletenessFinding:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, description: 'e.g. COMPONENT_NO_OWNER, COMPONENT_NO_ZONE, FLOW_AUTH_UNKNOWN, FLOW_ENCRYPTION_UNKNOWN, THREAT_NOT_RATED, THREAT_NO_TREATMENT, THREAT_NO_OWNER, CONTROL_NO_REVIEW_DATE, CONTROL_NO_EVIDENCE, ACCEPTANCE_EXPIRING, ACCEPTANCE_EXPIRED' }
+        message: { type: string }
+        entityKind: { type: string }
+        entityId: { $ref: '#/components/schemas/Id' }
 
     # ---- Architecture
     TmZoneInput:
@@ -1589,6 +1714,11 @@ components:
       allOf:
         - { $ref: '#/components/schemas/Audit' }
         - { $ref: '#/components/schemas/TmZoneInput' }
+        - type: object
+          required: [origin]
+          properties:
+            origin: { $ref: '#/components/schemas/AiOrigin' }
+            source: { type: [string, 'null'], description: Model id of the LLM when origin is ai }
 
     ArchComponentInput:
       type: object
@@ -1614,6 +1744,11 @@ components:
           properties:
             layer: { $ref: '#/components/schemas/ArchLayer' }
             warnings: { type: array, items: { $ref: '#/components/schemas/Warning' } }
+        - type: object
+          required: [origin]
+          properties:
+            origin: { $ref: '#/components/schemas/AiOrigin' }
+            source: { type: [string, 'null'], description: Model id of the LLM when origin is ai }
 
     TmAssetInput:
       type: object
@@ -1627,6 +1762,10 @@ components:
         integrity: { $ref: '#/components/schemas/CiaLevel' }
         availability: { $ref: '#/components/schemas/CiaLevel' }
         personalData: { type: boolean, default: false }
+        classification: { oneOf: [ { $ref: '#/components/schemas/Classification' }, { type: 'null' } ] }
+        dataLocation: { type: [string, 'null'], maxLength: 200 }
+        retention: { type: [string, 'null'], maxLength: 200 }
+        encryptionAtRest: { $ref: '#/components/schemas/TriState' }
     TmAsset:
       allOf:
         - { $ref: '#/components/schemas/Audit' }
@@ -1637,6 +1776,11 @@ components:
             componentIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
             flowIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
             warnings: { type: array, items: { $ref: '#/components/schemas/Warning' } }
+        - type: object
+          required: [origin]
+          properties:
+            origin: { $ref: '#/components/schemas/AiOrigin' }
+            source: { type: [string, 'null'], description: Model id of the LLM when origin is ai }
 
     TmFlowInput:
       type: object
@@ -1651,6 +1795,9 @@ components:
         authentication: { type: string, maxLength: 200, description: '"none", "unknown" (default) or a free-text method such as "mTLS"' }
         encrypted: { $ref: '#/components/schemas/TriState' }
         assetIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+        dataClassification: { oneOf: [ { $ref: '#/components/schemas/Classification' }, { type: 'null' } ] }
+        authorizationModel: { type: [string, 'null'], maxLength: 200 }
+        entryPoint: { type: boolean, default: false }
     Crossing:
       type: object
       required: [crosses]
@@ -1668,6 +1815,11 @@ components:
           properties:
             crossing: { $ref: '#/components/schemas/Crossing' }
             warnings: { type: array, items: { $ref: '#/components/schemas/Warning' } }
+        - type: object
+          required: [origin]
+          properties:
+            origin: { $ref: '#/components/schemas/AiOrigin' }
+            source: { type: [string, 'null'], description: Model id of the LLM when origin is ai }
 
     # ---- Threats and risk
     Rating:
@@ -1699,6 +1851,12 @@ components:
         dismissReason: { type: [string, 'null'], description: Required when status is dismissed }
         inherent: { oneOf: [ { $ref: '#/components/schemas/Rating' }, { type: 'null' } ] }
         current: { oneOf: [ { $ref: '#/components/schemas/Rating' }, { type: 'null' } ] }
+        residual: { oneOf: [ { $ref: '#/components/schemas/Rating' }, { type: 'null' } ], description: Analyst-entered expected risk after planned measures; never derived }
+        threatSource: { type: [string, 'null'], maxLength: 300 }
+        detection: { type: [string, 'null'] }
+        existingMitigations: { type: [string, 'null'] }
+        confidence: { oneOf: [ { $ref: '#/components/schemas/Confidence' }, { type: 'null' } ] }
+        acceptanceExpires: { type: [string, 'null'], format: date, description: Required when treatment is accept; after today and at most 3 years ahead }
         treatment: { $ref: '#/components/schemas/RiskTreatment' }
         riskOwner: { type: string, maxLength: 200 }
         dueDate: { type: [string, 'null'], format: date }
@@ -1723,12 +1881,18 @@ components:
           properties:
             displayId: { type: string, example: THR-1 }
             origin: { $ref: '#/components/schemas/ThreatOrigin' }
+            source: { type: [string, 'null'], description: Model id of the LLM when origin is ai }
             explanation: { oneOf: [ { $ref: '#/components/schemas/RuleExplanation' }, { type: 'null' } ] }
             inherentScore: { type: [integer, 'null'] }
             currentScore: { type: [integer, 'null'] }
             inherentLevel: { oneOf: [ { $ref: '#/components/schemas/RiskLevel' }, { type: 'null' } ] }
             currentLevel: { oneOf: [ { $ref: '#/components/schemas/RiskLevel' }, { type: 'null' } ] }
             flags: { type: array, items: { $ref: '#/components/schemas/ThreatFlag' } }
+            residualScore: { type: [integer, 'null'] }
+            residualLevel: { oneOf: [ { $ref: '#/components/schemas/RiskLevel' }, { type: 'null' } ] }
+            acceptedOn: { type: [string, 'null'], format: date }
+            effectiveStatus: { $ref: '#/components/schemas/ThreatStatus', description: Stored status, except an accepted threat whose acceptance expired reads as open }
+            affectedBoundaries: { type: array, items: { $ref: '#/components/schemas/Crossing' } }
     SuggestThreatsResult:
       type: object
       required: [rulesetVersion, created, skipped]
@@ -1756,6 +1920,7 @@ components:
         status: { $ref: '#/components/schemas/ControlStatus' }
         owner: { type: string, maxLength: 200 }
         acceptanceCriteria: { type: string }
+        reviewBy: { type: [string, 'null'], format: date }
         componentIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
         threatIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
     SecurityControl:
@@ -1767,7 +1932,14 @@ components:
           properties:
             displayId: { type: string, example: CTL-1 }
             verifiedAt: { type: [string, 'null'], format: date-time, description: Set when status becomes verified }
+            evidenceCount: { type: integer }
+            flags: { type: array, items: { $ref: '#/components/schemas/ControlFlag' } }
             securityTestIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+        - type: object
+          required: [origin]
+          properties:
+            origin: { $ref: '#/components/schemas/AiOrigin' }
+            source: { type: [string, 'null'], description: Model id of the LLM when origin is ai }
 
     # ---- Security tests
     SecurityTestStep:
@@ -1817,6 +1989,7 @@ components:
             threatIds: { type: array, items: { $ref: '#/components/schemas/Id' }, description: Empty when all its threats were deleted (the test is then stale) }
             displayId: { type: string, example: SEC-1 }
             origin: { $ref: '#/components/schemas/SecurityTestOrigin' }
+            source: { type: [string, 'null'], description: Model id of the LLM when origin is ai }
             templateId: { type: [string, 'null'] }
             templateVersion: { type: [integer, 'null'] }
             stale: { type: [string, 'null'], description: 'Reason the generated test is stale, e.g. "threat dismissed", "no threat", "control unlinked: CTL-2"' }
@@ -1827,3 +2000,123 @@ components:
       properties:
         created: { type: array, items: { $ref: '#/components/schemas/SecurityTest' } }
         skipped: { type: integer, description: Template/threat/control combinations that already have a non-obsolete test }
+
+    # ---- Assurance
+    EvidenceInput:
+      type: object
+      required: [kind, title, evidenceDate]
+      properties:
+        kind: { $ref: '#/components/schemas/EvidenceKind' }
+        title: { type: string, minLength: 1, maxLength: 300 }
+        link: { type: [string, 'null'], maxLength: 2000 }
+        note: { type: [string, 'null'], maxLength: 4000 }
+        evidenceDate: { type: string, format: date }
+        reviewer: { type: [string, 'null'], maxLength: 200 }
+      description: At least one of link and note is required. References only; no files are stored.
+    Evidence:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - { $ref: '#/components/schemas/EvidenceInput' }
+        - type: object
+          required: [ownerKind, ownerId]
+          properties:
+            ownerKind: { type: string, enum: [control, test-result] }
+            ownerId: { $ref: '#/components/schemas/Id' }
+    BaselineInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        note: { type: [string, 'null'], maxLength: 2000 }
+    Baseline:
+      allOf:
+        - { $ref: '#/components/schemas/BaselineInput' }
+        - type: object
+          required: [id, createdAt, threatCount, controlCount, schemaVersion]
+          properties:
+            id: { $ref: '#/components/schemas/Id' }
+            createdAt: { $ref: '#/components/schemas/Timestamp' }
+            createdBy: { type: [string, 'null'] }
+            threatCount: { type: integer }
+            controlCount: { type: integer }
+            schemaVersion: { type: integer }
+    ThreatModelSnapshot:
+      type: object
+      required: [threatModel, zones, components, assets, flows, threats, controls, securityTests]
+      properties:
+        threatModel: { $ref: '#/components/schemas/ThreatModel' }
+        zones: { type: array, items: { $ref: '#/components/schemas/TmZone' } }
+        components: { type: array, items: { $ref: '#/components/schemas/ArchComponent' } }
+        assets: { type: array, items: { $ref: '#/components/schemas/TmAsset' } }
+        flows: { type: array, items: { $ref: '#/components/schemas/TmFlow' } }
+        threats: { type: array, items: { $ref: '#/components/schemas/Threat' } }
+        controls: { type: array, items: { $ref: '#/components/schemas/SecurityControl' } }
+        securityTests: { type: array, items: { $ref: '#/components/schemas/SecurityTest' } }
+        evidence: { type: array, items: { $ref: '#/components/schemas/Evidence' } }
+    BaselineDetail:
+      allOf:
+        - { $ref: '#/components/schemas/Baseline' }
+        - type: object
+          required: [snapshot]
+          properties:
+            snapshot: { $ref: '#/components/schemas/ThreatModelSnapshot', description: Scores, levels and effective status are recomputed when read; flags and warnings are as they were when the baseline was taken }
+    ComparedThreat:
+      type: object
+      required: [id, displayId, title]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        displayId: { type: string }
+        title: { type: string }
+        changes: { type: array, items: { type: object, required: [field, before, after], properties: { field: { type: string }, before: { type: [string, 'null'] }, after: { type: [string, 'null'] } } } }
+    BaselineComparison:
+      type: object
+      required: [added, removed, changed, controlsChanged, levelsBaseline, levelsLive]
+      properties:
+        added: { type: array, items: { $ref: '#/components/schemas/ComparedThreat' } }
+        removed: { type: array, items: { $ref: '#/components/schemas/ComparedThreat' } }
+        changed: { type: array, items: { $ref: '#/components/schemas/ComparedThreat' } }
+        controlsChanged: { type: array, items: { type: object, required: [id, displayId, before, after], properties: { id: { $ref: '#/components/schemas/Id' }, displayId: { type: string }, before: { type: string }, after: { type: string } } } }
+        levelsBaseline: { type: object, additionalProperties: { type: integer }, description: Threat counts per current level plus not-assessed }
+        levelsLive: { type: object, additionalProperties: { type: integer } }
+
+    # ---- AI proposals of a threat model
+    TmProposalKind: { type: string, enum: [tm-architecture, tm-threats, tm-ratings, tm-controls, tm-security-tests, tm-review] }
+    TmProposalRequest:
+      type: object
+      required: [kind]
+      properties:
+        kind: { $ref: '#/components/schemas/TmProposalKind' }
+        prompt: { type: string, maxLength: 8000, description: Free-text instruction from the user }
+        targetIds: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/Id' }, description: Entities the request is about (threats for ratings, controls and tests; components or flows for threats) }
+        count: { type: integer, minimum: 1, maximum: 20, default: 5 }
+        previewContext: { type: boolean, default: false }
+    TmContextPreview:
+      type: object
+      required: [context, truncated]
+      properties:
+        context: { type: string, description: The exact JSON text that would be sent as context }
+        truncated: { type: boolean }
+        provider: { type: string }
+        endpointHost: { type: [string, 'null'] }
+    TmProposal:
+      type: object
+      required: [id, threatModelId, kind, status, payload, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        threatModelId: { $ref: '#/components/schemas/Id' }
+        kind: { $ref: '#/components/schemas/TmProposalKind' }
+        status: { $ref: '#/components/schemas/ProposalStatus' }
+        payload:
+          type: object
+          description: |
+            By kind. tm-architecture: {zones[], assets[], components[], flows[]}, entities refer to each other and to existing ones by name.
+            tm-threats: a ThreatInput subset with targets (existing component or flow ids). tm-ratings: {threatId, rating: inherent|current|residual, likelihood, impact}.
+            tm-controls: a SecurityControlInput subset with threatIds, or {linkControlId, threatIds}. tm-security-tests: a SecurityTestInput subset.
+            tm-review: {findings: [{text, entityIds}]}, nothing to accept. Fields that AI may not set (status, treatment, acceptance, evidence, thresholds) are rejected.
+        rationale: { type: string }
+        source: { type: string, description: Model id of the LLM }
+        promptVersion: { type: string }
+        targetIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+        resultingEntityIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+        rejectReason: { type: [string, 'null'] }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }

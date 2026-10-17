@@ -15,6 +15,8 @@
     <div class="stat"><div class="stat__label">Controls verified</div><div class="stat__value">{{ verified() }}</div></div>
     <div class="stat"><div class="stat__label">⚠ Missing information</div><div class="stat__value">{{ s.warningCount }}</div></div>
     <div class="stat"><div class="stat__label">Overdue</div><div class="stat__value">{{ s.overdueCount }}</div></div>
+    <div class="stat"><div class="stat__label">Expired acceptances</div><div class="stat__value">{{ s.expiredAcceptances }}</div></div>
+    <div class="stat"><div class="stat__label">Verification overdue</div><div class="stat__value">{{ s.verificationOverdue }}</div></div>
   </div>
 
   <div class="ov__grid">
@@ -44,12 +46,31 @@
           <li><button class="link-btn" type="button" (click)="nav.go('threats', { select: r.id })">{{ r.label }}</button></li>
         } @empty { <li class="field__hint">None.</li> }
       </ul>
+      <h2>Acceptances expiring within 30 days</h2>
+      <ul>
+        @for (r of s.expiringAcceptances; track r.id) {
+          <li><button class="link-btn" type="button" (click)="nav.go('threats', { select: r.id })">{{ r.label }}</button></li>
+        } @empty { <li class="field__hint">None.</li> }
+      </ul>
       <h2>Controls without a security test</h2>
       <ul>
         @for (r of s.controlsWithoutTest; track r.id) {
           <li><button class="link-btn" type="button" (click)="nav.go('controls', { select: r.id })">{{ r.label }}</button></li>
         } @empty { <li class="field__hint">None.</li> }
       </ul>
+    </section>
+    <section class="card ov__card" aria-label="Completeness findings">
+      <h2>Completeness findings</h2>
+      @if (s.completeness.length) {
+        <p class="field__hint">{{ s.completeness.length }} open finding(s).</p>
+        <ul>
+          @for (f of s.completeness; track $index) {
+            <li><button class="link-btn" type="button" (click)="openFinding(f)">{{ f.message }}</button></li>
+          }
+        </ul>
+      } @else {
+        <p>No open findings.</p>
+      }
     </section>
   </div>
 }

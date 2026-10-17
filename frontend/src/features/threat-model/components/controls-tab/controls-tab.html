@@ -22,6 +22,7 @@
                     [canDelete]="!!e.item" [error]="editor.error()"
                     (save)="editor.save()" (closed)="editor.close()"
                     (remove)="editor.remove('Delete control ' + e.item?.displayId + '? Its threats stay, with their ratings.')">
+    @if (e.item?.origin === 'ai') { <p><tm-ai-badge origin="ai" [source]="e.item!.source" /> Created from an AI proposal.</p> }
     <label class="field"><span class="field__label">Name</span>
       <input class="input" name="name" required [(ngModel)]="e.draft.name" /></label>
     <label class="field"><span class="field__label">Type</span>
@@ -34,8 +35,14 @@
       </select></label>
     <label class="field"><span class="field__label">Status</span>
       <select class="select" name="status" [(ngModel)]="e.draft.status">
-        @for (s of statuses; track s) { <option [value]="s">{{ label(s) }}</option> }
+        @for (s of statuses; track s) {
+          <option [value]="s" [disabled]="s === 'verified' && !canVerify(e.item)">{{ label(s) }}</option>
+        }
       </select></label>
+    @if (!canVerify(e.item)) { <p class="field__hint">A control can be verified once it has evidence.</p> }
+    @for (f of e.item?.flags ?? []; track f) { <p class="field__hint">⚠ {{ flagText[f] }}</p> }
+    <label class="field"><span class="field__label">Review by<span class="field__opt">optional</span></span>
+      <input class="input" type="date" name="reviewBy" [(ngModel)]="e.draft.reviewBy" /></label>
     @if (e.item?.verifiedAt) { <p class="field__hint">Verified on {{ e.item!.verifiedAt!.slice(0, 10) }}</p> }
     <label class="field"><span class="field__label">Owner<span class="field__opt">optional</span></span>
       <input class="input" name="owner" [(ngModel)]="e.draft.owner" /></label>
@@ -51,6 +58,37 @@
           <li><button class="link-btn" type="button" (click)="nav.go('security-tests', { select: t.id })">{{ t.displayId }} {{ t.title }}</button></li>
         } @empty { <li class="field__hint">No security test verifies this control yet.</li> }
       </ul>
+    }
+    @if (e.item; as c) {
+      <section class="ctl__evidence" aria-label="Evidence">
+        <h3 class="field__label">Evidence</h3>
+        @if (evidenceError(); as err) { <p role="alert">{{ err }}</p> }
+        <ul>
+          @for (ev of evidence(); track ev.id) {
+            <li>
+              <strong>{{ label(ev.kind) }}:</strong> {{ ev.title }} ({{ ev.evidenceDate }}{{ ev.reviewer ? ', ' + ev.reviewer : '' }})
+              @if (ev.link) { <a [href]="ev.link" target="_blank" rel="noopener noreferrer">link</a> }
+              @if (ev.note) { <span class="field__hint"> {{ ev.note }}</span> }
+              <button class="btn btn--secondary btn--sm" type="button" (click)="removeEvidence(c, ev)">Delete</button>
+            </li>
+          } @empty { <li class="field__hint">No evidence yet.</li> }
+        </ul>
+        <label class="field"><span class="field__label">Kind</span>
+          <select class="select" name="evKind" [value]="newEvidence().kind" (change)="patchEvidence({ kind: $any($event.target).value })">
+            @for (k of evidenceKinds; track k) { <option [value]="k">{{ label(k) }}</option> }
+          </select></label>
+        <label class="field"><span class="field__label">Title</span>
+          <input class="input" name="evTitle" [value]="newEvidence().title" (input)="patchEvidence({ title: $any($event.target).value })" /></label>
+        <label class="field"><span class="field__label">Link<span class="field__opt">link or note</span></span>
+          <input class="input" name="evLink" [value]="newEvidence().link ?? ''" (input)="patchEvidence({ link: $any($event.target).value })" /></label>
+        <label class="field"><span class="field__label">Note<span class="field__opt">link or note</span></span>
+          <input class="input" name="evNote" [value]="newEvidence().note ?? ''" (input)="patchEvidence({ note: $any($event.target).value })" /></label>
+        <label class="field"><span class="field__label">Date</span>
+          <input class="input" type="date" name="evDate" [value]="newEvidence().evidenceDate" (input)="patchEvidence({ evidenceDate: $any($event.target).value })" /></label>
+        <label class="field"><span class="field__label">Reviewer<span class="field__opt">optional</span></span>
+          <input class="input" name="evReviewer" [value]="newEvidence().reviewer ?? ''" (input)="patchEvidence({ reviewer: $any($event.target).value })" /></label>
+        <button class="btn btn--secondary" type="button" [disabled]="!newEvidence().title.trim()" (click)="addEvidence(c)">Add evidence</button>
+      </section>
     }
     <label class="field"><span class="field__label">Description<span class="field__opt">optional</span></span>
       <textarea class="textarea" name="description" rows="3" [(ngModel)]="e.draft.description"></textarea></label>

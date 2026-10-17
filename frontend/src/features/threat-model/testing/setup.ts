@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ThreatModelApi } from '../../../core/api/threat-model-api';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
+import { AiTranscript } from '../state/ai-transcript';
 import { ThreatModelIndex } from '../state/threat-model-index';
 import { ThreatModelStore } from '../state/threat-model.store';
 import { WorkspaceNav } from '../state/workspace-nav';
@@ -40,6 +41,7 @@ export async function mount<T>(
     providers: [
       provideRouter([]),
       ThreatModelStore,
+      AiTranscript,
       { provide: WorkspaceNav, useValue: nav },
       { provide: ThreatModelApi, useValue: api },
       { provide: ThreatModelIndex, useValue: { set: () => undefined } },

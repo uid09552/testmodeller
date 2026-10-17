@@ -3149,6 +3149,7 @@ name = "tm-ai"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "reqwest",
  "serde",
  "serde_json",
@@ -3176,6 +3177,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
+ "sqlx",
  "testcontainers",
  "testcontainers-modules",
  "thiserror 1.0.69",

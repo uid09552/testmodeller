@@ -16,6 +16,7 @@
 @if (editor.editing(); as e) {
   <tm-editor-drawer [properties]="propertiesTpl()" [(tab)]="drawerTab" [heading]="heading(e.item)" [busy]="editor.busy()" [canDelete]="!!e.item" [error]="editor.error()"
                     (save)="editor.save()" (closed)="editor.close()" (remove)="editor.remove('Delete this data flow?')">
+    @if (e.item?.origin === 'ai') { <p><tm-ai-badge origin="ai" [source]="e.item!.source" /> Created from an AI proposal.</p> }
     <label class="field"><span class="field__label">From</span>
       <select class="select" name="source" [(ngModel)]="e.draft.sourceId">
         @for (c of store.components(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
@@ -43,6 +44,14 @@
       <label class="field"><span class="field__label">Method</span>
         <input class="input" name="method" placeholder="mTLS, OAuth2 bearer token…" [(ngModel)]="e.draft.method" /></label>
     }
+    <label class="field"><span class="field__label">Authorization model<span class="field__opt">optional</span></span>
+      <input class="input" name="authz" placeholder="RBAC, ABAC, scopes…" [(ngModel)]="e.draft.authorizationModel" /></label>
+    <label class="field"><span class="field__label">Data classification<span class="field__opt">optional</span></span>
+      <select class="select" name="dataClass" [(ngModel)]="e.draft.dataClassification">
+        <option [ngValue]="null">Not set</option>
+        @for (c of classifications; track c) { <option [ngValue]="c">{{ label(c) }}</option> }
+      </select></label>
+    <label class="toggle-row"><input type="checkbox" name="entry" [(ngModel)]="e.draft.entryPoint" /> Entry point (enters the system from outside)</label>
     <label class="field"><span class="field__label">Encrypted in transit</span>
       <select class="select" name="enc" [(ngModel)]="e.draft.encrypted">
         @for (t of tri; track t) { <option [value]="t">{{ t === 'unknown' ? 'Not documented' : label(t) }}</option> }

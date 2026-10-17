@@ -9,8 +9,8 @@ import { EditorState, orNull } from '../../state/editor-state';
 import { testInput } from '../../state/inputs';
 import { errorMessage, ThreatModelStore } from '../../state/threat-model.store';
 import {
-  download, label, securityTestsCsv, securityTestsGherkin,
-} from '../../state/threat-model-view';
+  download, label, securityTestsCsv, securityTestsGherkin, aiMark } from '../../state/threat-model-view';
+import { AiBadgeComponent } from '../ai-badge/ai-badge';
 import { EditorDrawerComponent } from '../editor-drawer/editor-drawer';
 import { Column, EntityTableComponent } from '../entity-table/entity-table';
 import { MultiPickComponent } from '../multi-pick/multi-pick';
@@ -30,7 +30,7 @@ type TestDraft = SecurityTestInput & { preconditionsText: string };
 /** Security tests of the threat model, separate from feature test cases (FR-073..FR-075). */
 @Component({
   selector: 'tm-security-tests-tab',
-  imports: [FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent],
+  imports: [AiBadgeComponent, FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent],
   templateUrl: './security-tests-tab.html',
   styleUrl: './security-tests-tab.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -76,7 +76,7 @@ export class SecurityTestsTabComponent {
   }
 
   readonly columns = computed<Column<SecurityTest>[]>(() => [
-    { key: 'title', label: 'Test', text: t => `${t.displayId} ${t.title}${t.stale ? ` ⚠ Stale: ${t.stale}` : ''}`,
+    { key: 'title', label: 'Test', text: t => `${t.displayId} ${t.title}${aiMark(t)}${t.stale ? ` ⚠ Stale: ${t.stale}` : ''}`,
       sort: t => Number(t.displayId.slice(4)) },
     { key: 'type', label: 'Type', text: t => label(t.type) },
     { key: 'threats', label: 'Threats', text: t => this.ids(t.threatIds, this.store.threats()) },

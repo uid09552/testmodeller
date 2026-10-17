@@ -21,6 +21,7 @@ pub fn audit() -> Audit {
 pub fn zone(a: &mut Architecture, name: &str, trust: u8) -> Uuid {
     let z = Zone {
         audit: audit(),
+        provenance: Provenance::default(),
         fields: ZoneFields {
             name: name.into(),
             description: None,
@@ -41,6 +42,7 @@ pub fn component(
 ) -> Uuid {
     let c = ArchComponent {
         audit: audit(),
+        provenance: Provenance::default(),
         fields: ArchComponentFields {
             name: name.into(),
             description: None,
@@ -68,6 +70,7 @@ pub fn asset(
 ) -> Uuid {
     let x = Asset {
         audit: audit(),
+        provenance: Provenance::default(),
         fields: AssetFields {
             name: name.into(),
             description: None,
@@ -77,6 +80,10 @@ pub fn asset(
             integrity: integ,
             availability: None,
             personal_data: false,
+            classification: None,
+            data_location: None,
+            retention: None,
+            encryption_at_rest: TriState::Unknown,
         },
     };
     let id = x.audit.id;
@@ -91,6 +98,7 @@ pub fn flow(a: &mut Architecture, from: Uuid, to: Uuid) -> Uuid {
 pub fn flow_rel(a: &mut Architecture, from: Uuid, to: Uuid, rel: FlowRelationship) -> Uuid {
     let f = Flow {
         audit: audit(),
+        provenance: Provenance::default(),
         fields: FlowFields {
             source_id: from,
             target_id: to,
@@ -101,6 +109,9 @@ pub fn flow_rel(a: &mut Architecture, from: Uuid, to: Uuid, rel: FlowRelationshi
             authentication: "unknown".into(),
             encrypted: TriState::Unknown,
             asset_ids: vec![],
+            data_classification: None,
+            authorization_model: None,
+            entry_point: false,
         },
     };
     let id = f.audit.id;
@@ -123,11 +134,17 @@ pub fn threat_fields(target: ThreatTarget) -> ThreatFields {
         dismiss_reason: None,
         inherent: None,
         current: None,
+        residual: None,
+        threat_source: None,
+        detection: None,
+        existing_mitigations: None,
+        confidence: None,
         treatment: RiskTreatment::Undecided,
         risk_owner: None,
         due_date: None,
         acceptance_rationale: None,
         accepted_by: None,
+        acceptance_expires: None,
     }
 }
 
@@ -138,12 +155,15 @@ pub fn threat(number: i32, fields: ThreatFields) -> Threat {
         fields,
         origin: ThreatOrigin::Manual,
         explanation: None,
+        accepted_on: None,
+        source_model: None,
     }
 }
 
 pub fn control(number: i32, name: &str, status: ControlStatus) -> Control {
     Control {
         audit: audit(),
+        provenance: Provenance::default(),
         number,
         fields: ControlFields {
             name: name.into(),
@@ -153,6 +173,7 @@ pub fn control(number: i32, name: &str, status: ControlStatus) -> Control {
             status,
             owner: None,
             acceptance_criteria: None,
+            review_by: None,
             component_ids: vec![],
             threat_ids: vec![],
         },

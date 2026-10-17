@@ -2,6 +2,7 @@
 //! Pure functions only. See docs/specification/09-threat-modeling.md.
 
 pub mod arch;
+pub mod assurance;
 pub mod lifecycle;
 pub mod risk;
 pub mod rules;
@@ -142,7 +143,7 @@ string_enum!(
 );
 string_enum!(
     /// How a threat came into existence.
-    ThreatOrigin { Manual => "manual", Rule => "rule" }
+    ThreatOrigin { Manual => "manual", Rule => "rule", Ai => "ai" }
 );
 string_enum!(
     /// How a risk is treated.
@@ -162,7 +163,78 @@ string_enum!(
         UnsupportedReduction => "unsupported-reduction",
         Overdue => "overdue",
         FailingTest => "failing-test",
+        ResidualAboveCurrent => "residual-above-current",
+        UnsupportedResidual => "unsupported-residual",
+        AcceptanceExpired => "acceptance-expired",
     }
+);
+string_enum!(
+    /// Computed marker on a control.
+    ControlFlag {
+        VerificationOverdue => "verification-overdue",
+        VerifiedWithoutEvidence => "verified-without-evidence",
+    }
+);
+string_enum!(
+    /// Confidence in a threat assessment.
+    Confidence { Low => "low", Medium => "medium", High => "high" }
+);
+string_enum!(
+    /// Data classification of an asset or flow.
+    Classification {
+        Public => "public",
+        Internal => "internal",
+        Confidential => "confidential",
+        Restricted => "restricted",
+    }
+);
+string_enum!(
+    /// Kind of evidence.
+    EvidenceKind {
+        Document => "document",
+        TestReport => "test-report",
+        Scan => "scan",
+        Configuration => "configuration",
+        Review => "review",
+        Other => "other",
+    }
+);
+string_enum!(
+    /// How an architecture entity or a control came into existence.
+    AiOrigin { Manual => "manual", Ai => "ai" }
+);
+
+/// Where an entity came from: by hand, or from an accepted AI proposal (with the model id).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Provenance {
+    /// Manual or AI.
+    pub origin: AiOrigin,
+    /// Model id of the LLM when `origin` is AI.
+    pub source: Option<String>,
+}
+
+impl Default for Provenance {
+    fn default() -> Self {
+        Self {
+            origin: AiOrigin::Manual,
+            source: None,
+        }
+    }
+}
+
+impl Provenance {
+    /// Provenance of an entity created from an accepted proposal.
+    pub fn ai(model: impl Into<String>) -> Self {
+        Self {
+            origin: AiOrigin::Ai,
+            source: Some(model.into()),
+        }
+    }
+}
+
+string_enum!(
+    /// What evidence belongs to.
+    EvidenceOwnerKind { Control => "control", TestResult => "test-result" }
 );
 string_enum!(
     /// What a security control does.
@@ -206,7 +278,7 @@ string_enum!(
 );
 string_enum!(
     /// How a security test came into existence.
-    SecurityTestOrigin { Manual => "manual", Generated => "generated" }
+    SecurityTestOrigin { Manual => "manual", Generated => "generated", Ai => "ai" }
 );
 string_enum!(
     /// Recorded outcome of a security test run.
@@ -242,6 +314,8 @@ pub struct ThreatModelFields {
     pub assumptions: Option<String>,
     /// Exclusions (markdown).
     pub exclusions: Option<String>,
+    /// AI assistance is enabled for this threat model.
+    pub ai_enabled: bool,
 }
 
 /// A project's threat model.
@@ -279,6 +353,8 @@ pub struct ZoneFields {
 pub struct Zone {
     /// Audit fields.
     pub audit: Audit,
+    /// Where it came from.
+    pub provenance: Provenance,
     /// Editable fields.
     pub fields: ZoneFields,
 }
@@ -315,6 +391,8 @@ pub struct ArchComponentFields {
 pub struct ArchComponent {
     /// Audit fields.
     pub audit: Audit,
+    /// Where it came from.
+    pub provenance: Provenance,
     /// Editable fields.
     pub fields: ArchComponentFields,
 }
@@ -338,6 +416,14 @@ pub struct AssetFields {
     pub availability: Option<CiaLevel>,
     /// Contains personal data.
     pub personal_data: bool,
+    /// Data classification.
+    pub classification: Option<Classification>,
+    /// Where the data is kept.
+    pub data_location: Option<String>,
+    /// Retention period.
+    pub retention: Option<String>,
+    /// Encrypted at rest.
+    pub encryption_at_rest: TriState,
 }
 
 /// Asset.
@@ -345,6 +431,8 @@ pub struct AssetFields {
 pub struct Asset {
     /// Audit fields.
     pub audit: Audit,
+    /// Where it came from.
+    pub provenance: Provenance,
     /// Editable fields.
     pub fields: AssetFields,
 }
@@ -381,6 +469,12 @@ pub struct FlowFields {
     pub encrypted: TriState,
     /// Assets carried.
     pub asset_ids: Vec<Uuid>,
+    /// Classification of the data carried.
+    pub data_classification: Option<Classification>,
+    /// Authorization model (free text).
+    pub authorization_model: Option<String>,
+    /// Marks an entry into the system from outside.
+    pub entry_point: bool,
 }
 
 impl FlowFields {
@@ -402,6 +496,8 @@ impl FlowFields {
 pub struct Flow {
     /// Audit fields.
     pub audit: Audit,
+    /// Where it came from.
+    pub provenance: Provenance,
     /// Editable fields.
     pub fields: FlowFields,
 }
@@ -462,6 +558,16 @@ pub struct ThreatFields {
     pub inherent: Option<Rating>,
     /// Rating with existing controls.
     pub current: Option<Rating>,
+    /// Analyst-entered expected rating once planned measures are verified.
+    pub residual: Option<Rating>,
+    /// Who or what would carry out the attack.
+    pub threat_source: Option<String>,
+    /// How the attack could be detected.
+    pub detection: Option<String>,
+    /// Mitigations that exist today.
+    pub existing_mitigations: Option<String>,
+    /// Confidence in the assessment.
+    pub confidence: Option<Confidence>,
     /// Treatment.
     pub treatment: RiskTreatment,
     /// Risk owner.
@@ -472,6 +578,8 @@ pub struct ThreatFields {
     pub acceptance_rationale: Option<String>,
     /// Who accepted the risk.
     pub accepted_by: Option<String>,
+    /// Date after which the acceptance lapses.
+    pub acceptance_expires: Option<NaiveDate>,
 }
 
 /// Threat.
@@ -487,6 +595,10 @@ pub struct Threat {
     pub origin: ThreatOrigin,
     /// Rule explanation, for rule threats.
     pub explanation: Option<RuleExplanation>,
+    /// Date the current acceptance was recorded.
+    pub accepted_on: Option<NaiveDate>,
+    /// Model id of the LLM when the origin is AI.
+    pub source_model: Option<String>,
 }
 
 impl Threat {
@@ -513,6 +625,8 @@ pub struct ControlFields {
     pub owner: Option<String>,
     /// Acceptance criteria.
     pub acceptance_criteria: Option<String>,
+    /// Date by which a verified control must be reviewed again.
+    pub review_by: Option<NaiveDate>,
     /// Components it applies to.
     pub component_ids: Vec<Uuid>,
     /// Threats it addresses.
@@ -524,6 +638,8 @@ pub struct ControlFields {
 pub struct Control {
     /// Audit fields.
     pub audit: Audit,
+    /// Where it came from.
+    pub provenance: Provenance,
     /// Number of the display id.
     pub number: i32,
     /// Editable fields.
@@ -622,6 +738,8 @@ pub struct SecurityTest {
     pub source: Option<TemplateSource>,
     /// Latest result.
     pub last_result: Option<SecurityTestResult>,
+    /// Model id of the LLM when the origin is AI.
+    pub source_model: Option<String>,
 }
 
 impl SecurityTest {
@@ -709,6 +827,9 @@ mod tests {
             authentication: String::new(),
             encrypted: TriState::Unknown,
             asset_ids: vec![],
+            data_classification: None,
+            authorization_model: None,
+            entry_point: false,
         };
         assert_eq!(f.auth_state(), AuthState::Unknown);
         f.authentication = "None".into();
@@ -727,5 +848,54 @@ mod tests {
             control_id: None,
         };
         assert_eq!(s.key(), format!("AUTH-FLOW|{t}|-"));
+    }
+
+    #[test]
+    fn assurance_enums_round_trip() {
+        for t in [
+            "residual-above-current",
+            "unsupported-residual",
+            "acceptance-expired",
+        ] {
+            let f = ThreatFlag::from_str(t).unwrap();
+            assert_eq!(serde_json::to_string(&f).unwrap(), format!("\"{t}\""));
+        }
+        assert_eq!(
+            ControlFlag::from_str("verified-without-evidence").unwrap(),
+            ControlFlag::VerifiedWithoutEvidence
+        );
+        assert_eq!(
+            Classification::from_str("restricted").unwrap(),
+            Classification::Restricted
+        );
+        assert_eq!(Confidence::from_str("medium").unwrap(), Confidence::Medium);
+        assert_eq!(
+            EvidenceKind::from_str("test-report").unwrap(),
+            EvidenceKind::TestReport
+        );
+        assert_eq!(
+            EvidenceOwnerKind::from_str("test-result").unwrap(),
+            EvidenceOwnerKind::TestResult
+        );
+        assert!(Classification::from_str("secret").is_err());
+    }
+
+    #[test]
+    fn ai_origins_round_trip_and_default_to_manual() {
+        assert_eq!(ThreatOrigin::from_str("ai").unwrap(), ThreatOrigin::Ai);
+        assert_eq!(
+            SecurityTestOrigin::from_str("ai").unwrap(),
+            SecurityTestOrigin::Ai
+        );
+        assert_eq!(serde_json::to_string(&AiOrigin::Ai).unwrap(), "\"ai\"");
+        assert!(AiOrigin::from_str("rule").is_err());
+        let p = Provenance::default();
+        assert_eq!((p.origin, p.source), (AiOrigin::Manual, None));
+        let p = Provenance::ai("claude-opus-5-5");
+        assert_eq!(
+            (p.origin, p.source.as_deref()),
+            (AiOrigin::Ai, Some("claude-opus-5-5"))
+        );
+        assert!(!ThreatModelFields::default().ai_enabled);
     }
 }

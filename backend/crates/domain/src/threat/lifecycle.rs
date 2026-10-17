@@ -1,6 +1,8 @@
 //! Threat lifecycle and treatment rules.
 //! See docs/specification/09-threat-modeling.md#threat-lifecycle.
 
+use chrono::{Months, NaiveDate, Utc};
+
 use super::{RiskTreatment, ThreatFields, ThreatModelError, ThreatStatus};
 
 fn blank(s: &Option<String>) -> bool {
@@ -13,6 +15,61 @@ fn blank(s: &Option<String>) -> bool {
 pub fn check_threat(
     new: &mut ThreatFields,
     previous: Option<&ThreatFields>,
+) -> Result<(), ThreatModelError> {
+    check_threat_on(new, previous, Utc::now().date_naive())
+}
+
+/// Longest period a risk acceptance may last.
+pub const MAX_ACCEPTANCE_MONTHS: u32 = 36;
+
+fn check_expiry(
+    new: &ThreatFields,
+    previous: Option<&ThreatFields>,
+    today: NaiveDate,
+) -> Result<(), ThreatModelError> {
+    let was_accepted = previous.filter(|p| p.treatment == RiskTreatment::Accept);
+    match new.acceptance_expires {
+        None => {
+            // Acceptances recorded before expiry existed stay editable.
+            if was_accepted.is_some_and(|p| p.acceptance_expires.is_none()) {
+                return Ok(());
+            }
+            Err(ThreatModelError::new(
+                "acceptanceExpires",
+                "required to accept a risk",
+            ))
+        }
+        Some(d) => {
+            // An unchanged expiry is not re-validated, so editing other fields
+            // of an expired acceptance is possible.
+            if was_accepted.is_some_and(|p| p.acceptance_expires == Some(d)) {
+                return Ok(());
+            }
+            let latest = today
+                .checked_add_months(Months::new(MAX_ACCEPTANCE_MONTHS))
+                .unwrap_or(today);
+            if d <= today {
+                Err(ThreatModelError::new(
+                    "acceptanceExpires",
+                    "must be after today",
+                ))
+            } else if d > latest {
+                Err(ThreatModelError::new(
+                    "acceptanceExpires",
+                    "must be at most 3 years ahead",
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
+/// [`check_threat`] with an explicit date.
+pub fn check_threat_on(
+    new: &mut ThreatFields,
+    previous: Option<&ThreatFields>,
+    today: NaiveDate,
 ) -> Result<(), ThreatModelError> {
     if new.title.trim().is_empty() {
         return Err(ThreatModelError::new("title", "must not be empty"));
@@ -43,6 +100,7 @@ pub fn check_threat(
                 "required to accept a risk",
             ));
         }
+        check_expiry(new, previous, today)?;
         new.status = ThreatStatus::Accepted;
     } else if new.status == ThreatStatus::Accepted {
         let leaving_accept = previous.is_some_and(|p| {
@@ -70,6 +128,7 @@ mod tests {
     use super::super::testutil::threat_fields;
     use super::super::{TargetKind, ThreatTarget};
     use super::*;
+    use chrono::NaiveDate;
     use uuid::Uuid;
 
     fn fields() -> ThreatFields {
@@ -125,6 +184,11 @@ mod tests {
         f.acceptance_rationale = Some("low exposure".into());
         assert_eq!(check_threat(&mut f, None).unwrap_err().field, "acceptedBy");
         f.accepted_by = Some("J. Doe".into());
+        assert_eq!(
+            check_threat(&mut f, None).unwrap_err().field,
+            "acceptanceExpires"
+        );
+        f.acceptance_expires = Some(chrono::Utc::now().date_naive() + chrono::Duration::days(90));
         check_threat(&mut f, None).unwrap();
         assert_eq!(f.status, ThreatStatus::Accepted);
 
@@ -140,5 +204,59 @@ mod tests {
         let mut f = fields();
         f.status = ThreatStatus::Accepted;
         assert!(check_threat(&mut f, None).is_err());
+    }
+
+    fn day(y: i32, m: u32, d: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(y, m, d).unwrap()
+    }
+
+    fn accepting(expires: Option<NaiveDate>) -> ThreatFields {
+        let mut f = fields();
+        f.treatment = RiskTreatment::Accept;
+        f.acceptance_rationale = Some("r".into());
+        f.accepted_by = Some("J. Doe".into());
+        f.acceptance_expires = expires;
+        f
+    }
+
+    #[test]
+    fn acceptance_needs_an_expiry_in_range() {
+        let today = day(2026, 10, 17);
+        let mut ok = accepting(Some(day(2027, 10, 17)));
+        assert!(check_threat_on(&mut ok, None, today).is_ok());
+        assert_eq!(ok.status, ThreatStatus::Accepted);
+        let mut none = accepting(None);
+        assert_eq!(
+            check_threat_on(&mut none, None, today).unwrap_err().field,
+            "acceptanceExpires"
+        );
+        let mut past = accepting(Some(day(2026, 10, 16)));
+        assert!(check_threat_on(&mut past, None, today).is_err());
+        let mut today_itself = accepting(Some(today));
+        assert!(check_threat_on(&mut today_itself, None, today).is_err());
+        let mut far = accepting(Some(day(2029, 10, 18)));
+        assert!(check_threat_on(&mut far, None, today).is_err());
+        let mut edge = accepting(Some(day(2029, 10, 17)));
+        assert!(check_threat_on(&mut edge, None, today).is_ok());
+    }
+
+    #[test]
+    fn legacy_and_unchanged_acceptances_stay_editable() {
+        let today = day(2026, 10, 17);
+        let mut legacy_prev = accepting(None);
+        legacy_prev.status = ThreatStatus::Accepted;
+        let mut same = legacy_prev.clone();
+        assert!(check_threat_on(&mut same, Some(&legacy_prev), today).is_ok());
+        let mut expired_prev = accepting(Some(day(2026, 1, 1)));
+        expired_prev.status = ThreatStatus::Accepted;
+        let mut edit = expired_prev.clone();
+        edit.title = "other".into();
+        assert!(check_threat_on(&mut edit, Some(&expired_prev), today).is_ok());
+        let mut renew = expired_prev.clone();
+        renew.acceptance_expires = Some(day(2027, 4, 17));
+        assert!(check_threat_on(&mut renew, Some(&expired_prev), today).is_ok());
+        let mut stale = expired_prev.clone();
+        stale.acceptance_expires = Some(day(2026, 2, 2));
+        assert!(check_threat_on(&mut stale, Some(&expired_prev), today).is_err());
     }
 }

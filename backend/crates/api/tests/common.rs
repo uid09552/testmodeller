@@ -23,6 +23,7 @@ pub struct App {
     _db: ContainerAsync<Postgres>,
     pub store: Store,
     pub router: Router,
+    pub url: String,
 }
 
 pub async fn app() -> App {
@@ -41,6 +42,7 @@ pub async fn app() -> App {
         _db: db,
         store,
         router: router(state, auth_mode(None)),
+        url,
     }
 }
 

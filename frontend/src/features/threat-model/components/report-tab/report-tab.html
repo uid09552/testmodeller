@@ -1,0 +1,119 @@
+<div class="tra-report">
+  <div class="tra-report__bar">
+    <button class="btn btn--primary" type="button" [disabled]="!report()" (click)="print()">Print</button>
+    <button class="btn btn--secondary" type="button" [disabled]="!report()" (click)="exportMarkdown()">Export Markdown</button>
+    @if (baselineId()) {
+      <button class="btn btn--secondary" type="button" (click)="nav.go('report')">Show live model</button>
+      <button class="btn btn--secondary" type="button" (click)="nav.go('baselines')">Back to baselines</button>
+    }
+  </div>
+
+  @if (error(); as err) { <p role="alert">{{ err }}</p> }
+
+  @if (report(); as r) {
+    @let s = r.snapshot;
+    <h1>Threat and risk assessment: {{ s.threatModel.name }}</h1>
+    @if (r.baseline; as b) {
+      <p class="tra-report__banner" role="status">
+        <strong>Baseline: {{ b.name }}</strong>, frozen {{ b.createdAt.slice(0, 10) }}. Read-only.
+        @if (b.note) { <br />{{ b.note }} }
+      </p>
+    } @else {
+      <p class="field__hint">Live model, generated {{ r.generatedOn }}.</p>
+    }
+
+    <h2>{{ sections[0] }}</h2>
+    <dl>
+      <dt>Scope</dt><dd>{{ s.threatModel.scope || '—' }}</dd>
+      <dt>Objectives</dt><dd>{{ s.threatModel.objectives || '—' }}</dd>
+      <dt>Assumptions</dt><dd>{{ s.threatModel.assumptions || '—' }}</dd>
+      <dt>Exclusions</dt><dd>{{ s.threatModel.exclusions || '—' }}</dd>
+    </dl>
+
+    <h2>{{ sections[1] }}</h2>
+    <table aria-label="Zones">
+      <thead><tr><th>Zone</th><th>Kind</th><th>Trust level</th></tr></thead>
+      <tbody>@for (z of s.zones; track z.id) { <tr><td>{{ z.name }}</td><td>{{ label(z.kind) }}</td><td>{{ z.trustLevel }}</td></tr> }</tbody>
+    </table>
+    <table aria-label="Components">
+      <thead><tr><th>Component</th><th>Type</th><th>Zone</th><th>Owner</th><th>Internet-facing</th></tr></thead>
+      <tbody>
+        @for (c of s.components; track c.id) {
+          <tr><td>{{ c.name }}</td><td>{{ label(c.type) }}</td><td>{{ zoneName(s, c.zoneId) }}</td><td>{{ c.owner || '—' }}</td><td>{{ c.internetFacing ? 'yes' : 'no' }}</td></tr>
+        }
+      </tbody>
+    </table>
+    <table aria-label="Data flows">
+      <thead><tr><th>Flow</th><th>Relationship</th><th>Authentication</th><th>Encrypted</th><th>Crosses trust boundary</th></tr></thead>
+      <tbody>
+        @for (f of s.flows; track f.id) {
+          <tr><td>{{ flowName(s, f.id) }}</td><td>{{ label(f.relationship) }}</td><td>{{ f.authentication }}</td><td>{{ label(f.encrypted) }}</td>
+            <td>{{ f.crossing.crosses ? 'yes (' + (f.crossing.fromTrust ?? '–') + ' → ' + (f.crossing.toTrust ?? '–') + ')' : 'no' }}</td></tr>
+        }
+      </tbody>
+    </table>
+
+    <h2>{{ sections[2] }}</h2>
+    <table aria-label="Assets">
+      <thead><tr><th>Asset</th><th>Category</th><th>C / I / A</th><th>Classification</th><th>Personal data</th></tr></thead>
+      <tbody>
+        @for (a of s.assets; track a.id) {
+          <tr><td>{{ a.name }}</td><td>{{ label(a.category) }}</td>
+            <td>{{ label(a.confidentiality) || '–' }} / {{ label(a.integrity) || '–' }} / {{ label(a.availability) || '–' }}</td>
+            <td>{{ label(a.classification) || '—' }}</td><td>{{ a.personalData ? 'yes' : 'no' }}</td></tr>
+        }
+      </tbody>
+    </table>
+
+    <h2 class="tra-report__section--break">{{ sections[3] }}</h2>
+    @for (b of bases; track b) {
+      <tm-risk-matrix [cells]="matrix(s.threats, b)" [thresholds]="s.threatModel.thresholds"
+                      [caption]="label(b) + ' risk of open and accepted threats'" />
+    }
+
+    <h2 class="tra-report__section--break">{{ sections[4] }}</h2>
+    <table aria-label="Risk register">
+      <thead><tr><th>Threat</th><th>Status</th><th>Inherent</th><th>Current</th><th>Residual</th><th>Treatment</th><th>Owner</th><th>Due</th><th>Acceptance</th></tr></thead>
+      <tbody>
+        @for (t of s.threats; track t.id) {
+          @if (inRegister(t)) {
+            <tr><td>{{ t.displayId }} {{ t.title }}{{ aiMark(t) }}</td><td>{{ label(t.effectiveStatus) }}</td>
+              <td>{{ levelText(t.inherentLevel) }}</td><td>{{ levelText(t.currentLevel) }}</td><td>{{ levelText(t.residualLevel) }}</td>
+              <td>{{ label(t.treatment) }}</td><td>{{ t.riskOwner || '—' }}</td><td>{{ t.dueDate || '—' }}</td>
+              <td>@if (t.acceptedBy) { {{ t.acceptedBy }}, {{ t.acceptedOn || '?' }} until {{ t.acceptanceExpires || 'no expiry' }}@if (t.acceptanceRationale) { : {{ t.acceptanceRationale }} } } @else { — }</td></tr>
+          }
+        }
+      </tbody>
+    </table>
+
+    <h2 class="tra-report__section--break">{{ sections[5] }}</h2>
+    @for (c of s.controls; track c.id) {
+      <h3>{{ c.displayId }} {{ c.name }}{{ aiMark(c) }}</h3>
+      <p>{{ label(c.type) }}, {{ label(c.status) }}@if (c.verifiedAt) { , verified {{ c.verifiedAt.slice(0, 10) }} }@if (c.reviewBy) { , review by {{ c.reviewBy }} }.</p>
+      <ul>
+        @for (e of evidenceFor(s, c.id); track e.id) {
+          <li>{{ label(e.kind) }}: {{ e.title }} ({{ e.evidenceDate }}@if (e.reviewer) { , {{ e.reviewer }} })
+            @if (e.link) { <a [href]="e.link" target="_blank" rel="noopener noreferrer">{{ e.link }}</a> }
+            @if (e.note) { — {{ e.note }} }</li>
+        } @empty { <li>No evidence.</li> }
+      </ul>
+    } @empty { <p>No controls.</p> }
+
+    <h2>{{ sections[6] }}</h2>
+    <ul>
+      @for (f of flagged(s.threats); track f.threat.id) { <li>{{ f.threat.displayId }} {{ f.threat.title }}: {{ f.texts.join('; ') }}</li> }
+      @for (c of s.controls; track c.id) {
+        @if (c.flags.length) { <li>{{ c.displayId }} {{ c.name }}: @for (fl of c.flags; track fl) { {{ controlFlagText[fl] }}; }</li> }
+      }
+      @for (w of warnings(s); track $index) { <li>{{ w }}</li> }
+    </ul>
+
+    <h2>{{ sections[7] }}</h2>
+    <table class="tra-report__signoff" aria-label="Sign-off">
+      <thead><tr><th>Name</th><th>Role</th><th>Date</th><th>Signature</th></tr></thead>
+      <tbody><tr><td></td><td></td><td></td><td></td></tr></tbody>
+    </table>
+  } @else if (!error()) {
+    <p>Loading…</p>
+  }
+</div>

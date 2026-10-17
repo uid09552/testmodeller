@@ -113,7 +113,7 @@ fn invalid(msg: impl Into<String>) -> AiError {
 }
 
 /// Strips an optional markdown code fence around the JSON.
-fn strip_fence(s: &str) -> &str {
+pub(crate) fn strip_fence(s: &str) -> &str {
     let t = s.trim();
     let Some(rest) = t.strip_prefix("```") else {
         return t;

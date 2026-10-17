@@ -1,10 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Asset, AssetCategory, AssetInput, CiaLevel } from '../../../../core/api/threat-model-api';
+import {
+  Asset, AssetCategory, AssetInput, CiaLevel, Classification, TriState,
+} from '../../../../core/api/threat-model-api';
 import { EditorState, orNull } from '../../state/editor-state';
 import { componentInput, flowInput } from '../../state/inputs';
 import { ThreatModelStore } from '../../state/threat-model.store';
-import { label, targetName } from '../../state/threat-model-view';
+import { label, targetName, aiMark } from '../../state/threat-model-view';
+import { AiBadgeComponent } from '../ai-badge/ai-badge';
 import { EditorDrawerComponent } from '../editor-drawer/editor-drawer';
 import { Column, EntityTableComponent } from '../entity-table/entity-table';
 import { MultiPickComponent } from '../multi-pick/multi-pick';
@@ -19,7 +22,7 @@ export const ASSET_CATEGORIES: AssetCategory[] = [
 /** Assets: independent, linked to any number of components and flows (FR-063). */
 @Component({
   selector: 'tm-assets-tab',
-  imports: [FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent],
+  imports: [AiBadgeComponent, FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent],
   templateUrl: './assets-tab.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -29,6 +32,8 @@ export class AssetsTabComponent {
   readonly categories = ASSET_CATEGORIES;
   readonly cia: CiaLevel[] = ['low', 'medium', 'high'];
   readonly label = label;
+  readonly classifications: Classification[] = ['public', 'internal', 'confidential', 'restricted'];
+  readonly tri: TriState[] = ['unknown', 'yes', 'no'];
 
   readonly componentOptions = computed(() => this.store.components().map(c => ({ id: c.id, label: c.name })));
   readonly flowOptions = computed(() => this.store.flows().map(f => ({
@@ -38,9 +43,11 @@ export class AssetsTabComponent {
   })));
 
   readonly columns = computed<Column<Asset>[]>(() => [
-    { key: 'name', label: 'Name', text: a => a.name },
+    { key: 'name', label: 'Name', text: a => a.name + aiMark(a) },
     { key: 'category', label: 'Category', text: a => label(a.category) },
     { key: 'cia', label: 'C / I / A', text: a => [a.confidentiality, a.integrity, a.availability].map(x => label(x) || '—').join(' / ') },
+    { key: 'class', label: 'Classification', text: a => label(a.classification) || '—' },
+    { key: 'rest', label: 'Encrypted at rest', text: a => (a.encryptionAtRest === 'unknown' ? 'Not documented' : label(a.encryptionAtRest)) },
     { key: 'pd', label: 'Personal data', text: a => (a.personalData ? 'Yes' : 'No') },
     { key: 'components', label: 'Components', text: a => `${a.componentIds.length}`, sort: a => a.componentIds.length },
     { key: 'flows', label: 'Flows', text: a => `${a.flowIds.length}`, sort: a => a.flowIds.length },
@@ -62,7 +69,8 @@ export class AssetsTabComponent {
   add(): void {
     this.editor.open(null, {
       name: '', description: '', category: 'business-data', owner: '', confidentiality: null,
-      integrity: null, availability: null, personalData: false, componentIds: [], flowIds: [],
+      integrity: null, availability: null, personalData: false, classification: null,
+      dataLocation: '', retention: '', encryptionAtRest: 'unknown', componentIds: [], flowIds: [],
     });
   }
 
@@ -71,6 +79,8 @@ export class AssetsTabComponent {
       name: a.name, description: a.description ?? '', category: a.category, owner: a.owner ?? '',
       confidentiality: a.confidentiality ?? null, integrity: a.integrity ?? null,
       availability: a.availability ?? null, personalData: a.personalData,
+      classification: a.classification ?? null, dataLocation: a.dataLocation ?? '',
+      retention: a.retention ?? '', encryptionAtRest: a.encryptionAtRest ?? 'unknown',
       componentIds: [...a.componentIds], flowIds: [...a.flowIds],
     });
   }
@@ -80,6 +90,7 @@ export class AssetsTabComponent {
     const { componentIds, flowIds, ...fields } = d;
     const saved = await this.store.save('assets', {
       ...fields, description: orNull(fields.description), owner: orNull(fields.owner),
+      dataLocation: orNull(fields.dataLocation ?? ''), retention: orNull(fields.retention ?? ''),
     }, item ?? undefined);
     const id = saved.id;
     for (const c of this.store.components()) {

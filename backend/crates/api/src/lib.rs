@@ -22,7 +22,7 @@ use tm_storage::Store;
 use crate::ai_service::AiService;
 use crate::auth::{AuthMode, Authenticator};
 use crate::handlers::{
-    ai, export, models, organization as org, test_cases as tc, test_results as results,
+    ai, export, models, organization as org, test_cases as tc, test_results as results, threat_ai,
     threat_model as tmh,
 };
 
@@ -284,6 +284,46 @@ pub fn router(state: AppState, auth: AuthMode) -> Router {
         .route(
             "/threat-models/{id}/security-tests/{item}/results",
             get(tmh::results).post(tmh::record_result),
+        )
+        .route(
+            "/threat-models/{id}/security-tests/{item}/results/{result}/evidence",
+            get(tmh::result_evidence).post(tmh::add_result_evidence),
+        )
+        .route(
+            "/threat-models/{id}/controls/{item}/evidence",
+            get(tmh::control_evidence).post(tmh::add_control_evidence),
+        )
+        .route(
+            "/threat-models/{id}/ai/proposals",
+            get(threat_ai::list).post(threat_ai::request),
+        )
+        .route(
+            "/threat-models/{id}/ai/proposals/{item}",
+            get(threat_ai::get),
+        )
+        .route(
+            "/threat-models/{id}/ai/proposals/{item}/accept",
+            post(threat_ai::accept),
+        )
+        .route(
+            "/threat-models/{id}/ai/proposals/{item}/reject",
+            post(threat_ai::reject),
+        )
+        .route(
+            "/threat-models/{id}/evidence/{item}",
+            axum::routing::delete(tmh::delete_evidence),
+        )
+        .route(
+            "/threat-models/{id}/baselines",
+            get(tmh::list_baselines).post(tmh::create_baseline),
+        )
+        .route(
+            "/threat-models/{id}/baselines/{item}",
+            get(tmh::get_baseline).delete(tmh::delete_baseline),
+        )
+        .route(
+            "/threat-models/{id}/baselines/{item}/compare",
+            get(tmh::compare_baseline),
         )
         .route(
             "/settings/ai",

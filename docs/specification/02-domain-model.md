@@ -49,3 +49,6 @@ A project may have one threat model with its own entities (exposure zones, archi
 - Deleting a model or state/transition removes its assignments, never the test cases.
 - Deleting a component/feature requires it to be empty or cascades explicitly.
 - Guards/actions use the expression language defined in `04-test-generation.md`.
+
+## Threat model assurance
+`EVIDENCE` belongs to a `CONTROL` or a `SECURITY_TEST_RESULT`; a `BASELINE` belongs to a `THREAT_MODEL` and holds an immutable snapshot of it. A `THREAT` gains a residual rating, an acceptance record (approver, date, expiry) and the fields threat source, detection, existing mitigations and confidence. See [09-threat-modeling.md](09-threat-modeling.md#assurance-residual-risk-evidence-acceptance-baselines).

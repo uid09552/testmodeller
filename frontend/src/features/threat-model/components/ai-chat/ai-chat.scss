@@ -1,0 +1,23 @@
+:host { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.aic {
+  display: flex; flex-direction: column; gap: 12px; padding: 12px; flex: 1; min-height: 0; overflow: hidden;
+}
+.aic__head { display: flex; justify-content: space-between; align-items: center; }
+.aic__head h2 { margin: 0; font-size: 1.05rem; }
+.aic__log { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; overflow-y: auto; }
+.aic__off { overflow-y: auto; }
+.aic__preview { flex-shrink: 0; max-height: 40%; overflow-y: auto; }
+.aic__msg { margin: 0; padding: 6px 8px; border-radius: 6px; }
+.aic__msg--user { background: var(--surface-2, #8881); }
+.aic__msg--error { color: var(--danger, #b00020); }
+.aic__who { font-weight: 600; margin-right: 6px; }
+.aic__card { padding: 10px; }
+.aic__card h3 { margin: 0 0 6px; font-size: 1rem; }
+.aic__card h4 { margin: 8px 0 2px; font-size: .9rem; }
+.aic__status { font-weight: 400; }
+.aic__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.aic__context { max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: .8rem; }
+.aic__notice { border: 1px solid currentColor; border-radius: 6px; padding: 6px 8px; }
+.aic__form { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+.aic__row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.aic__form .textarea { resize: none; }

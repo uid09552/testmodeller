@@ -7,10 +7,14 @@ use chrono::Utc;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ImageExt};
 use testcontainers_modules::postgres::Postgres;
+use tm_domain::threat::assurance::EvidenceFields;
 use tm_domain::threat::rules::suggest;
 use tm_domain::threat::templates::generate;
 use tm_domain::threat::*;
-use tm_storage::{FeatureFields, NamedFields, StorageError, Store, TenantScope};
+use tm_storage::{
+    EvidenceOwner, FeatureFields, NamedFields, NewBaseline, StorageError, Store, TenantScope,
+    MAX_BASELINES,
+};
 use uuid::Uuid;
 
 async fn store() -> (ContainerAsync<Postgres>, Store) {
@@ -92,6 +96,10 @@ fn asset(name: &str) -> AssetFields {
         integrity: None,
         availability: None,
         personal_data: true,
+        classification: None,
+        data_location: None,
+        retention: None,
+        encryption_at_rest: TriState::Unknown,
     }
 }
 
@@ -106,6 +114,9 @@ fn flow(from: Uuid, to: Uuid) -> FlowFields {
         authentication: "unknown".into(),
         encrypted: TriState::Unknown,
         asset_ids: vec![],
+        data_classification: None,
+        authorization_model: None,
+        entry_point: false,
     }
 }
 
@@ -127,11 +138,17 @@ fn threat(target: ThreatTarget) -> ThreatFields {
             impact: 5,
         }),
         current: None,
+        residual: None,
+        threat_source: None,
+        detection: None,
+        existing_mitigations: None,
+        confidence: None,
         treatment: RiskTreatment::Undecided,
         risk_owner: None,
         due_date: None,
         acceptance_rationale: None,
         accepted_by: None,
+        acceptance_expires: None,
     }
 }
 
@@ -144,6 +161,7 @@ fn control(name: &str) -> ControlFields {
         status: ControlStatus::Planned,
         owner: None,
         acceptance_criteria: None,
+        review_by: None,
         component_ids: vec![],
         threat_ids: vec![],
     }
@@ -384,10 +402,10 @@ async fn threats_controls_ids_and_rule_keys() {
         kind: TargetKind::Component,
         id: api,
     };
-    let t1 = s.create_tm_threat(tm, &threat(target)).await.unwrap();
-    let t2 = s.create_tm_threat(tm, &threat(target)).await.unwrap();
+    let t1 = s.create_tm_threat(tm, &threat(target), None).await.unwrap();
+    let t2 = s.create_tm_threat(tm, &threat(target), None).await.unwrap();
     s.delete_tm_threat(tm, t2).await.unwrap();
-    let t3 = s.create_tm_threat(tm, &threat(target)).await.unwrap();
+    let t3 = s.create_tm_threat(tm, &threat(target), None).await.unwrap();
     let agg = s.load_threat_model(tm).await.unwrap();
     let numbers: Vec<i32> = agg.threats.iter().map(|t| t.number).collect();
     assert_eq!(numbers, [1, 3], "deleted numbers are not reused");
@@ -468,6 +486,7 @@ async fn security_tests_generation_results_and_deleted_threat() {
                 kind: TargetKind::Component,
                 id: api,
             }),
+            None,
         )
         .await
         .unwrap();
@@ -582,6 +601,7 @@ async fn aggregate_of_300_entities_loads_quickly() {
                 kind: TargetKind::Component,
                 id: *c,
             }),
+            None,
         )
         .await
         .unwrap();
@@ -595,4 +615,288 @@ async fn aggregate_of_300_entities_loads_quickly() {
         299
     );
     assert!(elapsed.as_millis() < 200, "aggregate load took {elapsed:?}");
+}
+
+fn evidence(title: &str) -> EvidenceFields {
+    EvidenceFields {
+        kind: EvidenceKind::TestReport,
+        title: title.into(),
+        link: Some("https://example.org/report".into()),
+        note: None,
+        evidence_date: chrono::NaiveDate::from_ymd_opt(2026, 10, 1).unwrap(),
+        reviewer: Some("R. Viewer".into()),
+    }
+}
+
+#[tokio::test]
+async fn assurance_fields_round_trip() {
+    let (_c, s) = store().await;
+    let p = project(&s, "t").await;
+    let tm = model(&s, p).await;
+    let api = s
+        .create_tm_component(tm, &comp("API", ArchComponentType::Api, None))
+        .await
+        .unwrap();
+    let target = ThreatTarget {
+        kind: TargetKind::Component,
+        id: api,
+    };
+    let mut f = threat(target);
+    f.current = Some(Rating {
+        likelihood: 3,
+        impact: 3,
+    });
+    f.residual = Some(Rating {
+        likelihood: 2,
+        impact: 2,
+    });
+    f.threat_source = Some("malicious tenant admin".into());
+    f.detection = Some("audit log alert".into());
+    f.existing_mitigations = Some("WAF".into());
+    f.confidence = Some(Confidence::Medium);
+    f.treatment = RiskTreatment::Accept;
+    f.status = ThreatStatus::Accepted;
+    f.acceptance_rationale = Some("low".into());
+    f.accepted_by = Some("J. Doe".into());
+    let expires = chrono::NaiveDate::from_ymd_opt(2027, 1, 1).unwrap();
+    let on = chrono::NaiveDate::from_ymd_opt(2026, 10, 17).unwrap();
+    f.acceptance_expires = Some(expires);
+    let t = s.create_tm_threat(tm, &f, Some(on)).await.unwrap();
+
+    let agg = s.load_threat_model(tm).await.unwrap();
+    let got = agg.threats.iter().find(|x| x.audit.id == t).unwrap();
+    assert_eq!(got.fields.residual, f.residual);
+    assert_eq!(got.fields.confidence, Some(Confidence::Medium));
+    assert_eq!(
+        got.fields.threat_source.as_deref(),
+        Some("malicious tenant admin")
+    );
+    assert_eq!(got.fields.acceptance_expires, Some(expires));
+    assert_eq!(got.accepted_on, Some(on));
+
+    // Asset and flow detail fields.
+    let mut a = asset("Records");
+    a.classification = Some(Classification::Restricted);
+    a.data_location = Some("eu-west-1".into());
+    a.encryption_at_rest = TriState::Yes;
+    let aid = s.create_tm_asset(tm, &a).await.unwrap();
+    let other = s
+        .create_tm_component(tm, &comp("DB", ArchComponentType::RelationalDatabase, None))
+        .await
+        .unwrap();
+    let mut fl = flow(api, other);
+    fl.entry_point = true;
+    fl.data_classification = Some(Classification::Confidential);
+    fl.authorization_model = Some("RBAC".into());
+    s.create_tm_flow(tm, &fl).await.unwrap();
+    let agg = s.load_threat_model(tm).await.unwrap();
+    let ga = agg.arch.asset(aid).unwrap();
+    assert_eq!(ga.fields.classification, Some(Classification::Restricted));
+    assert_eq!(ga.fields.encryption_at_rest, TriState::Yes);
+    assert_eq!(ga.fields.data_location.as_deref(), Some("eu-west-1"));
+    let gf = &agg.arch.flows[0];
+    assert!(gf.fields.entry_point);
+    assert_eq!(gf.fields.authorization_model.as_deref(), Some("RBAC"));
+
+    // Review-by date on controls.
+    let mut c = control("MFA");
+    c.review_by = Some(expires);
+    let cid = s.create_tm_control(tm, &c).await.unwrap();
+    let agg = s.load_threat_model(tm).await.unwrap();
+    assert_eq!(
+        agg.controls
+            .iter()
+            .find(|x| x.audit.id == cid)
+            .unwrap()
+            .fields
+            .review_by,
+        Some(expires)
+    );
+}
+
+#[tokio::test]
+async fn evidence_belongs_to_one_owner_and_last_removal_downgrades_the_control() {
+    let (_c, s) = store().await;
+    let p = project(&s, "t").await;
+    let tm = model(&s, p).await;
+    let other_p = project(&s, "t").await;
+    let other_tm = model(&s, other_p).await;
+    let cid = s.create_tm_control(tm, &control("MFA")).await.unwrap();
+
+    // Another threat model's control is not found.
+    assert!(matches!(
+        s.add_evidence(other_tm, EvidenceOwner::Control(cid), &evidence("x"))
+            .await,
+        Err(StorageError::NotFound(_))
+    ));
+
+    let e1 = s
+        .add_evidence(tm, EvidenceOwner::Control(cid), &evidence("Pen test"))
+        .await
+        .unwrap();
+    let e2 = s
+        .add_evidence(tm, EvidenceOwner::Control(cid), &evidence("Config review"))
+        .await
+        .unwrap();
+    assert_eq!(s.control_evidence_count(tm, cid).await.unwrap(), 2);
+    assert_eq!(
+        s.list_evidence(tm, EvidenceOwner::Control(cid))
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+
+    // Verify the control, then remove evidence.
+    let mut f = control("MFA");
+    f.status = ControlStatus::Verified;
+    s.update_tm_control(tm, cid, 1, &f).await.unwrap();
+    assert_eq!(s.delete_evidence(tm, e1.audit.id).await.unwrap(), None);
+    assert_eq!(s.delete_evidence(tm, e2.audit.id).await.unwrap(), Some(cid));
+    let agg = s.load_threat_model(tm).await.unwrap();
+    let c = agg.controls.iter().find(|x| x.audit.id == cid).unwrap();
+    assert_eq!(c.fields.status, ControlStatus::Implemented);
+    assert!(c.verified_at.is_none());
+    assert!(matches!(
+        s.delete_evidence(tm, e2.audit.id).await,
+        Err(StorageError::NotFound(_))
+    ));
+}
+
+#[tokio::test]
+async fn evidence_of_a_result_goes_with_the_test_and_the_control() {
+    let (_c, s) = store().await;
+    let p = project(&s, "t").await;
+    let tm = model(&s, p).await;
+    let api = s
+        .create_tm_component(tm, &comp("API", ArchComponentType::Api, None))
+        .await
+        .unwrap();
+    let t = s
+        .create_tm_threat(
+            tm,
+            &threat(ThreatTarget {
+                kind: TargetKind::Component,
+                id: api,
+            }),
+            None,
+        )
+        .await
+        .unwrap();
+    let test = s
+        .create_security_test(
+            tm,
+            &SecurityTestFields {
+                title: "x".into(),
+                objective: None,
+                preconditions: vec![],
+                steps: vec![],
+                test_type: SecurityTestType::Other,
+                status: SecurityTestStatus::Ready,
+                threat_ids: vec![t],
+                control_ids: vec![],
+            },
+        )
+        .await
+        .unwrap();
+    let r = s
+        .record_security_test_result(tm, test, SecurityTestOutcome::Passed, None, Utc::now())
+        .await
+        .unwrap();
+    let owner = EvidenceOwner::TestResult {
+        test_id: test,
+        result_id: r.id,
+    };
+    s.add_evidence(tm, owner, &evidence("Run log"))
+        .await
+        .unwrap();
+    assert_eq!(s.list_evidence(tm, owner).await.unwrap().len(), 1);
+    assert_eq!(s.load_threat_model(tm).await.unwrap().evidence.len(), 1);
+    // A result of another test is not found.
+    let bad = EvidenceOwner::TestResult {
+        test_id: Uuid::new_v4(),
+        result_id: r.id,
+    };
+    assert!(s.add_evidence(tm, bad, &evidence("x")).await.is_err());
+    s.delete_security_test(tm, test).await.unwrap();
+    assert!(s.load_threat_model(tm).await.unwrap().evidence.is_empty());
+}
+
+fn new_baseline(name: &str, snapshot: serde_json::Value) -> NewBaseline {
+    NewBaseline {
+        name: name.into(),
+        note: None,
+        created_by: Some("tester".into()),
+        schema_version: 1,
+        threat_count: 2,
+        control_count: 1,
+        snapshot,
+    }
+}
+
+#[tokio::test]
+async fn baselines_are_unique_capped_immutable_and_cascade() {
+    let (_c, s) = store().await;
+    let p = project(&s, "t").await;
+    let tm = model(&s, p).await;
+    let snap = serde_json::json!({"threats": [{"title": "a"}]});
+    let b = s
+        .create_baseline(tm, new_baseline("Release 2.3", snap.clone()))
+        .await
+        .unwrap();
+    assert!(matches!(
+        s.create_baseline(tm, new_baseline("Release 2.3", snap.clone()))
+            .await,
+        Err(StorageError::Conflict(_))
+    ));
+    let (meta, got) = s.get_baseline(tm, b.id).await.unwrap();
+    assert_eq!(meta.threat_count, 2);
+    assert_eq!(got, snap);
+    assert_eq!(s.list_baselines(tm).await.unwrap().len(), 1);
+
+    // Live edits do not change the stored snapshot.
+    s.update_threat_model(
+        tm,
+        1,
+        ThreatModelFields {
+            name: "renamed".into(),
+            ..Default::default()
+        },
+        Thresholds::default(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(s.get_baseline(tm, b.id).await.unwrap().1, snap);
+
+    // Another threat model cannot read or delete it.
+    let p2 = project(&s, "t").await;
+    let tm2 = model(&s, p2).await;
+    assert!(matches!(
+        s.get_baseline(tm2, b.id).await,
+        Err(StorageError::NotFound(_))
+    ));
+    assert!(matches!(
+        s.delete_baseline(tm2, b.id).await,
+        Err(StorageError::NotFound(_))
+    ));
+
+    // The cap.
+    for i in 1..MAX_BASELINES {
+        s.create_baseline(tm, new_baseline(&format!("b{i}"), snap.clone()))
+            .await
+            .unwrap();
+    }
+    assert!(matches!(
+        s.create_baseline(tm, new_baseline("one too many", snap.clone()))
+            .await,
+        Err(StorageError::Invalid(_))
+    ));
+    s.delete_baseline(tm, b.id).await.unwrap();
+    s.create_baseline(tm, new_baseline("fits again", snap))
+        .await
+        .unwrap();
+
+    // Deleting the threat model deletes its baselines.
+    s.delete_threat_model(tm).await.unwrap();
+    assert!(s.list_baselines(tm).await.unwrap().is_empty());
 }

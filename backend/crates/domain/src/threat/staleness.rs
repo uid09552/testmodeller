@@ -65,6 +65,7 @@ mod tests {
                 control_id: control.map(|c| c.audit.id),
             }),
             last_result: None,
+            source_model: None,
         }
     }
 

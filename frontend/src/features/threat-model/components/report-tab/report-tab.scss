@@ -1,0 +1,18 @@
+.tra-report__bar { display: flex; gap: var(--space-2, 8px); flex-wrap: wrap; margin-bottom: var(--space-3, 12px); }
+.tra-report__banner {
+  border: 1px solid currentColor; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px;
+}
+.tra-report h2 { margin-top: 24px; }
+.tra-report table { border-collapse: collapse; width: 100%; margin: 8px 0 16px; }
+.tra-report th, .tra-report td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border, #8884); vertical-align: top; }
+.tra-report__signoff td { height: 40px; }
+
+@media print {
+  body * { visibility: hidden; }
+  .tra-report, .tra-report * { visibility: visible; }
+  .tra-report { position: absolute; left: 0; top: 0; width: 100%; background: #fff; color: #000; }
+  .tra-report__bar { display: none; }
+  .tra-report tr, .tra-report li { break-inside: avoid; }
+  .tra-report h2 { break-after: avoid; }
+  .tra-report__section--break { break-before: page; }
+}

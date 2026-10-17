@@ -39,7 +39,12 @@ export type ThreatStatus = 'candidate' | 'open' | 'mitigated' | 'accepted' | 'di
 export type RiskLevel = 'low' | 'moderate' | 'high' | 'critical';
 export type RiskTreatment = 'undecided' | 'mitigate' | 'avoid' | 'transfer' | 'accept';
 export type ThreatFlag =
-  | 'no-control' | 'planned-controls-only' | 'unsupported-reduction' | 'overdue' | 'failing-test';
+  | 'no-control' | 'planned-controls-only' | 'unsupported-reduction' | 'overdue' | 'failing-test'
+  | 'residual-above-current' | 'unsupported-residual' | 'acceptance-expired';
+export type ControlFlag = 'verification-overdue' | 'verified-without-evidence';
+export type Confidence = 'low' | 'medium' | 'high';
+export type Classification = 'public' | 'internal' | 'confidential' | 'restricted';
+export type EvidenceKind = 'document' | 'test-report' | 'scan' | 'configuration' | 'review' | 'other';
 export type ControlType = 'preventive' | 'detective' | 'corrective' | 'compensating';
 export type ControlCategory =
   | 'identity-access' | 'data-protection' | 'application-network' | 'detection-response'
@@ -69,6 +74,8 @@ export interface ThreatModelInput {
   assumptions?: string | null;
   exclusions?: string | null;
   thresholds?: RiskThreshold[];
+  /** Absent keeps the stored value. */
+  aiEnabled?: boolean;
 }
 export interface ThreatModel extends Audit {
   projectId: string;
@@ -80,6 +87,15 @@ export interface ThreatModel extends Audit {
   thresholds: RiskThreshold[];
   layout: Record<string, unknown> | null;
   layoutVersion: number;
+  aiEnabled: boolean;
+}
+
+/** How an architecture entity or control came into existence. */
+export type AiOrigin = 'manual' | 'ai';
+export interface Provenance {
+  origin?: AiOrigin;
+  /** Model id of the LLM when the origin is ai. */
+  source?: string | null;
 }
 
 export interface ZoneInput {
@@ -88,7 +104,7 @@ export interface ZoneInput {
   kind: ZoneKind;
   trustLevel: number;
 }
-export type Zone = Audit & Required<ZoneInput>;
+export type Zone = Audit & Required<ZoneInput> & Provenance;
 
 export interface ArchComponentInput {
   name: string;
@@ -103,7 +119,7 @@ export interface ArchComponentInput {
   linkedFeatureId?: string | null;
   assetIds: string[];
 }
-export interface ArchComponent extends Audit, ArchComponentInput {
+export interface ArchComponent extends Audit, ArchComponentInput, Provenance {
   layer: ArchLayer;
   warnings: Warning[];
 }
@@ -117,8 +133,12 @@ export interface AssetInput {
   integrity?: CiaLevel | null;
   availability?: CiaLevel | null;
   personalData: boolean;
+  classification?: Classification | null;
+  dataLocation?: string | null;
+  retention?: string | null;
+  encryptionAtRest?: TriState;
 }
-export interface Asset extends Audit, AssetInput {
+export interface Asset extends Audit, AssetInput, Provenance {
   componentIds: string[];
   flowIds: string[];
   warnings: Warning[];
@@ -134,6 +154,9 @@ export interface FlowInput {
   authentication: string;
   encrypted: TriState;
   assetIds: string[];
+  dataClassification?: Classification | null;
+  authorizationModel?: string | null;
+  entryPoint?: boolean;
 }
 export interface Crossing {
   crosses: boolean;
@@ -141,7 +164,7 @@ export interface Crossing {
   fromTrust: number | null;
   toTrust: number | null;
 }
-export interface Flow extends Audit, FlowInput {
+export interface Flow extends Audit, FlowInput, Provenance {
   crossing: Crossing;
   warnings: Warning[];
 }
@@ -170,21 +193,35 @@ export interface ThreatInput {
   dismissReason?: string | null;
   inherent?: Rating | null;
   current?: Rating | null;
+  residual?: Rating | null;
+  threatSource?: string | null;
+  detection?: string | null;
+  existingMitigations?: string | null;
+  confidence?: Confidence | null;
   treatment: RiskTreatment;
   riskOwner?: string | null;
   dueDate?: string | null;
   acceptanceRationale?: string | null;
   acceptedBy?: string | null;
+  acceptanceExpires?: string | null;
 }
 export interface Threat extends Audit, ThreatInput {
   displayId: string;
-  origin: 'manual' | 'rule';
+  origin: 'manual' | 'rule' | 'ai';
+  source?: string | null;
   explanation: RuleExplanation | null;
   inherentScore: number | null;
   currentScore: number | null;
   inherentLevel: RiskLevel | null;
   currentLevel: RiskLevel | null;
+  residualScore: number | null;
+  residualLevel: RiskLevel | null;
+  acceptedOn: string | null;
+  /** An accepted threat whose acceptance lapsed reads as open. */
+  effectiveStatus: ThreatStatus;
+  affectedBoundaries: Crossing[];
   flags: ThreatFlag[];
+  residualFacts: string[];
 }
 
 export interface ControlInput {
@@ -195,13 +232,67 @@ export interface ControlInput {
   status: ControlStatus;
   owner?: string | null;
   acceptanceCriteria?: string | null;
+  reviewBy?: string | null;
   componentIds: string[];
   threatIds: string[];
 }
-export interface Control extends Audit, ControlInput {
+export interface Control extends Audit, ControlInput, Provenance {
   displayId: string;
   verifiedAt: string | null;
   securityTestIds: string[];
+  evidenceCount: number;
+  flags: ControlFlag[];
+}
+
+export interface EvidenceInput {
+  kind: EvidenceKind;
+  title: string;
+  link?: string | null;
+  note?: string | null;
+  evidenceDate: string;
+  reviewer?: string | null;
+}
+export interface Evidence extends Audit, EvidenceInput {
+  ownerKind: 'control' | 'test-result';
+  ownerId: string;
+}
+
+export interface BaselineInput { name: string; note?: string | null }
+export interface Baseline {
+  id: string;
+  name: string;
+  note: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  threatCount: number;
+  controlCount: number;
+  schemaVersion: number;
+}
+export interface ThreatModelSnapshot {
+  threatModel: ThreatModel;
+  zones: Zone[];
+  components: ArchComponent[];
+  assets: Asset[];
+  flows: Flow[];
+  threats: Threat[];
+  controls: Control[];
+  securityTests: SecurityTest[];
+  evidence: Evidence[];
+}
+export interface BaselineDetail extends Baseline { snapshot: ThreatModelSnapshot }
+export interface ComparedThreat {
+  id: string;
+  displayId: string;
+  title: string;
+  changes: { field: string; before: string | null; after: string | null }[];
+}
+export interface BaselineComparison {
+  added: ComparedThreat[];
+  removed: ComparedThreat[];
+  changed: ComparedThreat[];
+  controlsChanged: { id: string; displayId: string; before: string; after: string }[];
+  levelsBaseline: Record<string, number>;
+  levelsLive: Record<string, number>;
 }
 
 export interface SecurityTestStep { action: string; expected: string }
@@ -224,7 +315,8 @@ export interface SecurityTestResult {
 }
 export interface SecurityTest extends Audit, SecurityTestInput {
   displayId: string;
-  origin: 'manual' | 'generated';
+  origin: 'manual' | 'generated' | 'ai';
+  source?: string | null;
   templateId: string | null;
   templateVersion: number | null;
   stale: string | null;
@@ -247,6 +339,54 @@ export interface ThreatModelSummary {
   controlsWithoutTest: RefLabel[];
   warningCount: number;
   overdueCount: number;
+  residualMatrix: MatrixCell[];
+  completeness: CompletenessFinding[];
+  expiringAcceptances: RefLabel[];
+  expiredAcceptances: number;
+  verificationOverdue: number;
+}
+export interface CompletenessFinding {
+  code: string;
+  message: string;
+  entityKind: string;
+  entityId: string;
+}
+
+export type TmProposalKind =
+  | 'tm-architecture' | 'tm-threats' | 'tm-ratings' | 'tm-controls' | 'tm-security-tests' | 'tm-review';
+export type ProposalStatus = 'pending' | 'accepted' | 'rejected';
+export interface TmProposalRequest {
+  kind: TmProposalKind;
+  prompt?: string;
+  targetIds?: string[];
+  count?: number;
+  previewContext?: boolean;
+}
+export interface TmContextPreview {
+  context: string;
+  truncated: boolean;
+  provider: string;
+  endpointHost: string | null;
+}
+export interface TmProposal {
+  id: string;
+  threatModelId: string;
+  kind: TmProposalKind;
+  status: ProposalStatus;
+  payload: Record<string, unknown>;
+  rationale: string | null;
+  source: string | null;
+  promptVersion: string | null;
+  targetIds: string[];
+  resultingEntityIds: string[];
+  rejectReason: string | null;
+  createdAt: string;
+}
+export interface TmJob {
+  id: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  proposalIds?: string[];
+  error?: { detail?: string };
 }
 
 export interface SuggestThreatsResult { rulesetVersion: number; created: Threat[]; skipped: number }
@@ -341,6 +481,90 @@ export class ThreatModelApi {
   bulkTestStatus(id: string, ids: string[], status: SecurityTestStatus): Promise<SecurityTest[]> {
     return this.call(this.http.post<SecurityTest[]>(
       `${BASE}/threat-models/${id}/security-tests/bulk-status`, { ids, status }));
+  }
+
+  tmProposals(id: string, status?: ProposalStatus): Promise<TmProposal[]> {
+    const q = status ? `?status=${status}` : '';
+    return this.call(this.http.get<TmProposal[]>(`${BASE}/threat-models/${id}/ai/proposals${q}`));
+  }
+
+  /** Starts a job (202), or returns the context that would be sent when `previewContext` is set. */
+  tmRequest(id: string, req: TmProposalRequest): Promise<TmJob | TmContextPreview> {
+    return this.call(this.http.post<TmJob | TmContextPreview>(`${BASE}/threat-models/${id}/ai/proposals`, req));
+  }
+
+  tmGetProposal(id: string, proposalId: string): Promise<TmProposal> {
+    return this.call(this.http.get<TmProposal>(`${BASE}/threat-models/${id}/ai/proposals/${proposalId}`));
+  }
+
+  tmAccept(id: string, proposalId: string, payload?: unknown): Promise<TmProposal> {
+    return this.call(this.http.post<TmProposal>(
+      `${BASE}/threat-models/${id}/ai/proposals/${proposalId}/accept`, payload === undefined ? {} : { payload }));
+  }
+
+  tmReject(id: string, proposalId: string, reason?: string): Promise<TmProposal> {
+    return this.call(this.http.post<TmProposal>(
+      `${BASE}/threat-models/${id}/ai/proposals/${proposalId}/reject`, reason ? { reason } : {}));
+  }
+
+  getJob(jobId: string): Promise<TmJob> {
+    return this.call(this.http.get<TmJob>(`${BASE}/jobs/${jobId}`));
+  }
+
+  /** Polls a job until it finishes or `timeoutMs` has passed. */
+  async awaitJob(jobId: string, timeoutMs = 180_000, pollMs = 1_200): Promise<TmJob> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const job = await this.getJob(jobId);
+      if (job.status === 'succeeded' || job.status === 'failed') return job;
+      if (Date.now() > deadline) {
+        return { id: jobId, status: 'failed', error: { detail: 'The AI job did not finish in time.' } };
+      }
+      await new Promise(r => setTimeout(r, pollMs));
+    }
+  }
+
+  controlEvidence(id: string, controlId: string): Promise<Evidence[]> {
+    return this.call(this.http.get<Evidence[]>(`${BASE}/threat-models/${id}/controls/${controlId}/evidence`));
+  }
+
+  addControlEvidence(id: string, controlId: string, input: EvidenceInput): Promise<Evidence> {
+    return this.call(this.http.post<Evidence>(`${BASE}/threat-models/${id}/controls/${controlId}/evidence`, input));
+  }
+
+  resultEvidence(id: string, testId: string, resultId: string): Promise<Evidence[]> {
+    return this.call(this.http.get<Evidence[]>(
+      `${BASE}/threat-models/${id}/security-tests/${testId}/results/${resultId}/evidence`));
+  }
+
+  addResultEvidence(id: string, testId: string, resultId: string, input: EvidenceInput): Promise<Evidence> {
+    return this.call(this.http.post<Evidence>(
+      `${BASE}/threat-models/${id}/security-tests/${testId}/results/${resultId}/evidence`, input));
+  }
+
+  deleteEvidence(id: string, evidenceId: string): Promise<void> {
+    return this.call(this.http.delete<void>(`${BASE}/threat-models/${id}/evidence/${evidenceId}`));
+  }
+
+  baselines(id: string): Promise<Baseline[]> {
+    return this.call(this.http.get<Baseline[]>(`${BASE}/threat-models/${id}/baselines`));
+  }
+
+  createBaseline(id: string, input: BaselineInput): Promise<Baseline> {
+    return this.call(this.http.post<Baseline>(`${BASE}/threat-models/${id}/baselines`, input));
+  }
+
+  baseline(id: string, baselineId: string): Promise<BaselineDetail> {
+    return this.call(this.http.get<BaselineDetail>(`${BASE}/threat-models/${id}/baselines/${baselineId}`));
+  }
+
+  deleteBaseline(id: string, baselineId: string): Promise<void> {
+    return this.call(this.http.delete<void>(`${BASE}/threat-models/${id}/baselines/${baselineId}`));
+  }
+
+  compareBaseline(id: string, baselineId: string): Promise<BaselineComparison> {
+    return this.call(this.http.get<BaselineComparison>(
+      `${BASE}/threat-models/${id}/baselines/${baselineId}/compare`));
   }
 
   recordResult(

@@ -6,18 +6,19 @@
 
 use std::collections::{HashMap, HashSet};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use sqlx::postgres::PgRow;
 use sqlx::{PgConnection, Row};
 use tm_domain::threat::arch::Architecture;
+use tm_domain::threat::assurance::{Evidence, EvidenceFields};
 use tm_domain::threat::rules::Candidate;
 use tm_domain::threat::templates::NewSecurityTest;
 use tm_domain::threat::{
-    ArchComponent, ArchComponentFields, Asset, AssetFields, Control, ControlFields, Flow,
-    FlowFields, Rating, SecurityTest, SecurityTestFields, SecurityTestOrigin, SecurityTestOutcome,
-    SecurityTestResult, SecurityTestStatus, SecurityTestStep, TargetKind, TemplateSource, Threat,
-    ThreatFields, ThreatModel, ThreatModelFields, ThreatOrigin, ThreatStatus, ThreatTarget,
-    Thresholds, Zone, ZoneFields,
+    ArchComponent, ArchComponentFields, Asset, AssetFields, Control, ControlFields,
+    EvidenceOwnerKind, Flow, FlowFields, Provenance, Rating, SecurityTest, SecurityTestFields,
+    SecurityTestOrigin, SecurityTestOutcome, SecurityTestResult, SecurityTestStatus,
+    SecurityTestStep, TargetKind, TemplateSource, Threat, ThreatFields, ThreatModel,
+    ThreatModelFields, ThreatOrigin, ThreatStatus, ThreatTarget, Thresholds, Zone, ZoneFields,
 };
 use uuid::Uuid;
 
@@ -36,6 +37,8 @@ pub struct ThreatModelAggregate {
     pub controls: Vec<Control>,
     /// Security tests, by number.
     pub tests: Vec<SecurityTest>,
+    /// Evidence of controls and test results.
+    pub evidence: Vec<Evidence>,
     /// Every rule key ever used.
     pub rule_keys: HashSet<String>,
 }
@@ -60,10 +63,18 @@ fn threat_model(row: &PgRow) -> Result<ThreatModel> {
             objectives: row.try_get("objectives")?,
             assumptions: row.try_get("assumptions")?,
             exclusions: row.try_get("exclusions")?,
+            ai_enabled: row.try_get("ai_enabled")?,
         },
         thresholds: serde_json::from_value::<Thresholds>(thresholds)?,
         layout: row.try_get("layout")?,
         layout_version: row.try_get("layout_version")?,
+    })
+}
+
+fn provenance(row: &PgRow) -> Result<Provenance, sqlx::Error> {
+    Ok(Provenance {
+        origin: parse_col(row, "origin")?,
+        source: row.try_get("ai_source")?,
     })
 }
 
@@ -265,8 +276,8 @@ impl Store {
             .ok_or(StorageError::NotFound("project"))?;
         let row = sqlx::query(
             "INSERT INTO threat_models (id, project_id, tenant_id, name, scope, objectives,
-                 assumptions, exclusions, thresholds)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *",
+                 assumptions, exclusions, thresholds, ai_enabled)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *",
         )
         .bind(Uuid::new_v4())
         .bind(project_id)
@@ -277,6 +288,7 @@ impl Store {
         .bind(&fields.assumptions)
         .bind(&fields.exclusions)
         .bind(serde_json::to_value(&thresholds)?)
+        .bind(fields.ai_enabled)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| unique_violation(e, || "the project already has a threat model".into()))?;
@@ -314,7 +326,8 @@ impl Store {
         let mut conn = self.pool.acquire().await?;
         let row = sqlx::query(
             "UPDATE threat_models SET name = $3, scope = $4, objectives = $5, assumptions = $6,
-                 exclusions = $7, thresholds = $8, version = version + 1, updated_at = now()
+                 exclusions = $7, thresholds = $8, ai_enabled = $9, version = version + 1,
+                 updated_at = now()
              WHERE id = $1 AND version = $2 RETURNING *",
         )
         .bind(id)
@@ -325,6 +338,7 @@ impl Store {
         .bind(&fields.assumptions)
         .bind(&fields.exclusions)
         .bind(serde_json::to_value(&thresholds)?)
+        .bind(fields.ai_enabled)
         .fetch_optional(&mut *conn)
         .await?;
         match row {
@@ -395,6 +409,7 @@ impl Store {
         .map(|r| {
             Ok(Zone {
                 audit: audit(r)?,
+                provenance: provenance(r)?,
                 fields: ZoneFields {
                     name: r.try_get("name")?,
                     description: r.try_get("description")?,
@@ -426,6 +441,7 @@ impl Store {
             let cid: Uuid = r.try_get("id")?;
             Ok(ArchComponent {
                 audit: audit(r)?,
+                provenance: provenance(r)?,
                 fields: ArchComponentFields {
                     name: r.try_get("name")?,
                     description: r.try_get("description")?,
@@ -453,6 +469,7 @@ impl Store {
         .map(|r| {
             Ok(Asset {
                 audit: audit(r)?,
+                provenance: provenance(r)?,
                 fields: AssetFields {
                     name: r.try_get("name")?,
                     description: r.try_get("description")?,
@@ -462,6 +479,10 @@ impl Store {
                     integrity: parse_opt_col(r, "integrity")?,
                     availability: parse_opt_col(r, "availability")?,
                     personal_data: r.try_get("personal_data")?,
+                    classification: parse_opt_col(r, "classification")?,
+                    data_location: r.try_get("data_location")?,
+                    retention: r.try_get("retention")?,
+                    encryption_at_rest: parse_col(r, "encryption_at_rest")?,
                 },
             })
         })
@@ -488,6 +509,7 @@ impl Store {
             let fid: Uuid = r.try_get("id")?;
             Ok(Flow {
                 audit: audit(r)?,
+                provenance: provenance(r)?,
                 fields: FlowFields {
                     source_id: r.try_get("source_id")?,
                     target_id: r.try_get("target_id")?,
@@ -498,6 +520,9 @@ impl Store {
                     authentication: r.try_get("authentication")?,
                     encrypted: parse_col(r, "encrypted")?,
                     asset_ids: flow_assets.remove(&fid).unwrap_or_default(),
+                    data_classification: parse_opt_col(r, "data_classification")?,
+                    authorization_model: r.try_get("authorization_model")?,
+                    entry_point: r.try_get("entry_point")?,
                 },
             })
         })
@@ -574,12 +599,20 @@ impl Store {
                             dismiss_reason: r.try_get("dismiss_reason")?,
                             inherent: rating(r, "inherent_likelihood", "inherent_impact")?,
                             current: rating(r, "current_likelihood", "current_impact")?,
+                            residual: rating(r, "residual_likelihood", "residual_impact")?,
+                            threat_source: r.try_get("threat_source")?,
+                            detection: r.try_get("detection")?,
+                            existing_mitigations: r.try_get("existing_mitigations")?,
+                            confidence: parse_opt_col(r, "confidence")?,
                             treatment: parse_col(r, "treatment")?,
                             risk_owner: r.try_get("risk_owner")?,
                             due_date: r.try_get("due_date")?,
                             acceptance_rationale: r.try_get("acceptance_rationale")?,
                             accepted_by: r.try_get("accepted_by")?,
+                            acceptance_expires: r.try_get("acceptance_expires")?,
                         },
+                        accepted_on: r.try_get("accepted_on")?,
+                        source_model: r.try_get("ai_source")?,
                         origin: parse_col(r, "origin")?,
                         explanation: explanation
                             .map(serde_json::from_value)
@@ -609,6 +642,7 @@ impl Store {
                     let cid: Uuid = r.try_get("id")?;
                     Ok(Control {
                         audit: audit(r)?,
+                        provenance: provenance(r)?,
                         number: r.try_get("number")?,
                         fields: ControlFields {
                             name: r.try_get("name")?,
@@ -618,6 +652,7 @@ impl Store {
                             status: parse_col(r, "status")?,
                             owner: r.try_get("owner")?,
                             acceptance_criteria: r.try_get("acceptance_criteria")?,
+                            review_by: r.try_get("review_by")?,
                             component_ids: control_components.remove(&cid).unwrap_or_default(),
                             threat_ids: control_threats.remove(&cid).unwrap_or_default(),
                         },
@@ -699,9 +734,20 @@ impl Store {
                         origin: parse_col(r, "origin")?,
                         source,
                         last_result: latest.remove(&sid),
+                        source_model: r.try_get("ai_source")?,
                     })
                 })
                 .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+        let evidence = sqlx::query(
+            "SELECT * FROM tm_evidence WHERE threat_model_id = $1 ORDER BY evidence_date DESC, created_at DESC, id",
+        )
+        .bind(id)
+        .fetch_all(&mut *conn)
+        .await?
+        .iter()
+        .map(evidence_row)
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
 
         let rule_keys: Vec<String> =
             sqlx::query_scalar("SELECT rule_key FROM tm_rule_keys WHERE threat_model_id = $1")
@@ -720,6 +766,7 @@ impl Store {
             threats,
             controls,
             tests,
+            evidence,
             rule_keys: rule_keys.into_iter().collect(),
         })
     }
@@ -728,6 +775,13 @@ impl Store {
 
     /// Creates a zone.
     pub async fn create_tm_zone(&self, tm: Uuid, f: &ZoneFields) -> Result<Uuid> {
+        let mut tx = self.pool.begin().await?;
+        let id = Self::insert_zone(&mut tx, tm, f).await?;
+        tx.commit().await?;
+        Ok(id)
+    }
+
+    async fn insert_zone(conn: &mut PgConnection, tm: Uuid, f: &ZoneFields) -> Result<Uuid> {
         let id = Uuid::new_v4();
         sqlx::query(
             "INSERT INTO tm_zones (id, threat_model_id, name, description, kind, trust_level)
@@ -739,7 +793,7 @@ impl Store {
         .bind(&f.description)
         .bind(f.kind.as_str())
         .bind(i16::from(f.trust_level))
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await
         .map_err(|e| unique_violation(e, || format!("a zone named '{}' already exists", f.name)))?;
         Ok(id)
@@ -786,8 +840,18 @@ impl Store {
     /// Creates an architecture component.
     pub async fn create_tm_component(&self, tm: Uuid, f: &ArchComponentFields) -> Result<Uuid> {
         let mut tx = self.pool.begin().await?;
-        check_project_link(&mut tx, tm, f).await?;
-        ensure_in(&mut tx, "tm_assets", tm, &f.asset_ids, "assetIds").await?;
+        let id = Self::insert_component(&mut tx, tm, f).await?;
+        tx.commit().await?;
+        Ok(id)
+    }
+
+    async fn insert_component(
+        conn: &mut PgConnection,
+        tm: Uuid,
+        f: &ArchComponentFields,
+    ) -> Result<Uuid> {
+        check_project_link(conn, tm, f).await?;
+        ensure_in(conn, "tm_assets", tm, &f.asset_ids, "assetIds").await?;
         let id = Uuid::new_v4();
         sqlx::query(
             "INSERT INTO tm_components (id, threat_model_id, name, description, component_type,
@@ -807,7 +871,7 @@ impl Store {
         .bind(f.zone_id)
         .bind(f.linked_component_id)
         .bind(f.linked_feature_id)
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await
         .map_err(|e| {
             unique_violation(e, || {
@@ -815,7 +879,7 @@ impl Store {
             })
         })?;
         replace_links(
-            &mut tx,
+            conn,
             "tm_component_assets",
             "component_id",
             "asset_id",
@@ -823,7 +887,6 @@ impl Store {
             &f.asset_ids,
         )
         .await?;
-        tx.commit().await?;
         Ok(id)
     }
 
@@ -893,11 +956,19 @@ impl Store {
 
     /// Creates an asset.
     pub async fn create_tm_asset(&self, tm: Uuid, f: &AssetFields) -> Result<Uuid> {
+        let mut tx = self.pool.begin().await?;
+        let id = Self::insert_asset(&mut tx, tm, f).await?;
+        tx.commit().await?;
+        Ok(id)
+    }
+
+    async fn insert_asset(conn: &mut PgConnection, tm: Uuid, f: &AssetFields) -> Result<Uuid> {
         let id = Uuid::new_v4();
         sqlx::query(
             "INSERT INTO tm_assets (id, threat_model_id, name, description, category, owner,
-                 confidentiality, integrity, availability, personal_data)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+                 confidentiality, integrity, availability, personal_data, classification,
+                 data_location, retention, encryption_at_rest)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
         )
         .bind(id)
         .bind(tm)
@@ -909,7 +980,11 @@ impl Store {
         .bind(f.integrity.map(|c| c.as_str()))
         .bind(f.availability.map(|c| c.as_str()))
         .bind(f.personal_data)
-        .execute(&self.pool)
+        .bind(f.classification.map(|c| c.as_str()))
+        .bind(&f.data_location)
+        .bind(&f.retention)
+        .bind(f.encryption_at_rest.as_str())
+        .execute(&mut *conn)
         .await
         .map_err(|e| {
             unique_violation(e, || format!("an asset named '{}' already exists", f.name))
@@ -929,6 +1004,8 @@ impl Store {
         let done = sqlx::query(
             "UPDATE tm_assets SET name = $4, description = $5, category = $6, owner = $7,
                  confidentiality = $8, integrity = $9, availability = $10, personal_data = $11,
+                 classification = $12, data_location = $13, retention = $14,
+                 encryption_at_rest = $15,
                  version = version + 1, updated_at = now()
              WHERE id = $1 AND threat_model_id = $2 AND version = $3",
         )
@@ -943,6 +1020,10 @@ impl Store {
         .bind(f.integrity.map(|c| c.as_str()))
         .bind(f.availability.map(|c| c.as_str()))
         .bind(f.personal_data)
+        .bind(f.classification.map(|c| c.as_str()))
+        .bind(&f.data_location)
+        .bind(&f.retention)
+        .bind(f.encryption_at_rest.as_str())
         .execute(&mut *conn)
         .await
         .map_err(|e| {
@@ -971,12 +1052,19 @@ impl Store {
     /// Creates a data flow.
     pub async fn create_tm_flow(&self, tm: Uuid, f: &FlowFields) -> Result<Uuid> {
         let mut tx = self.pool.begin().await?;
-        Self::check_flow(&mut tx, tm, f).await?;
+        let id = Self::insert_flow(&mut tx, tm, f).await?;
+        tx.commit().await?;
+        Ok(id)
+    }
+
+    async fn insert_flow(conn: &mut PgConnection, tm: Uuid, f: &FlowFields) -> Result<Uuid> {
+        Self::check_flow(conn, tm, f).await?;
         let id = Uuid::new_v4();
         sqlx::query(
             "INSERT INTO tm_flows (id, threat_model_id, source_id, target_id, relationship, label,
-                 protocol, bidirectional, authentication, encrypted)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+                 protocol, bidirectional, authentication, encrypted, data_classification,
+                 authorization_model, entry_point)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
         )
         .bind(id)
         .bind(tm)
@@ -988,10 +1076,13 @@ impl Store {
         .bind(f.bidirectional)
         .bind(&f.authentication)
         .bind(f.encrypted.as_str())
-        .execute(&mut *tx)
+        .bind(f.data_classification.map(|c| c.as_str()))
+        .bind(&f.authorization_model)
+        .bind(f.entry_point)
+        .execute(&mut *conn)
         .await?;
         replace_links(
-            &mut tx,
+            conn,
             "tm_flow_assets",
             "flow_id",
             "asset_id",
@@ -999,7 +1090,6 @@ impl Store {
             &f.asset_ids,
         )
         .await?;
-        tx.commit().await?;
         Ok(id)
     }
 
@@ -1016,6 +1106,7 @@ impl Store {
         let done = sqlx::query(
             "UPDATE tm_flows SET source_id = $4, target_id = $5, relationship = $6, label = $7,
                  protocol = $8, bidirectional = $9, authentication = $10, encrypted = $11,
+                 data_classification = $12, authorization_model = $13, entry_point = $14,
                  version = version + 1, updated_at = now()
              WHERE id = $1 AND threat_model_id = $2 AND version = $3",
         )
@@ -1030,6 +1121,9 @@ impl Store {
         .bind(f.bidirectional)
         .bind(&f.authentication)
         .bind(f.encrypted.as_str())
+        .bind(f.data_classification.map(|c| c.as_str()))
+        .bind(&f.authorization_model)
+        .bind(f.entry_point)
         .execute(&mut *tx)
         .await?;
         if done.rows_affected() == 0 {
@@ -1123,18 +1217,22 @@ impl Store {
         f: &ThreatFields,
         origin: ThreatOrigin,
         explanation: Option<serde_json::Value>,
+        accepted_on: Option<NaiveDate>,
     ) -> Result<Uuid> {
         let number = next_number(conn, tm, "next_threat_no").await?;
         let id = Uuid::new_v4();
         let (il, ii) = rating_parts(f.inherent);
         let (cl, ci) = rating_parts(f.current);
+        let (rl, ri) = rating_parts(f.residual);
         sqlx::query(
             "INSERT INTO tm_threats (id, threat_model_id, number, title, category, scenario,
                  attacker_objective, preconditions, consequences, status, dismiss_reason, origin,
                  explanation, inherent_likelihood, inherent_impact, current_likelihood,
-                 current_impact, treatment, risk_owner, due_date, acceptance_rationale, accepted_by)
+                 current_impact, treatment, risk_owner, due_date, acceptance_rationale, accepted_by,
+                 residual_likelihood, residual_impact, threat_source, detection,
+                 existing_mitigations, confidence, acceptance_expires, accepted_on)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-                 $18, $19, $20, $21, $22)",
+                 $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)",
         )
         .bind(id)
         .bind(tm)
@@ -1158,6 +1256,14 @@ impl Store {
         .bind(f.due_date)
         .bind(&f.acceptance_rationale)
         .bind(&f.accepted_by)
+        .bind(rl)
+        .bind(ri)
+        .bind(&f.threat_source)
+        .bind(&f.detection)
+        .bind(&f.existing_mitigations)
+        .bind(f.confidence.map(|c| c.as_str()))
+        .bind(f.acceptance_expires)
+        .bind(accepted_on)
         .execute(&mut *conn)
         .await?;
         Self::write_threat_links(conn, id, f).await?;
@@ -1165,10 +1271,16 @@ impl Store {
     }
 
     /// Creates a manual threat (fields already checked by the domain).
-    pub async fn create_tm_threat(&self, tm: Uuid, f: &ThreatFields) -> Result<Uuid> {
+    pub async fn create_tm_threat(
+        &self,
+        tm: Uuid,
+        f: &ThreatFields,
+        accepted_on: Option<NaiveDate>,
+    ) -> Result<Uuid> {
         let mut tx = self.pool.begin().await?;
         Self::check_threat_links(&mut tx, tm, f).await?;
-        let id = Self::insert_threat(&mut tx, tm, f, ThreatOrigin::Manual, None).await?;
+        let id =
+            Self::insert_threat(&mut tx, tm, f, ThreatOrigin::Manual, None, accepted_on).await?;
         tx.commit().await?;
         Ok(id)
     }
@@ -1196,11 +1308,17 @@ impl Store {
                 dismiss_reason: None,
                 inherent: None,
                 current: None,
+                residual: None,
+                threat_source: None,
+                detection: None,
+                existing_mitigations: None,
+                confidence: None,
                 treatment: tm_domain::threat::RiskTreatment::Undecided,
                 risk_owner: None,
                 due_date: None,
                 acceptance_rationale: None,
                 accepted_by: None,
+                acceptance_expires: None,
             };
             let id = Self::insert_threat(
                 &mut tx,
@@ -1208,6 +1326,7 @@ impl Store {
                 &fields,
                 ThreatOrigin::Rule,
                 Some(serde_json::to_value(&c.explanation)?),
+                None,
             )
             .await?;
             let inserted = sqlx::query(
@@ -1240,17 +1359,22 @@ impl Store {
         id: Uuid,
         version: i32,
         f: &ThreatFields,
+        accepted_on: Option<NaiveDate>,
     ) -> Result<()> {
         let mut tx = self.pool.begin().await?;
         Self::check_threat_links(&mut tx, tm, f).await?;
         let (il, ii) = rating_parts(f.inherent);
         let (cl, ci) = rating_parts(f.current);
+        let (rl, ri) = rating_parts(f.residual);
         let done = sqlx::query(
             "UPDATE tm_threats SET title = $4, category = $5, scenario = $6, attacker_objective = $7,
                  preconditions = $8, consequences = $9, status = $10, dismiss_reason = $11,
                  inherent_likelihood = $12, inherent_impact = $13, current_likelihood = $14,
                  current_impact = $15, treatment = $16, risk_owner = $17, due_date = $18,
                  acceptance_rationale = $19, accepted_by = $20,
+                 residual_likelihood = $21, residual_impact = $22, threat_source = $23,
+                 detection = $24, existing_mitigations = $25, confidence = $26,
+                 acceptance_expires = $27, accepted_on = $28,
                  version = version + 1, updated_at = now()
              WHERE id = $1 AND threat_model_id = $2 AND version = $3",
         )
@@ -1274,6 +1398,14 @@ impl Store {
         .bind(f.due_date)
         .bind(&f.acceptance_rationale)
         .bind(&f.accepted_by)
+        .bind(rl)
+        .bind(ri)
+        .bind(&f.threat_source)
+        .bind(&f.detection)
+        .bind(&f.existing_mitigations)
+        .bind(f.confidence.map(|c| c.as_str()))
+        .bind(f.acceptance_expires)
+        .bind(accepted_on)
         .execute(&mut *tx)
         .await?;
         if done.rows_affected() == 0 {
@@ -1356,13 +1488,19 @@ impl Store {
     /// Creates a control.
     pub async fn create_tm_control(&self, tm: Uuid, f: &ControlFields) -> Result<Uuid> {
         let mut tx = self.pool.begin().await?;
-        Self::check_control(&mut tx, tm, f).await?;
-        let number = next_number(&mut tx, tm, "next_control_no").await?;
+        let id = Self::insert_control(&mut tx, tm, f).await?;
+        tx.commit().await?;
+        Ok(id)
+    }
+
+    async fn insert_control(conn: &mut PgConnection, tm: Uuid, f: &ControlFields) -> Result<Uuid> {
+        Self::check_control(conn, tm, f).await?;
+        let number = next_number(conn, tm, "next_control_no").await?;
         let id = Uuid::new_v4();
         sqlx::query(
             "INSERT INTO tm_controls (id, threat_model_id, number, name, description, control_type,
-                 category, status, owner, acceptance_criteria, verified_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                 category, status, owner, acceptance_criteria, review_by, verified_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
                  CASE WHEN $8 = 'verified' THEN now() END)",
         )
         .bind(id)
@@ -1375,10 +1513,10 @@ impl Store {
         .bind(f.status.as_str())
         .bind(&f.owner)
         .bind(&f.acceptance_criteria)
-        .execute(&mut *tx)
+        .bind(f.review_by)
+        .execute(&mut *conn)
         .await?;
-        Self::write_control(&mut tx, id, f).await?;
-        tx.commit().await?;
+        Self::write_control(conn, id, f).await?;
         Ok(id)
     }
 
@@ -1394,7 +1532,7 @@ impl Store {
         Self::check_control(&mut tx, tm, f).await?;
         let done = sqlx::query(
             "UPDATE tm_controls SET name = $4, description = $5, control_type = $6, category = $7,
-                 status = $8, owner = $9, acceptance_criteria = $10,
+                 status = $8, owner = $9, acceptance_criteria = $10, review_by = $11,
                  verified_at = CASE WHEN $8 = 'verified' THEN COALESCE(verified_at, now()) END,
                  version = version + 1, updated_at = now()
              WHERE id = $1 AND threat_model_id = $2 AND version = $3",
@@ -1409,6 +1547,7 @@ impl Store {
         .bind(f.status.as_str())
         .bind(&f.owner)
         .bind(&f.acceptance_criteria)
+        .bind(f.review_by)
         .execute(&mut *tx)
         .await?;
         if done.rows_affected() == 0 {
@@ -1681,4 +1820,808 @@ fn test_result(r: &PgRow) -> Result<SecurityTestResult, sqlx::Error> {
         note: r.try_get("note")?,
         executed_at: r.try_get("executed_at")?,
     })
+}
+
+fn evidence_row(r: &PgRow) -> Result<Evidence, sqlx::Error> {
+    let control: Option<Uuid> = r.try_get("control_id")?;
+    let result: Option<Uuid> = r.try_get("result_id")?;
+    let (owner_kind, owner_id) = match (control, result) {
+        (Some(c), _) => (EvidenceOwnerKind::Control, c),
+        (None, Some(x)) => (EvidenceOwnerKind::TestResult, x),
+        (None, None) => return Err(sqlx::Error::Decode("evidence without owner".into())),
+    };
+    Ok(Evidence {
+        audit: audit(r)?,
+        owner_kind,
+        owner_id,
+        fields: EvidenceFields {
+            kind: parse_col(r, "kind")?,
+            title: r.try_get("title")?,
+            link: r.try_get("link")?,
+            note: r.try_get("note")?,
+            evidence_date: r.try_get("evidence_date")?,
+            reviewer: r.try_get("reviewer")?,
+        },
+    })
+}
+
+/// What evidence is attached to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvidenceOwner {
+    /// A security control.
+    Control(Uuid),
+    /// A recorded security test result of the given test.
+    TestResult {
+        /// The test.
+        test_id: Uuid,
+        /// The result.
+        result_id: Uuid,
+    },
+}
+
+/// A stored baseline without its snapshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BaselineMeta {
+    /// Id.
+    pub id: Uuid,
+    /// Unique name within the threat model.
+    pub name: String,
+    /// Note.
+    pub note: Option<String>,
+    /// Who created it.
+    pub created_by: Option<String>,
+    /// When.
+    pub created_at: DateTime<Utc>,
+    /// Version of the snapshot format.
+    pub schema_version: i32,
+    /// Threats in the snapshot.
+    pub threat_count: i32,
+    /// Controls in the snapshot.
+    pub control_count: i32,
+}
+
+/// A new baseline.
+#[derive(Debug, Clone)]
+pub struct NewBaseline {
+    /// Name, unique within the threat model.
+    pub name: String,
+    /// Note.
+    pub note: Option<String>,
+    /// Creator.
+    pub created_by: Option<String>,
+    /// Snapshot format version.
+    pub schema_version: i32,
+    /// Threats in the snapshot.
+    pub threat_count: i32,
+    /// Controls in the snapshot.
+    pub control_count: i32,
+    /// The snapshot.
+    pub snapshot: serde_json::Value,
+}
+
+/// Most baselines one threat model may hold.
+pub const MAX_BASELINES: i64 = 50;
+
+fn baseline_meta(r: &PgRow) -> Result<BaselineMeta, sqlx::Error> {
+    Ok(BaselineMeta {
+        id: r.try_get("id")?,
+        name: r.try_get("name")?,
+        note: r.try_get("note")?,
+        created_by: r.try_get("created_by")?,
+        created_at: r.try_get("created_at")?,
+        schema_version: r.try_get("schema_version")?,
+        threat_count: r.try_get("threat_count")?,
+        control_count: r.try_get("control_count")?,
+    })
+}
+
+impl Store {
+    async fn evidence_owner_column(
+        conn: &mut PgConnection,
+        tm: Uuid,
+        owner: EvidenceOwner,
+    ) -> Result<(Option<Uuid>, Option<Uuid>)> {
+        match owner {
+            EvidenceOwner::Control(id) => {
+                ensure_in(conn, "tm_controls", tm, &[id], "id")
+                    .await
+                    .map_err(|_| StorageError::NotFound("control"))?;
+                Ok((Some(id), None))
+            }
+            EvidenceOwner::TestResult { test_id, result_id } => {
+                ensure_in(conn, "security_tests", tm, &[test_id], "id")
+                    .await
+                    .map_err(|_| StorageError::NotFound("security test"))?;
+                let found: Option<Uuid> = sqlx::query_scalar(
+                    "SELECT id FROM security_test_results WHERE id = $1 AND security_test_id = $2",
+                )
+                .bind(result_id)
+                .bind(test_id)
+                .fetch_optional(&mut *conn)
+                .await?;
+                found.ok_or(StorageError::NotFound("result"))?;
+                Ok((None, Some(result_id)))
+            }
+        }
+    }
+
+    /// Lists the evidence of a control or a result, newest first.
+    pub async fn list_evidence(&self, tm: Uuid, owner: EvidenceOwner) -> Result<Vec<Evidence>> {
+        let mut conn = self.pool.acquire().await?;
+        let (control, result) = Self::evidence_owner_column(&mut conn, tm, owner).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM tm_evidence
+             WHERE threat_model_id = $1 AND control_id IS NOT DISTINCT FROM $2
+               AND result_id IS NOT DISTINCT FROM $3
+             ORDER BY evidence_date DESC, created_at DESC, id",
+        )
+        .bind(tm)
+        .bind(control)
+        .bind(result)
+        .fetch_all(&mut *conn)
+        .await?;
+        Ok(rows.iter().map(evidence_row).collect::<Result<_, _>>()?)
+    }
+
+    /// Adds evidence (fields already checked by the domain).
+    pub async fn add_evidence(
+        &self,
+        tm: Uuid,
+        owner: EvidenceOwner,
+        f: &EvidenceFields,
+    ) -> Result<Evidence> {
+        let mut tx = self.pool.begin().await?;
+        let (control, result) = Self::evidence_owner_column(&mut tx, tm, owner).await?;
+        let row = sqlx::query(
+            "INSERT INTO tm_evidence (id, threat_model_id, control_id, result_id, kind, title,
+                 link, note, evidence_date, reviewer)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *",
+        )
+        .bind(Uuid::new_v4())
+        .bind(tm)
+        .bind(control)
+        .bind(result)
+        .bind(f.kind.as_str())
+        .bind(&f.title)
+        .bind(f.link.as_deref().filter(|v| !v.trim().is_empty()))
+        .bind(f.note.as_deref().filter(|v| !v.trim().is_empty()))
+        .bind(f.evidence_date)
+        .bind(&f.reviewer)
+        .fetch_one(&mut *tx)
+        .await?;
+        let e = evidence_row(&row)?;
+        tx.commit().await?;
+        Ok(e)
+    }
+
+    /// Number of evidence records of a control.
+    pub async fn control_evidence_count(&self, tm: Uuid, control: Uuid) -> Result<usize> {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM tm_evidence WHERE threat_model_id = $1 AND control_id = $2",
+        )
+        .bind(tm)
+        .bind(control)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(usize::try_from(n).unwrap_or(0))
+    }
+
+    /// Deletes evidence. A verified control left without evidence becomes
+    /// implemented in the same transaction; returns that control's id.
+    pub async fn delete_evidence(&self, tm: Uuid, id: Uuid) -> Result<Option<Uuid>> {
+        let mut tx = self.pool.begin().await?;
+        let row = sqlx::query(
+            "DELETE FROM tm_evidence WHERE id = $1 AND threat_model_id = $2 RETURNING control_id",
+        )
+        .bind(id)
+        .bind(tm)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(StorageError::NotFound("evidence"))?;
+        let control: Option<Uuid> = row.try_get("control_id")?;
+        let mut downgraded = None;
+        if let Some(c) = control {
+            let remaining: i64 =
+                sqlx::query_scalar("SELECT count(*) FROM tm_evidence WHERE control_id = $1")
+                    .bind(c)
+                    .fetch_one(&mut *tx)
+                    .await?;
+            if remaining == 0 {
+                let done = sqlx::query(
+                    "UPDATE tm_controls SET status = 'implemented', verified_at = NULL,
+                         version = version + 1, updated_at = now()
+                     WHERE id = $1 AND status = 'verified'",
+                )
+                .bind(c)
+                .execute(&mut *tx)
+                .await?;
+                if done.rows_affected() > 0 {
+                    downgraded = Some(c);
+                }
+            }
+        }
+        tx.commit().await?;
+        Ok(downgraded)
+    }
+
+    /// Creates a baseline; names are unique and at most [`MAX_BASELINES`] exist.
+    pub async fn create_baseline(&self, tm: Uuid, b: NewBaseline) -> Result<BaselineMeta> {
+        let mut tx = self.pool.begin().await?;
+        // Serialise concurrent creates of one threat model so the cap holds.
+        sqlx::query("SELECT id FROM threat_models WHERE id = $1 FOR UPDATE")
+            .bind(tm)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(StorageError::NotFound("threat model"))?;
+        let n: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM tm_baselines WHERE threat_model_id = $1")
+                .bind(tm)
+                .fetch_one(&mut *tx)
+                .await?;
+        if n >= MAX_BASELINES {
+            return Err(StorageError::Invalid(format!(
+                "baselines: at most {MAX_BASELINES} per threat model; delete one first"
+            )));
+        }
+        let row = sqlx::query(
+            "INSERT INTO tm_baselines (id, threat_model_id, name, note, created_by,
+                 schema_version, threat_count, control_count, snapshot)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             RETURNING id, name, note, created_by, created_at, schema_version, threat_count,
+                 control_count",
+        )
+        .bind(Uuid::new_v4())
+        .bind(tm)
+        .bind(&b.name)
+        .bind(&b.note)
+        .bind(&b.created_by)
+        .bind(b.schema_version)
+        .bind(b.threat_count)
+        .bind(b.control_count)
+        .bind(&b.snapshot)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| {
+            unique_violation(e, || {
+                format!("a baseline named '{}' already exists", b.name)
+            })
+        })?;
+        let meta = baseline_meta(&row)?;
+        tx.commit().await?;
+        Ok(meta)
+    }
+
+    /// Baselines of a threat model, newest first, without snapshots.
+    pub async fn list_baselines(&self, tm: Uuid) -> Result<Vec<BaselineMeta>> {
+        let rows = sqlx::query(
+            "SELECT id, name, note, created_by, created_at, schema_version, threat_count,
+                 control_count
+             FROM tm_baselines WHERE threat_model_id = $1 ORDER BY created_at DESC, id",
+        )
+        .bind(tm)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.iter().map(baseline_meta).collect::<Result<_, _>>()?)
+    }
+
+    /// A baseline with its snapshot.
+    pub async fn get_baseline(
+        &self,
+        tm: Uuid,
+        id: Uuid,
+    ) -> Result<(BaselineMeta, serde_json::Value)> {
+        let row = sqlx::query("SELECT * FROM tm_baselines WHERE id = $1 AND threat_model_id = $2")
+            .bind(id)
+            .bind(tm)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or(StorageError::NotFound("baseline"))?;
+        Ok((baseline_meta(&row)?, row.try_get("snapshot")?))
+    }
+
+    /// Deletes a baseline.
+    pub async fn delete_baseline(&self, tm: Uuid, id: Uuid) -> Result<()> {
+        let done = sqlx::query("DELETE FROM tm_baselines WHERE id = $1 AND threat_model_id = $2")
+            .bind(id)
+            .bind(tm)
+            .execute(&self.pool)
+            .await?;
+        if done.rows_affected() == 0 {
+            return Err(StorageError::NotFound("baseline"));
+        }
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AI proposals of a threat model (ADR 0013)
+// ---------------------------------------------------------------------------
+
+/// A stored proposal.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TmProposalRow {
+    /// Id.
+    pub id: Uuid,
+    /// Threat model.
+    pub threat_model_id: Uuid,
+    /// `tm-threats`, …
+    pub kind: String,
+    /// `pending`, `accepted` or `rejected`.
+    pub status: String,
+    /// Kind-specific payload.
+    pub payload: serde_json::Value,
+    /// Why the model proposed it.
+    pub rationale: Option<String>,
+    /// Model id of the LLM.
+    pub source: Option<String>,
+    /// Version of the prompt templates.
+    pub prompt_version: Option<String>,
+    /// Entities the request was about.
+    pub target_ids: Vec<Uuid>,
+    /// Entities created or changed by accepting it.
+    pub resulting_entity_ids: Vec<Uuid>,
+    /// Why it was rejected.
+    pub reject_reason: Option<String>,
+    /// When it was made.
+    pub created_at: DateTime<Utc>,
+}
+
+/// A proposal about to be stored.
+#[derive(Debug, Clone)]
+pub struct NewTmProposal {
+    /// Kind.
+    pub kind: String,
+    /// Payload.
+    pub payload: serde_json::Value,
+    /// Rationale.
+    pub rationale: Option<String>,
+    /// Model id.
+    pub source: Option<String>,
+    /// Prompt version.
+    pub prompt_version: Option<String>,
+    /// Targets of the request.
+    pub target_ids: Vec<Uuid>,
+}
+
+/// A component of an accepted architecture proposal; zone and assets by name.
+#[derive(Debug, Clone)]
+pub struct NewComponent {
+    /// Fields, with no zone and no assets yet.
+    pub fields: ArchComponentFields,
+    /// Zone name.
+    pub zone: Option<String>,
+    /// Asset names.
+    pub assets: Vec<String>,
+}
+
+/// A flow of an accepted architecture proposal; ends and assets by name.
+#[derive(Debug, Clone)]
+pub struct NewFlow {
+    /// Fields, with no ends and no assets yet.
+    pub fields: FlowFields,
+    /// Source component name.
+    pub source: String,
+    /// Target component name.
+    pub target: String,
+    /// Asset names.
+    pub assets: Vec<String>,
+}
+
+/// An accepted architecture proposal.
+#[derive(Debug, Clone, Default)]
+pub struct NewArchitecture {
+    /// Zones.
+    pub zones: Vec<ZoneFields>,
+    /// Assets.
+    pub assets: Vec<AssetFields>,
+    /// Components.
+    pub components: Vec<NewComponent>,
+    /// Flows.
+    pub flows: Vec<NewFlow>,
+}
+
+/// What accepting a controls proposal does.
+#[derive(Debug, Clone)]
+pub enum ControlApply {
+    /// Create a planned control.
+    New(ControlFields),
+    /// Link an existing control to threats.
+    Link {
+        /// The control.
+        control_id: Uuid,
+        /// Threats to link it to.
+        threat_ids: Vec<Uuid>,
+    },
+}
+
+fn proposal_row(r: &PgRow) -> Result<TmProposalRow, sqlx::Error> {
+    Ok(TmProposalRow {
+        id: r.try_get("id")?,
+        threat_model_id: r.try_get("threat_model_id")?,
+        kind: r.try_get("kind")?,
+        status: r.try_get("status")?,
+        payload: r.try_get("payload")?,
+        rationale: r.try_get("rationale")?,
+        source: r.try_get("source")?,
+        prompt_version: r.try_get("prompt_version")?,
+        target_ids: r.try_get("target_ids")?,
+        resulting_entity_ids: r.try_get("resulting_entity_ids")?,
+        reject_reason: r.try_get("reject_reason")?,
+        created_at: r.try_get("created_at")?,
+    })
+}
+
+fn name_key(s: &str) -> String {
+    s.trim().to_lowercase()
+}
+
+/// Marks a row as created by AI.
+async fn mark_ai(conn: &mut PgConnection, table: &str, id: Uuid, model: &str) -> Result<()> {
+    debug_assert!(matches!(
+        table,
+        "tm_zones"
+            | "tm_components"
+            | "tm_assets"
+            | "tm_flows"
+            | "tm_controls"
+            | "tm_threats"
+            | "security_tests"
+    ));
+    let origin_set = if matches!(
+        table,
+        "tm_zones" | "tm_components" | "tm_assets" | "tm_flows" | "tm_controls"
+    ) {
+        "origin = 'ai', "
+    } else {
+        ""
+    };
+    sqlx::query(&format!(
+        "UPDATE {table} SET {origin_set}ai_source = $2 WHERE id = $1"
+    ))
+    .bind(id)
+    .bind(model)
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
+}
+
+async fn names(conn: &mut PgConnection, table: &str, tm: Uuid) -> Result<HashMap<String, Uuid>> {
+    let rows: Vec<(String, Uuid)> = sqlx::query_as(&format!(
+        "SELECT name, id FROM {table} WHERE threat_model_id = $1"
+    ))
+    .bind(tm)
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(rows.into_iter().map(|(n, i)| (name_key(&n), i)).collect())
+}
+
+/// A new name must not match an existing one, ignoring case: references are
+/// by name and have to stay unambiguous.
+fn fresh(map: &HashMap<String, Uuid>, name: &str, what: &str) -> Result<()> {
+    if map.contains_key(&name_key(name)) {
+        return Err(StorageError::Conflict(format!(
+            "a {what} named \"{name}\" already exists"
+        )));
+    }
+    Ok(())
+}
+
+fn resolve(map: &HashMap<String, Uuid>, name: &str, what: &str) -> Result<Uuid> {
+    map.get(&name_key(name)).copied().ok_or_else(|| {
+        StorageError::Invalid(format!(
+            "{what} \"{name}\" does not exist in this threat model"
+        ))
+    })
+}
+
+impl Store {
+    /// Stores pending proposals.
+    pub async fn create_tm_proposals(
+        &self,
+        tm: Uuid,
+        items: Vec<NewTmProposal>,
+    ) -> Result<Vec<TmProposalRow>> {
+        let mut tx = self.pool.begin().await?;
+        let mut out = Vec::with_capacity(items.len());
+        for p in items {
+            let row = sqlx::query(
+                "INSERT INTO tm_proposals (id, threat_model_id, kind, payload, rationale, source,
+                     prompt_version, target_ids)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
+            )
+            .bind(Uuid::new_v4())
+            .bind(tm)
+            .bind(&p.kind)
+            .bind(&p.payload)
+            .bind(&p.rationale)
+            .bind(&p.source)
+            .bind(&p.prompt_version)
+            .bind(&p.target_ids)
+            .fetch_one(&mut *tx)
+            .await?;
+            out.push(proposal_row(&row)?);
+        }
+        tx.commit().await?;
+        Ok(out)
+    }
+
+    /// Proposals of a threat model, newest first.
+    pub async fn list_tm_proposals(
+        &self,
+        tm: Uuid,
+        status: Option<&str>,
+        kind: Option<&str>,
+    ) -> Result<Vec<TmProposalRow>> {
+        let rows = sqlx::query(
+            "SELECT * FROM tm_proposals
+             WHERE threat_model_id = $1 AND ($2::text IS NULL OR status = $2)
+               AND ($3::text IS NULL OR kind = $3)
+             ORDER BY created_at DESC, id",
+        )
+        .bind(tm)
+        .bind(status)
+        .bind(kind)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.iter().map(proposal_row).collect::<Result<_, _>>()?)
+    }
+
+    /// One proposal of a threat model.
+    pub async fn get_tm_proposal(&self, tm: Uuid, id: Uuid) -> Result<TmProposalRow> {
+        let row = sqlx::query("SELECT * FROM tm_proposals WHERE id = $1 AND threat_model_id = $2")
+            .bind(id)
+            .bind(tm)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or(StorageError::NotFound("proposal"))?;
+        Ok(proposal_row(&row)?)
+    }
+
+    /// Rejects a pending proposal; nothing is created.
+    pub async fn reject_tm_proposal(
+        &self,
+        tm: Uuid,
+        id: Uuid,
+        reason: Option<String>,
+    ) -> Result<TmProposalRow> {
+        let mut tx = self.pool.begin().await?;
+        Self::claim_proposal(&mut tx, tm, id).await?;
+        let row = sqlx::query(
+            "UPDATE tm_proposals SET status = 'rejected', reject_reason = $2 WHERE id = $1 RETURNING *",
+        )
+        .bind(id)
+        .bind(reason)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(proposal_row(&row)?)
+    }
+
+    /// Locks a proposal of the threat model; it must still be pending.
+    async fn claim_proposal(conn: &mut PgConnection, tm: Uuid, id: Uuid) -> Result<TmProposalRow> {
+        let row = sqlx::query(
+            "SELECT * FROM tm_proposals WHERE id = $1 AND threat_model_id = $2 FOR UPDATE",
+        )
+        .bind(id)
+        .bind(tm)
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or(StorageError::NotFound("proposal"))?;
+        let p = proposal_row(&row)?;
+        if p.status != "pending" {
+            return Err(StorageError::Conflict(format!(
+                "the proposal is already {}",
+                p.status
+            )));
+        }
+        Ok(p)
+    }
+
+    async fn finish_proposal(
+        conn: &mut PgConnection,
+        id: Uuid,
+        payload: &serde_json::Value,
+        results: &[Uuid],
+    ) -> Result<TmProposalRow> {
+        let row = sqlx::query(
+            "UPDATE tm_proposals SET status = 'accepted', payload = $2, resulting_entity_ids = $3
+             WHERE id = $1 RETURNING *",
+        )
+        .bind(id)
+        .bind(payload)
+        .bind(results)
+        .fetch_one(&mut *conn)
+        .await?;
+        Ok(proposal_row(&row)?)
+    }
+
+    /// Accepts an architecture proposal: creates its zones, assets, components and
+    /// flows in dependency order, in one transaction. References are by name,
+    /// first among the new elements and then among the existing ones.
+    pub async fn apply_tm_architecture(
+        &self,
+        tm: Uuid,
+        id: Uuid,
+        payload: &serde_json::Value,
+        a: NewArchitecture,
+        model: &str,
+    ) -> Result<TmProposalRow> {
+        let mut tx = self.pool.begin().await?;
+        Self::claim_proposal(&mut tx, tm, id).await?;
+        let mut zones = names(&mut tx, "tm_zones", tm).await?;
+        let mut assets = names(&mut tx, "tm_assets", tm).await?;
+        let mut comps = names(&mut tx, "tm_components", tm).await?;
+        let mut results = Vec::new();
+        for z in &a.zones {
+            fresh(&zones, &z.name, "zone")?;
+            let zid = Self::insert_zone(&mut tx, tm, z).await?;
+            mark_ai(&mut tx, "tm_zones", zid, model).await?;
+            zones.insert(name_key(&z.name), zid);
+            results.push(zid);
+        }
+        for x in &a.assets {
+            fresh(&assets, &x.name, "asset")?;
+            let aid = Self::insert_asset(&mut tx, tm, x).await?;
+            mark_ai(&mut tx, "tm_assets", aid, model).await?;
+            assets.insert(name_key(&x.name), aid);
+            results.push(aid);
+        }
+        for c in a.components {
+            fresh(&comps, &c.fields.name, "component")?;
+            let mut f = c.fields;
+            f.zone_id = c
+                .zone
+                .as_deref()
+                .map(|z| resolve(&zones, z, "zone"))
+                .transpose()?;
+            f.asset_ids = c
+                .assets
+                .iter()
+                .map(|n| resolve(&assets, n, "asset"))
+                .collect::<Result<_>>()?;
+            let cid = Self::insert_component(&mut tx, tm, &f).await?;
+            mark_ai(&mut tx, "tm_components", cid, model).await?;
+            comps.insert(name_key(&f.name), cid);
+            results.push(cid);
+        }
+        for fl in a.flows {
+            let mut f = fl.fields;
+            f.source_id = resolve(&comps, &fl.source, "component")?;
+            f.target_id = resolve(&comps, &fl.target, "component")?;
+            f.asset_ids = fl
+                .assets
+                .iter()
+                .map(|n| resolve(&assets, n, "asset"))
+                .collect::<Result<_>>()?;
+            let fid = Self::insert_flow(&mut tx, tm, &f).await?;
+            mark_ai(&mut tx, "tm_flows", fid, model).await?;
+            results.push(fid);
+        }
+        let row = Self::finish_proposal(&mut tx, id, payload, &results).await?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
+    /// Accepts a threat proposal: an open threat with origin AI.
+    pub async fn apply_tm_threat(
+        &self,
+        tm: Uuid,
+        id: Uuid,
+        payload: &serde_json::Value,
+        f: &ThreatFields,
+        model: &str,
+    ) -> Result<TmProposalRow> {
+        let mut tx = self.pool.begin().await?;
+        Self::claim_proposal(&mut tx, tm, id).await?;
+        Self::check_threat_links(&mut tx, tm, f).await?;
+        let tid = Self::insert_threat(&mut tx, tm, f, ThreatOrigin::Ai, None, None).await?;
+        mark_ai(&mut tx, "tm_threats", tid, model).await?;
+        let row = Self::finish_proposal(&mut tx, id, payload, &[tid]).await?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
+    /// Accepts a rating proposal: sets one rating of one threat, nothing else.
+    pub async fn apply_tm_rating(
+        &self,
+        tm: Uuid,
+        id: Uuid,
+        payload: &serde_json::Value,
+        threat_id: Uuid,
+        basis: &str,
+        rating: Rating,
+    ) -> Result<TmProposalRow> {
+        let (l, i) = match basis {
+            "inherent" => ("inherent_likelihood", "inherent_impact"),
+            "current" => ("current_likelihood", "current_impact"),
+            "residual" => ("residual_likelihood", "residual_impact"),
+            other => {
+                return Err(StorageError::Invalid(format!(
+                    "rating: unknown basis {other}"
+                )))
+            }
+        };
+        let mut tx = self.pool.begin().await?;
+        Self::claim_proposal(&mut tx, tm, id).await?;
+        let done = sqlx::query(&format!(
+            "UPDATE tm_threats SET {l} = $3, {i} = $4, version = version + 1, updated_at = now()
+             WHERE id = $1 AND threat_model_id = $2"
+        ))
+        .bind(threat_id)
+        .bind(tm)
+        .bind(i16::from(rating.likelihood))
+        .bind(i16::from(rating.impact))
+        .execute(&mut *tx)
+        .await?;
+        if done.rows_affected() == 0 {
+            return Err(StorageError::Invalid(
+                "threatId: the threat no longer exists in this threat model".into(),
+            ));
+        }
+        let row = Self::finish_proposal(&mut tx, id, payload, &[threat_id]).await?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
+    /// Accepts a control proposal: a planned control, or a link of an existing one.
+    pub async fn apply_tm_control(
+        &self,
+        tm: Uuid,
+        id: Uuid,
+        payload: &serde_json::Value,
+        apply: ControlApply,
+        model: &str,
+    ) -> Result<TmProposalRow> {
+        let mut tx = self.pool.begin().await?;
+        Self::claim_proposal(&mut tx, tm, id).await?;
+        let control_id = match apply {
+            ControlApply::New(f) => {
+                let cid = Self::insert_control(&mut tx, tm, &f).await?;
+                mark_ai(&mut tx, "tm_controls", cid, model).await?;
+                cid
+            }
+            ControlApply::Link {
+                control_id,
+                threat_ids,
+            } => {
+                ensure_in(&mut tx, "tm_controls", tm, &[control_id], "linkControlId").await?;
+                ensure_in(&mut tx, "tm_threats", tm, &threat_ids, "threatIds").await?;
+                for t in threat_ids.iter().collect::<HashSet<_>>() {
+                    sqlx::query(
+                        "INSERT INTO tm_threat_controls (threat_id, control_id, position)
+                         SELECT $1, $2, COALESCE(max(position) + 1, 0)
+                         FROM tm_threat_controls WHERE threat_id = $1
+                         ON CONFLICT DO NOTHING",
+                    )
+                    .bind(t)
+                    .bind(control_id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                control_id
+            }
+        };
+        let row = Self::finish_proposal(&mut tx, id, payload, &[control_id]).await?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
+    /// Accepts a security test proposal: a draft test with origin AI.
+    pub async fn apply_tm_test(
+        &self,
+        tm: Uuid,
+        id: Uuid,
+        payload: &serde_json::Value,
+        f: &SecurityTestFields,
+        model: &str,
+    ) -> Result<TmProposalRow> {
+        let mut tx = self.pool.begin().await?;
+        Self::claim_proposal(&mut tx, tm, id).await?;
+        Self::check_test(&mut tx, tm, f).await?;
+        let sid = Self::insert_test(&mut tx, tm, f, SecurityTestOrigin::Ai, None).await?;
+        mark_ai(&mut tx, "security_tests", sid, model).await?;
+        let row = Self::finish_proposal(&mut tx, id, payload, &[sid]).await?;
+        tx.commit().await?;
+        Ok(row)
+    }
 }

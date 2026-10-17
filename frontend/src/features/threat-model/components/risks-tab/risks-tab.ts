@@ -5,19 +5,25 @@ import { EditorState, orNull } from '../../state/editor-state';
 import { threatInput } from '../../state/inputs';
 import { errorMessage, ThreatModelStore } from '../../state/threat-model.store';
 import {
-  download, IMPACT, label, levelText, LIKELIHOOD, riskRegisterCsv,
+  download, FLAG_TEXT, IMPACT, isRiskFlag, label, levelText, LIKELIHOOD, riskRegisterCsv,
 } from '../../state/threat-model-view';
 import { EditorDrawerComponent } from '../editor-drawer/editor-drawer';
 import { Column, EntityTableComponent } from '../entity-table/entity-table';
 import { Cell, RiskMatrixComponent } from '../risk-matrix/risk-matrix';
 
-type Basis = 'inherent' | 'current';
+type Basis = 'inherent' | 'current' | 'residual';
 interface RiskDraft {
   base: ThreatInput;
   il: number | null; ii: number | null; cl: number | null; ci: number | null;
+  rl: number | null; ri: number | null;
   treatment: RiskTreatment;
   riskOwner: string; dueDate: string; acceptanceRationale: string; acceptedBy: string;
+  acceptanceExpires: string;
 }
+
+const BASIS_TEXT: Record<Basis, string> = {
+  inherent: 'Inherent', current: 'Current', residual: 'Residual',
+};
 
 /** Likelihood × impact ratings, treatment, matrix and register (FR-070, FR-071). */
 @Component({
@@ -36,6 +42,11 @@ export class RisksTabComponent {
   readonly impactNames = IMPACT;
   readonly treatments: RiskTreatment[] = ['undecided', 'mitigate', 'avoid', 'transfer', 'accept'];
   readonly label = label;
+  readonly bases: Basis[] = ['current', 'inherent', 'residual'];
+  readonly basisText = BASIS_TEXT;
+  readonly flagText = FLAG_TEXT;
+  readonly isRiskFlag = isRiskFlag;
+  readonly minExpiry = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
 
   /** Open and accepted threats: the ones a risk register is about. */
   private readonly live = computed(() =>
@@ -44,7 +55,7 @@ export class RisksTabComponent {
   readonly cells = computed<Cell[]>(() => {
     const m = new Map<string, number>();
     for (const t of this.live()) {
-      const r = this.basis() === 'inherent' ? t.inherent : t.current;
+      const r = this.ratingOf(t);
       if (r) m.set(`${r.likelihood}:${r.impact}`, (m.get(`${r.likelihood}:${r.impact}`) ?? 0) + 1);
     }
     return [...m].map(([k, count]) => {
@@ -57,7 +68,7 @@ export class RisksTabComponent {
     const c = this.cell();
     return this.live().filter(t => {
       if (!c) return true;
-      const r = this.basis() === 'inherent' ? t.inherent : t.current;
+      const r = this.ratingOf(t);
       return !!r && r.likelihood === c.likelihood && r.impact === c.impact;
     });
   });
@@ -66,8 +77,10 @@ export class RisksTabComponent {
     { key: 'title', label: 'Threat', text: t => `${t.displayId} ${t.title}` },
     { key: 'inherent', label: 'Inherent', text: t => (t.inherentScore ? `${t.inherentScore} ${levelText(t.inherentLevel)}` : 'Not assessed'), sort: t => t.inherentScore ?? -1 },
     { key: 'current', label: 'Current', text: t => (t.currentScore ? `${t.currentScore} ${levelText(t.currentLevel)}` : 'Not assessed'), sort: t => t.currentScore ?? -1 },
+    { key: 'residual', label: 'Residual', text: t => (t.residualScore ? `${t.residualScore} ${levelText(t.residualLevel)}` : 'Not assessed'), sort: t => t.residualScore ?? -1 },
     { key: 'treatment', label: 'Treatment', text: t => label(t.treatment) },
     { key: 'owner', label: 'Owner', text: t => t.riskOwner ?? '—' },
+    { key: 'flags', label: 'Flags', text: t => t.flags.filter(isRiskFlag).map(f => FLAG_TEXT[f]).join('; ') },
     { key: 'due', label: 'Due', text: t => (t.dueDate ?? '—') + (t.flags.includes('overdue') ? ' ⚠ Overdue' : ''), sort: t => t.dueDate ?? '9999' },
   ]);
 
@@ -76,9 +89,11 @@ export class RisksTabComponent {
       const rating = (l: number | null, i: number | null) => (l && i ? { likelihood: l, impact: i } : null);
       return this.store.save('threats', {
         ...d.base,
-        inherent: rating(d.il, d.ii), current: rating(d.cl, d.ci), treatment: d.treatment,
+        inherent: rating(d.il, d.ii), current: rating(d.cl, d.ci), residual: rating(d.rl, d.ri),
+        treatment: d.treatment,
         riskOwner: orNull(d.riskOwner), dueDate: orNull(d.dueDate),
         acceptanceRationale: orNull(d.acceptanceRationale), acceptedBy: orNull(d.acceptedBy),
+        acceptanceExpires: d.treatment === 'accept' ? orNull(d.acceptanceExpires) : null,
       }, item ?? undefined);
     },
     t => this.store.remove('threats', t.id),
@@ -87,6 +102,11 @@ export class RisksTabComponent {
   // Thresholds editor.
   readonly editingThresholds = signal<RiskThreshold[] | null>(null);
   readonly thresholdError = signal<string | null>(null);
+
+  private ratingOf(t: Threat) {
+    const b = this.basis();
+    return b === 'inherent' ? t.inherent : b === 'residual' ? t.residual : t.current;
+  }
 
   setBasis(b: Basis): void {
     this.basis.set(b);
@@ -103,6 +123,8 @@ export class RisksTabComponent {
       base: threatInput(t),
       il: t.inherent?.likelihood ?? null, ii: t.inherent?.impact ?? null,
       cl: t.current?.likelihood ?? null, ci: t.current?.impact ?? null,
+      rl: t.residual?.likelihood ?? null, ri: t.residual?.impact ?? null,
+      acceptanceExpires: t.acceptanceExpires ?? '',
       treatment: t.treatment, riskOwner: t.riskOwner ?? '', dueDate: t.dueDate ?? '',
       acceptanceRationale: t.acceptanceRationale ?? '', acceptedBy: t.acceptedBy ?? '',
     });

@@ -3,7 +3,7 @@ title: Threat modeling
 type: specification
 status: draft
 tags: [threat-modeling, security, risk, stride]
-related: [02-domain-model.md, 03-requirements.md, 05-api.md, 06-ui.md, ../adr/0011-threat-model-entities-and-security-tests.md]
+related: [02-domain-model.md, 03-requirements.md, 05-api.md, 06-ui.md, ../adr/0011-threat-model-entities-and-security-tests.md, ../adr/0012-residual-risk-and-baselines.md]
 ---
 
 # Threat modeling
@@ -170,3 +170,44 @@ Facts name entities and attribute values, e.g. "Web app (Internet, trust 0) → 
 ## Security tests are a separate list
 
 Security tests belong to the threat model. They are not feature test cases: they do not appear on the Test Cases page, in coverage, traceability, the project export, or test result import. Results are recorded by hand. CSV and Gherkin export of the filtered list happen in the browser; each Gherkin scenario is tagged `@sec-<id>` and with its threats' display ids (`@THR-1`), has one `Given` per precondition and a `When`/`Then` per step.
+
+## Assurance (residual risk, evidence, acceptance, baselines)
+
+Added by the change `add-tra-assurance`. All new fields are optional on input.
+
+### Residual risk
+A threat has a third rating, `residual`, with the same scale, score and thresholds as `inherent` and `current`. It means the expected risk once planned measures are implemented and verified. It is entered by the analyst and **never derived** (ADR 0012). Two more threat flags are computed on read:
+
+| Flag | When |
+| --- | --- |
+| `residual-above-current` | both set and residual score above current score |
+| `unsupported-residual` | both set, residual score below current score, and no linked control is verified |
+
+### Evidence
+Evidence is a reference, not a file: `kind` (document, test-report, scan, configuration, review, other), `title`, `link` and/or `note` (at least one), `evidenceDate`, `reviewer`. It belongs to a control or to a security test result (`ownerKind`). A control may be set to `verified` only if it has evidence (`422` otherwise); `verifiedAt` is then set. Deleting the last evidence of a verified control sets it to `implemented`. Controls verified before this change keep their status and read the flag `verified-without-evidence`.
+
+Control flags: `verification-overdue` (verified, `reviewBy` before today UTC) and `verified-without-evidence`.
+
+### Acceptance
+Treatment `accept` needs `acceptanceRationale`, `acceptedBy` and `acceptanceExpires` (after today, at most 3 years ahead); `acceptedOn` is set to today. When the expiry date is before today (UTC) the threat reads `effectiveStatus: open` with the flag `acceptance-expired`; the stored record is kept and nothing is changed automatically. Re-accepting with a new expiry clears the flag. Status filters use `effectiveStatus`.
+
+### Baselines
+A baseline is an immutable JSON snapshot (`schemaVersion` 1) of the threat model: scope, thresholds, zones, components, assets, flows, threats (with ratings, treatment, acceptance), controls, security tests with latest results, evidence and layout. When a baseline is read, scores, levels and effective status are recomputed from the stored ratings, thresholds and today's date; flags and warnings stay as they were when the baseline was taken. Names are unique per threat model, at most 50 baselines. The comparison matches entities by id and reports threats added, removed or changed (status, effective status, the three levels, treatment), controls whose status changed, and threat counts per current level on both sides.
+
+### Detail fields
+- Threat: `threatSource`, `detection`, `existingMitigations`, `confidence` (low, medium, high). `affectedBoundaries` is computed from the threat's targets (the crossing flows it targets, or the crossing flows of a target component).
+- Asset: `classification` (public, internal, confidential, restricted), `dataLocation`, `retention`, `encryptionAtRest` (yes, no, unknown; default unknown).
+- Flow: `dataClassification`, `authorizationModel`, `entryPoint`.
+- Flow warning `CROSSING_SENSITIVE_DATA` ("sensitive data towards less trusted zone"): the flow crosses into a less trusted zone and carries an asset that is confidential or restricted or has personal data.
+
+### Completeness findings
+A list on the summary, not a score: components without owner (`COMPONENT_NO_OWNER`) or zone (`COMPONENT_NO_ZONE`), flows with unknown authentication or encryption, threats without inherent rating (`THREAT_NOT_RATED`) or treatment (`THREAT_NO_TREATMENT`), open threats without owner (`THREAT_NO_OWNER`), verified controls without review-by date or evidence, and expiring (30 days) or expired acceptances.
+
+## AI assistance
+
+Added by the change `add-threat-model-ai-agent`; see [07-ai-integration.md](07-ai-integration.md#threat-model-assistant).
+
+- `aiEnabled` on the threat model (default false).
+- `origin` `ai` (and `source`, the model id) on threats, security tests, controls, zones, components, assets and flows created from an accepted proposal. AI-created threats start `open`: accepting the proposal is the confirmation, so they skip the candidate step of rule suggestions.
+- AI-created security tests start as `draft`.
+- Proposals are stored in `tm_proposals` and never counted in summaries, matrices or exports.

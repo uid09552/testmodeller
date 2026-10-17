@@ -211,6 +211,10 @@ const CROSSING_ENCRYPTION: Warning = Warning {
     code: "CROSSING_ENCRYPTION_UNDOCUMENTED",
     message: "encryption in transit not documented",
 };
+const CROSSING_SENSITIVE: Warning = Warning {
+    code: "CROSSING_SENSITIVE_DATA",
+    message: "sensitive data towards less trusted zone",
+};
 const ASSET_UNLINKED: Warning = Warning {
     code: "ASSET_UNLINKED",
     message: "not linked to any component or flow",
@@ -252,8 +256,26 @@ pub fn flow_warnings(arch: &Architecture, flow: &Flow) -> Vec<Warning> {
         if flow.fields.encrypted == TriState::Unknown {
             out.push(CROSSING_ENCRYPTION);
         }
+        if crossing(arch, flow).direction == Some(CrossingDirection::IntoLessTrusted)
+            && carries_sensitive_data(arch, flow)
+        {
+            out.push(CROSSING_SENSITIVE);
+        }
     }
     out
+}
+
+/// A flow carries sensitive data when its own classification or that of a
+/// carried asset is confidential or restricted, or a carried asset holds
+/// personal data.
+pub fn carries_sensitive_data(arch: &Architecture, flow: &Flow) -> bool {
+    use super::Classification::{Confidential, Restricted};
+    let sensitive = |c: Option<super::Classification>| matches!(c, Some(Confidential | Restricted));
+    sensitive(flow.fields.data_classification)
+        || flow.fields.asset_ids.iter().any(|id| {
+            arch.asset(*id)
+                .is_some_and(|a| sensitive(a.fields.classification) || a.fields.personal_data)
+        })
 }
 
 /// Warnings of an asset.
@@ -305,6 +327,7 @@ pub fn flow_degree(arch: &Architecture) -> HashMap<Uuid, usize> {
 #[cfg(test)]
 mod tests {
     use super::super::testutil::*;
+    use super::super::Classification;
     use super::*;
 
     fn two_zone_arch(t1: u8, t2: u8) -> (Architecture, Uuid) {
@@ -416,5 +439,38 @@ mod tests {
         );
         assert_eq!(layer(ArchComponentType::HumanUser), ArchLayer::External);
         assert_eq!(layer(ArchComponentType::CicdPipeline), ArchLayer::Platform);
+    }
+
+    #[test]
+    fn sensitive_data_towards_less_trusted_zone_is_warned() {
+        let (mut a, f) = two_zone_arch(3, 1);
+        let asset_id = asset(&mut a, "Records", None, None);
+        a.assets[0].fields.classification = Some(Classification::Restricted);
+        a.flows[0].fields.asset_ids = vec![asset_id];
+        let codes: Vec<_> = flow_warnings(&a, a.flow(f).unwrap())
+            .iter()
+            .map(|w| w.code)
+            .collect();
+        assert!(codes.contains(&"CROSSING_SENSITIVE_DATA"));
+    }
+
+    #[test]
+    fn sensitive_data_towards_more_trusted_zone_is_not_warned() {
+        let (mut a, f) = two_zone_arch(1, 3);
+        let asset_id = asset(&mut a, "Records", None, None);
+        a.assets[0].fields.personal_data = true;
+        a.flows[0].fields.asset_ids = vec![asset_id];
+        let codes: Vec<_> = flow_warnings(&a, a.flow(f).unwrap())
+            .iter()
+            .map(|w| w.code)
+            .collect();
+        assert!(!codes.contains(&"CROSSING_SENSITIVE_DATA"));
+    }
+
+    #[test]
+    fn flow_classification_alone_counts_as_sensitive() {
+        let (mut a, f) = two_zone_arch(3, 0);
+        a.flows[0].fields.data_classification = Some(Classification::Confidential);
+        assert!(carries_sensitive_data(&a, a.flow(f).unwrap()));
     }
 }

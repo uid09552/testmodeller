@@ -191,6 +191,15 @@ mod tests {
             )),
             [TenantScope::ThreatModel]
         );
+        let result = Uuid::new_v4();
+        for path in [
+            format!("/threat-models/{tm}/controls/{item}/evidence"),
+            format!("/threat-models/{tm}/security-tests/{item}/results/{result}/evidence"),
+            format!("/threat-models/{tm}/evidence/{item}"),
+            format!("/threat-models/{tm}/baselines/{item}/compare"),
+        ] {
+            assert_eq!(kinds(&path), [TenantScope::ThreatModel], "{path}");
+        }
         assert_eq!(
             kinds(&format!("/projects/{tm}/threat-model")),
             [TenantScope::Project]

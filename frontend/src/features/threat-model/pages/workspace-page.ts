@@ -7,6 +7,9 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
 import { AssetsTabComponent } from '../components/assets-tab/assets-tab';
 import { ComponentsTabComponent } from '../components/components-tab/components-tab';
+import { AiChatWindowComponent } from '../components/ai-chat-window/ai-chat-window';
+import { BaselinesTabComponent } from '../components/baselines-tab/baselines-tab';
+import { ReportTabComponent } from '../components/report-tab/report-tab';
 import { ControlsTabComponent } from '../components/controls-tab/controls-tab';
 import { FlowsTabComponent } from '../components/flows-tab/flows-tab';
 import { OverviewTabComponent } from '../components/overview-tab/overview-tab';
@@ -17,6 +20,7 @@ import { ThreatsTabComponent } from '../components/threats-tab/threats-tab';
 import { ZonesTabComponent } from '../components/zones-tab/zones-tab';
 import { ThreatModelStore } from '../state/threat-model.store';
 import { isTab, TabSlug, TABS } from '../state/threat-model-view';
+import { AiTranscript } from '../state/ai-transcript';
 import { WorkspaceNav } from '../state/workspace-nav';
 
 /**
@@ -28,9 +32,9 @@ import { WorkspaceNav } from '../state/workspace-nav';
   imports: [
     OverviewTabComponent, ThreatDiagramComponent, ComponentsTabComponent, FlowsTabComponent,
     ZonesTabComponent, AssetsTabComponent, ThreatsTabComponent, RisksTabComponent,
-    ControlsTabComponent, SecurityTestsTabComponent,
+    ControlsTabComponent, SecurityTestsTabComponent, BaselinesTabComponent, ReportTabComponent, AiChatWindowComponent,
   ],
-  providers: [ThreatModelStore, WorkspaceNav],
+  providers: [ThreatModelStore, WorkspaceNav, AiTranscript],
   templateUrl: './workspace-page.html',
   styleUrl: './workspace-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

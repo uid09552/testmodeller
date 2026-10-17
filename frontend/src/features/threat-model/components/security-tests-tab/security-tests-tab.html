@@ -57,6 +57,7 @@
         <button class="btn btn--secondary" type="button" (click)="startRecording(e.item)">Record result</button>
       }
     }
+    @if (e.item?.origin === 'ai') { <p><tm-ai-badge origin="ai" [source]="e.item!.source" /> Created from an AI proposal.</p> }
     <label class="field"><span class="field__label">Title</span>
       <input class="input" name="title" required [(ngModel)]="e.draft.title" /></label>
     <label class="field"><span class="field__label">Type</span>

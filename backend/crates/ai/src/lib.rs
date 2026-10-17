@@ -6,6 +6,7 @@
 mod parse;
 mod prompts;
 mod providers;
+pub mod tm;
 
 pub use parse::{parse_proposals, ProposalContent, ProposalDraft};
 pub use prompts::{render_prompt, PromptRequest, ProposalContext, PROMPT_VERSION};

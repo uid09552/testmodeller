@@ -158,6 +158,36 @@ impl From<Thresholds> for Vec<Threshold> {
     }
 }
 
+/// An accepted threat whose acceptance has lapsed.
+pub fn acceptance_expired(threat: &Threat, today: NaiveDate) -> bool {
+    threat.fields.status == ThreatStatus::Accepted
+        && threat.fields.acceptance_expires.is_some_and(|d| d < today)
+}
+
+/// Status as it reads today: a lapsed acceptance is open again.
+pub fn effective_status(threat: &Threat, today: NaiveDate) -> ThreatStatus {
+    if acceptance_expired(threat, today) {
+        ThreatStatus::Open
+    } else {
+        threat.fields.status
+    }
+}
+
+/// Facts behind the residual flags: the linked controls that are not verified.
+pub fn unsupported_residual_facts(
+    threat: &Threat,
+    controls: &HashMap<Uuid, &Control>,
+) -> Vec<String> {
+    threat
+        .fields
+        .control_ids
+        .iter()
+        .filter_map(|id| controls.get(id))
+        .filter(|c| c.fields.status != ControlStatus::Verified)
+        .map(|c| format!("{} is {}", c.display_id(), c.fields.status))
+        .collect()
+}
+
 /// Computes the flags of a threat (09-threat-modeling.md#threat-flags).
 /// `tests` are the security tests linking this threat.
 pub fn threat_flags(
@@ -167,7 +197,8 @@ pub fn threat_flags(
     today: NaiveDate,
 ) -> Vec<ThreatFlag> {
     let f = &threat.fields;
-    let open = f.status == ThreatStatus::Open;
+    let expired = acceptance_expired(threat, today);
+    let open = f.status == ThreatStatus::Open || expired;
     let linked: Vec<&Control> = f
         .control_ids
         .iter()
@@ -193,6 +224,20 @@ pub fn threat_flags(
         {
             out.push(ThreatFlag::UnsupportedReduction);
         }
+    }
+    if let (Some(c), Some(r)) = (f.current, f.residual) {
+        if r.score() > c.score() {
+            out.push(ThreatFlag::ResidualAboveCurrent);
+        } else if r.score() < c.score()
+            && !linked
+                .iter()
+                .any(|c| c.fields.status == ControlStatus::Verified)
+        {
+            out.push(ThreatFlag::UnsupportedResidual);
+        }
+    }
+    if expired {
+        out.push(ThreatFlag::AcceptanceExpired);
     }
     if open && f.due_date.is_some_and(|d| d < today) {
         out.push(ThreatFlag::Overdue);
@@ -387,6 +432,7 @@ mod tests {
             origin: SecurityTestOrigin::Manual,
             source: None,
             last_result: None,
+            source_model: None,
         };
         test.last_result = Some(SecurityTestResult {
             id: Uuid::new_v4(),
@@ -398,5 +444,74 @@ mod tests {
         let flags = threat_flags(&t, &HashMap::new(), &[&test], today());
         assert!(flags.contains(&ThreatFlag::Overdue));
         assert!(flags.contains(&ThreatFlag::FailingTest));
+    }
+
+    fn threat_with(current: Option<(u8, u8)>, residual: Option<(u8, u8)>) -> Threat {
+        let target = ThreatTarget {
+            kind: TargetKind::Component,
+            id: uuid::Uuid::nil(),
+        };
+        let mut f = threat_fields(target);
+        f.current = current.map(|(l, i)| Rating::new(l, i, "current").unwrap());
+        f.residual = residual.map(|(l, i)| Rating::new(l, i, "residual").unwrap());
+        threat(1, f)
+    }
+
+    #[test]
+    fn residual_score_and_level() {
+        let t = threat_with(None, Some((2, 3)));
+        let r = t.fields.residual.unwrap();
+        assert_eq!(r.score(), 6);
+        assert_eq!(Thresholds::default().level(r.score()), RiskLevel::Moderate);
+        assert!(Rating::new(2, 0, "residual").is_err());
+    }
+
+    #[test]
+    fn residual_flags() {
+        let above = threat_with(Some((2, 3)), Some((3, 3)));
+        assert!(threat_flags(&above, &HashMap::new(), &[], today())
+            .contains(&ThreatFlag::ResidualAboveCurrent));
+
+        let mut t = threat_with(Some((3, 4)), Some((2, 2)));
+        let mut c = control(1, "WAF", ControlStatus::Implemented);
+        let id = c.audit.id;
+        c.fields.threat_ids = vec![t.audit.id];
+        t.fields.control_ids = vec![id];
+        let mut map = HashMap::new();
+        map.insert(id, &c);
+        let flags = threat_flags(&t, &map, &[], today());
+        assert!(flags.contains(&ThreatFlag::UnsupportedResidual));
+        assert_eq!(
+            unsupported_residual_facts(&t, &map),
+            vec!["CTL-1 is implemented".to_owned()]
+        );
+
+        let v = control(1, "WAF", ControlStatus::Verified);
+        let mut map = HashMap::new();
+        map.insert(id, &v);
+        assert!(!threat_flags(&t, &map, &[], today()).contains(&ThreatFlag::UnsupportedResidual));
+    }
+
+    #[test]
+    fn linking_a_verified_control_leaves_the_residual_unchanged() {
+        let mut t = threat_with(Some((3, 3)), Some((3, 3)));
+        let v = control(1, "x", ControlStatus::Verified);
+        t.fields.control_ids = vec![v.audit.id];
+        assert_eq!(t.fields.residual, Rating::new(3, 3, "r").ok());
+    }
+
+    #[test]
+    fn lapsed_acceptance_reads_open_and_is_flagged() {
+        let mut t = threat_with(None, None);
+        t.fields.status = ThreatStatus::Accepted;
+        t.fields.treatment = crate::threat::RiskTreatment::Accept;
+        t.fields.acceptance_expires = Some(NaiveDate::from_ymd_opt(2026, 10, 16).unwrap());
+        assert_eq!(effective_status(&t, today()), ThreatStatus::Open);
+        let flags = threat_flags(&t, &HashMap::new(), &[], today());
+        assert!(flags.contains(&ThreatFlag::AcceptanceExpired));
+        assert!(flags.contains(&ThreatFlag::NoControl));
+        t.fields.acceptance_expires = Some(NaiveDate::from_ymd_opt(2026, 10, 18).unwrap());
+        assert_eq!(effective_status(&t, today()), ThreatStatus::Accepted);
+        assert!(threat_flags(&t, &HashMap::new(), &[], today()).is_empty());
     }
 }
