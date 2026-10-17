@@ -52,6 +52,26 @@ related: [00-overview.md, 05-api.md, 06-ui.md, 07-ai-integration.md]
 - FR-033 Review UI: accept, edit, reject each proposal; accepted ones become entities.
 - FR-034 Proposals show rationale and are labelled as AI-origin.
 
+### Threat modeling
+See [09-threat-modeling.md](09-threat-modeling.md).
+- FR-060 Offer a "Threat Modeling" navigation item opening a per-project workspace; a project has at most one threat model, created explicitly, with scope, objectives, assumptions and exclusions.
+- FR-061 Register architecture components with a type from a fixed taxonomy, owner, technology, criticality, internet exposure, zone and an optional link to a Component or Feature of the same project.
+- FR-062 Define exposure zones with a kind and a trust level 0–4.
+- FR-063 Register assets (category, owner, C/I/A requirement, personal data) as independent entities linked to any number of components and flows.
+- FR-064 Register data flows between components (relationship, protocol, authentication, encryption, assets); several flows may join the same pair.
+- FR-065 Compute trust-boundary crossings of flows from zone trust levels on every read.
+- FR-066 Warn about missing information (no zone, no owner, internet-facing without flow, undocumented authentication or encryption on a crossing, unlinked asset).
+- FR-067 Edit the architecture on a data-flow diagram with zone regions, crossing markers and a threat overlay; persist its layout as presentation only.
+- FR-068 Record threats (STRIDE category, scenario, targets, assets) with display ids and the lifecycle candidate → open → mitigated/accepted/dismissed.
+- FR-069 Suggest candidate threats from versioned STRIDE rules, explain each match, never re-suggest a rule match on the same target, and require a user to confirm a candidate.
+- FR-070 Rate inherent and current risk as likelihood × impact on a 5 × 5 matrix with configurable thresholds; never lower a rating automatically.
+- FR-071 Record risk treatment, owner, due date and acceptance with rationale and approver; show the matrix and register and export the register as CSV.
+- FR-072 Maintain a security control catalog linked to threats and components, create controls from rule recommendations, and flag threats without (implemented) controls.
+- FR-073 Keep security tests as a separate list per threat model with steps, threats, controls, type and status.
+- FR-074 Generate draft security tests from threats and controls with versioned templates, without duplicates; mark generated tests stale when their threat or control link goes away.
+- FR-075 Record manual results of security tests and export the filtered list as CSV and Gherkin.
+- FR-076 Summarise the threat model: counts, crossings, threats by status and level, matrix, verified controls, threats without controls, controls without tests.
+
 ### Authentication and tenancy
 See [08-usermanagement.md](08-usermanagement.md).
 - FR-040 Validate a JWT on every request unless `--dev-mode` is set.

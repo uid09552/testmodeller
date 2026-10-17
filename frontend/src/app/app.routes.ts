@@ -42,6 +42,12 @@ export const routes: Routes = [
           import('../features/traceability/pages/traceability-page').then((m) => m.TraceabilityPageComponent),
       },
       {
+        path: 'threat-modeling',
+        data: { breadcrumb: 'Threat Modeling' },
+        loadChildren: () =>
+          import('../features/threat-model/threat-model.routes').then((m) => m.threatModelRoutes),
+      },
+      {
         path: 'proposals',
         data: { breadcrumb: 'AI Proposals' },
         loadComponent: () =>

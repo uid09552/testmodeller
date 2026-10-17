@@ -1,0 +1,51 @@
+<aside class="dp" [class.dp--bare]="bare()" aria-label="Properties">
+  @if (!bare()) {
+  <header class="dp__head">
+    <h2 class="dp__title">{{ heading() }}</h2>
+    <button class="icon-btn" type="button" aria-label="Close properties" (click)="closed.emit()">✕</button>
+  </header>
+  }
+
+  @if (single(); as s) {
+    @if (!bare()) {
+      <button class="btn btn--secondary dp__wide" type="button" (click)="edit.emit()">Edit details…</button>
+    }
+
+    @if (s.kind === 'node') {
+      <div class="dp__section">
+        <span class="field__label">Shape</span>
+        <div class="shape-row" role="radiogroup" aria-label="Shape">
+          <button type="button" class="shape-btn" role="radio" [attr.aria-checked]="!s.shape"
+                  [class.shape-btn--active]="!s.shape" title="By type" (click)="shapeChange.emit(null)">Auto</button>
+          @for (sh of shapes; track sh.value) {
+            <button type="button" class="shape-btn" role="radio" [attr.aria-checked]="s.shape === sh.value"
+                    [class.shape-btn--active]="s.shape === sh.value" [attr.aria-label]="sh.label" [title]="sh.label"
+                    (click)="shapeChange.emit(sh.value)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path [attr.d]="shapeIcon(sh.value).d" [attr.transform]="shapeIcon(sh.value).transform" />
+              </svg>
+            </button>
+          }
+        </div>
+      </div>
+    }
+
+    @if (s.kind === 'edge') {
+      <div class="dp__section">
+        <span class="field__label">Routing</span>
+        <div class="chips" role="radiogroup" aria-label="Routing">
+          <button type="button" class="chip" role="radio" [class.chip--active]="s.routing !== 'orthogonal'"
+                  [attr.aria-checked]="s.routing !== 'orthogonal'" (click)="routingChange.emit('curved')">Curved</button>
+          <button type="button" class="chip" role="radio" [class.chip--active]="s.routing === 'orthogonal'"
+                  [attr.aria-checked]="s.routing === 'orthogonal'" (click)="routingChange.emit('orthogonal')">Right-angle</button>
+        </div>
+        @if (s.curved && s.routing !== 'orthogonal') {
+          <button class="btn btn--secondary dp__wide" type="button" (click)="straighten.emit()">Straighten</button>
+        }
+      </div>
+    }
+  }
+
+  <tm-style-section [targets]="targets()" (changed)="styleChange.emit($event)" />
+  <button class="btn btn--secondary dp__wide" type="button" (click)="resetStyle.emit()">Reset style</button>
+</aside>

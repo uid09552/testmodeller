@@ -10,6 +10,7 @@ pub mod handlers;
 pub mod results_import;
 pub mod secrets;
 pub mod tenant_guard;
+pub mod threat_dto;
 
 use std::sync::Arc;
 
@@ -22,6 +23,7 @@ use crate::ai_service::AiService;
 use crate::auth::{AuthMode, Authenticator};
 use crate::handlers::{
     ai, export, models, organization as org, test_cases as tc, test_results as results,
+    threat_model as tmh,
 };
 
 /// Maximum request body size (imports can be large).
@@ -183,6 +185,106 @@ pub fn router(state: AppState, auth: AuthMode) -> Router {
         .route("/proposals/{id}", get(ai::get_proposal))
         .route("/proposals/{id}/accept", post(ai::accept_proposal))
         .route("/proposals/{id}/reject", post(ai::reject_proposal))
+        .route(
+            "/projects/{id}/threat-model",
+            get(tmh::get_of_project).post(tmh::create),
+        )
+        .route(
+            "/threat-models/{id}",
+            get(tmh::get).put(tmh::replace).delete(tmh::delete),
+        )
+        .route("/threat-models/{id}/layout", put(tmh::save_layout))
+        .route("/threat-models/{id}/summary", get(tmh::summary))
+        .route(
+            "/threat-models/{id}/zones",
+            get(tmh::zones::list).post(tmh::zones::create),
+        )
+        .route(
+            "/threat-models/{id}/zones/{item}",
+            get(tmh::zones::get)
+                .put(tmh::zones::replace)
+                .delete(tmh::zones::delete),
+        )
+        .route(
+            "/threat-models/{id}/components",
+            get(tmh::components::list).post(tmh::components::create),
+        )
+        .route(
+            "/threat-models/{id}/components/{item}",
+            get(tmh::components::get)
+                .put(tmh::components::replace)
+                .delete(tmh::components::delete),
+        )
+        .route(
+            "/threat-models/{id}/assets",
+            get(tmh::assets::list).post(tmh::assets::create),
+        )
+        .route(
+            "/threat-models/{id}/assets/{item}",
+            get(tmh::assets::get)
+                .put(tmh::assets::replace)
+                .delete(tmh::assets::delete),
+        )
+        .route(
+            "/threat-models/{id}/flows",
+            get(tmh::flows::list).post(tmh::flows::create),
+        )
+        .route(
+            "/threat-models/{id}/flows/{item}",
+            get(tmh::flows::get)
+                .put(tmh::flows::replace)
+                .delete(tmh::flows::delete),
+        )
+        .route(
+            "/threat-models/{id}/threats",
+            get(tmh::list_threats).post(tmh::create_threat),
+        )
+        .route(
+            "/threat-models/{id}/threats/suggest",
+            post(tmh::suggest_threats),
+        )
+        .route(
+            "/threat-models/{id}/threats/bulk-status",
+            post(tmh::bulk_threat_status),
+        )
+        .route(
+            "/threat-models/{id}/threats/{item}",
+            get(tmh::get_threat)
+                .put(tmh::replace_threat)
+                .delete(tmh::delete_threat),
+        )
+        .route(
+            "/threat-models/{id}/controls",
+            get(tmh::controls::list).post(tmh::controls::create),
+        )
+        .route(
+            "/threat-models/{id}/controls/{item}",
+            get(tmh::controls::get)
+                .put(tmh::controls::replace)
+                .delete(tmh::controls::delete),
+        )
+        .route(
+            "/threat-models/{id}/security-tests",
+            get(tmh::tests::list).post(tmh::tests::create),
+        )
+        .route(
+            "/threat-models/{id}/security-tests/generate",
+            post(tmh::generate_tests),
+        )
+        .route(
+            "/threat-models/{id}/security-tests/bulk-status",
+            post(tmh::bulk_test_status),
+        )
+        .route(
+            "/threat-models/{id}/security-tests/{item}",
+            get(tmh::tests::get)
+                .put(tmh::tests::replace)
+                .delete(tmh::tests::delete),
+        )
+        .route(
+            "/threat-models/{id}/security-tests/{item}/results",
+            get(tmh::results).post(tmh::record_result),
+        )
         .route(
             "/settings/ai",
             get(ai::get_ai_settings).put(ai::put_ai_settings),

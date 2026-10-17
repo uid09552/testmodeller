@@ -31,6 +31,7 @@ fn scope_for(segment: &str) -> Option<TenantScope> {
         "test-cases" => Some(TenantScope::TestCase),
         "proposals" => Some(TenantScope::Proposal),
         "jobs" => Some(TenantScope::Job),
+        "threat-models" => Some(TenantScope::ThreatModel),
         _ => None,
     }
 }
@@ -40,6 +41,11 @@ fn scope_for(segment: &str) -> Option<TenantScope> {
 /// An id belongs to the nearest collection segment before it, which is what
 /// makes `/states/{id}/test-cases/{tc}` resolve to a state and a test case
 /// rather than to two states.
+///
+/// Ids after a threat model's id (`/threat-models/{tm}/components/{item}`)
+/// are items of that threat model, not entities of their own scope: the threat
+/// model decides the tenant, and storage answers "not found" for an item that
+/// does not belong to it (ADR 0011).
 fn scoped_ids(path: &str) -> Result<Vec<(TenantScope, Uuid)>, &str> {
     let mut found = Vec::new();
     let mut collection: Option<&str> = None;
@@ -48,6 +54,7 @@ fn scoped_ids(path: &str) -> Result<Vec<(TenantScope, Uuid)>, &str> {
             continue;
         }
         match segment.parse::<Uuid>() {
+            Ok(_) if found.iter().any(|(s, _)| *s == TenantScope::ThreatModel) => {}
             Ok(id) => {
                 let name = collection.unwrap_or_default();
                 // Fail closed: an id under an unrecognised collection must not
@@ -168,6 +175,26 @@ mod tests {
         assert!(kinds("/projects").is_empty());
         assert!(kinds("/settings/ai").is_empty());
         assert!(kinds("/ai/proposals").is_empty());
+    }
+
+    #[test]
+    fn items_of_a_threat_model_are_scoped_by_the_threat_model() {
+        let tm = Uuid::new_v4();
+        let item = Uuid::new_v4();
+        assert_eq!(
+            kinds(&format!("/threat-models/{tm}/components/{item}")),
+            [TenantScope::ThreatModel]
+        );
+        assert_eq!(
+            kinds(&format!(
+                "/threat-models/{tm}/security-tests/{item}/results"
+            )),
+            [TenantScope::ThreatModel]
+        );
+        assert_eq!(
+            kinds(&format!("/projects/{tm}/threat-model")),
+            [TenantScope::Project]
+        );
     }
 
     #[test]

@@ -8,6 +8,7 @@ mod organization;
 mod results;
 mod tenancy;
 mod test_cases;
+mod threat_model;
 mod traceability;
 
 use std::str::FromStr;
@@ -31,6 +32,7 @@ pub use organization::{
 pub use results::NewResult;
 pub use tenancy::TenantScope;
 pub use test_cases::{NewAssignment, TestCaseFilter};
+pub use threat_model::ThreatModelAggregate;
 pub use traceability::{
     TraceElement, TraceFilter, TraceGap, TraceItem, TraceSummary, TraceTestCase, Traceability,
 };

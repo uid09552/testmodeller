@@ -1,0 +1,27 @@
+@if (!embedded()) {
+<tm-entity-table caption="Exposure zones" [rows]="store.zones()" [columns]="columns()"
+                 [selectedId]="editor.editing()?.item?.id ?? null"
+                 emptyText="No zones yet. Zones say where components run and how much they are trusted."
+                 (open)="edit($event)">
+  <button toolbar class="btn btn--primary" type="button" (click)="add()">Add zone</button>
+</tm-entity-table>
+}
+
+@if (editor.editing(); as e) {
+  <tm-editor-drawer [properties]="propertiesTpl()" [(tab)]="drawerTab" [heading]="e.item ? 'Zone ' + e.item.name : 'New zone'" [busy]="editor.busy()"
+                    [canDelete]="!!e.item" [error]="editor.error()"
+                    (save)="editor.save()" (closed)="editor.close()" (remove)="editor.remove(deleteText(e.item))">
+    <label class="field"><span class="field__label">Name</span>
+      <input class="input" name="name" required [(ngModel)]="e.draft.name" /></label>
+    <label class="field"><span class="field__label">Kind</span>
+      <select class="select" name="kind" [(ngModel)]="e.draft.kind">
+        @for (k of kinds; track k) { <option [value]="k">{{ label(k) }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Trust level</span>
+      <select class="select" name="trust" [(ngModel)]="e.draft.trustLevel">
+        @for (l of levels; track l) { <option [ngValue]="l">{{ l }}{{ l === 0 ? ' — untrusted' : l === 4 ? ' — most trusted' : '' }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Description<span class="field__opt">optional</span></span>
+      <textarea class="textarea" name="description" rows="3" [(ngModel)]="e.draft.description"></textarea></label>
+  </tm-editor-drawer>
+}

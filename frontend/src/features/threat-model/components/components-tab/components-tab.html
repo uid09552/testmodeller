@@ -1,0 +1,72 @@
+@if (!embedded()) {
+<tm-entity-table caption="Architecture components" [rows]="store.components()" [columns]="columns()"
+                 [selectedId]="editor.editing()?.item?.id ?? null"
+                 emptyText="No components yet. Register the services, data stores, identity providers and external users of the system."
+                 (open)="edit($event)">
+  <button toolbar class="btn btn--primary" type="button" (click)="add()">Add component</button>
+</tm-entity-table>
+}
+
+@if (editor.editing(); as e) {
+  <tm-editor-drawer [properties]="propertiesTpl()" [(tab)]="drawerTab" [heading]="e.item ? 'Component ' + e.item.name : 'New component'" [busy]="editor.busy()"
+                    [canDelete]="!!e.item" [error]="editor.error()"
+                    (save)="editor.save()" (closed)="editor.close()" (remove)="editor.remove(deleteText(e.item))">
+    <label class="field"><span class="field__label">Name</span>
+      <input class="input" name="name" required [(ngModel)]="e.draft.name" /></label>
+    <label class="field"><span class="field__label">Type</span>
+      <select class="select" name="type" [(ngModel)]="e.draft.type">
+        @for (g of groups; track g.layer) {
+          <optgroup [label]="label(g.layer)">
+            @for (t of g.types; track t) { <option [value]="t">{{ label(t) }}</option> }
+          </optgroup>
+        }
+      </select></label>
+    <label class="field"><span class="field__label">Zone</span>
+      <select class="select" name="zone" [(ngModel)]="e.draft.zoneId">
+        <option [ngValue]="null">No zone</option>
+        @for (z of store.zones(); track z.id) { <option [ngValue]="z.id">{{ z.name }} (trust {{ z.trustLevel }})</option> }
+      </select></label>
+    <label class="toggle-row"><input type="checkbox" name="internet" [(ngModel)]="e.draft.internetFacing" />
+      Reachable from the internet</label>
+    <label class="field"><span class="field__label">Criticality<span class="field__opt">optional</span></span>
+      <select class="select" name="criticality" [(ngModel)]="e.draft.criticality">
+        <option [ngValue]="null">Not set</option>
+        @for (c of criticalities; track c) { <option [ngValue]="c">{{ label(c) }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Owner<span class="field__opt">optional</span></span>
+      <input class="input" name="owner" [(ngModel)]="e.draft.owner" /></label>
+    <label class="field"><span class="field__label">Technology<span class="field__opt">optional</span></span>
+      <input class="input" name="technology" [(ngModel)]="e.draft.technology" /></label>
+    <tm-multi-pick legend="Assets it handles" [options]="assetOptions()" [(value)]="e.draft.assetIds"
+                   emptyText="No assets registered yet." />
+    <fieldset class="field">
+      <legend class="field__label">Mapped to the test model<span class="field__opt">optional</span></legend>
+      <p class="field__hint">Optional: map it to a feature created in the project tree.</p>
+      <label class="field"><span class="field__label">Feature</span>
+        <select class="select" name="linkedFeature" [ngModel]="e.draft.linkedFeatureId"
+                (ngModelChange)="pickFeature(e.draft, $event)">
+          <option [ngValue]="null">Not mapped</option>
+          @for (c of projectComponents(); track c.id) {
+            <optgroup [label]="c.name">
+              @for (f of c.features; track f.id) { <option [ngValue]="f.id">{{ f.name }}</option> }
+            </optgroup>
+          }
+        </select></label>
+      <label class="field"><span class="field__label">Component</span>
+        <select class="select" name="linkedComponent" [(ngModel)]="e.draft.linkedComponentId">
+          <option [ngValue]="null">Not mapped</option>
+          @for (c of projectComponents(); track c.id) { <option [ngValue]="c.id">{{ c.name }}</option> }
+        </select></label>
+      @if (!projectComponents().length) {
+        <p class="field__hint">The project has no components or features yet. Create them in the project tree.</p>
+      }
+    </fieldset>
+    <label class="field"><span class="field__label">Description<span class="field__opt">optional</span></span>
+      <textarea class="textarea" name="description" rows="3" [(ngModel)]="e.draft.description"></textarea></label>
+    @if (e.item?.warnings?.length) {
+      <ul class="field__hint">
+        @for (w of e.item!.warnings; track w.code) { <li>⚠ {{ w.message }}</li> }
+      </ul>
+    }
+  </tm-editor-drawer>
+}

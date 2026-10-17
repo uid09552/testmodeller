@@ -30,6 +30,8 @@ pub enum TenantScope {
     Proposal,
     /// `/jobs/{id}`
     Job,
+    /// `/threat-models/{id}`
+    ThreatModel,
 }
 
 impl TenantScope {
@@ -45,6 +47,7 @@ impl TenantScope {
             Self::TestCase => "test case",
             Self::Proposal => "proposal",
             Self::Job => "job",
+            Self::ThreatModel => "threat model",
         }
     }
 
@@ -102,6 +105,11 @@ impl TenantScope {
                  WHERE pr.id = $1"
             }
             Self::Job => "SELECT tenant_id FROM jobs WHERE id = $1",
+            Self::ThreatModel => {
+                "SELECT p.tenant_id FROM threat_models t
+                 JOIN projects p ON p.id = t.project_id
+                 WHERE t.id = $1"
+            }
         }
     }
 }

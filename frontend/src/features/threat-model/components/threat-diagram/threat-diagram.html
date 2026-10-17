@@ -1,0 +1,261 @@
+<div class="dg">
+  <div class="dg__toolbar" role="toolbar" aria-label="Diagram">
+    <select class="select" aria-label="Component type" (change)="newType.set($any($event.target).value)">
+      @for (g of groups; track g.layer) {
+        <optgroup [label]="label(g.layer)">
+          @for (t of g.types; track t) { <option [value]="t" [selected]="newType() === t">{{ label(t) }}</option> }
+        </optgroup>
+      }
+    </select>
+    <button class="btn btn--primary" type="button" (click)="addComponent()">Add component</button>
+    <span class="dg__sep"></span>
+    <button class="icon-btn" type="button" aria-label="Zoom in" title="Zoom in (+)" (click)="zoomBy(1.2)">+</button>
+    <button class="icon-btn" type="button" aria-label="Zoom out" title="Zoom out (−)" (click)="zoomBy(1 / 1.2)">−</button>
+    <button class="btn btn--secondary" type="button" title="Zoom to fit (Shift+1)" (click)="fit()">Fit</button>
+    <label class="toggle-row dg__toggle">
+      <input type="checkbox" [checked]="overlay()" (change)="overlay.set($any($event.target).checked)" /> Threats
+    </label>
+    @if (message(); as m) { <span class="dg__msg" role="status">{{ m }}</span> }
+  </div>
+
+  <div class="dg__body">
+    <div class="dg__stage">
+      <svg #svg class="dg__svg" tabindex="0" role="application"
+           aria-label="Data-flow diagram. Tab moves between components, Enter opens one, arrows move it, the context menu key opens its menu, Shift+1 fits."
+           (pointerdown)="onBackgroundDown($event)" (pointermove)="onMove($event)" (pointerup)="onUp($event)"
+           (pointerleave)="onUp($event)" (wheel)="onWheel($event)" (keydown)="onKey($event)"
+           (contextmenu)="openMenu($event, 'bg')">
+        <defs>
+          @for (m of markers(); track m.id) {
+            <marker [attr.id]="m.id" markerWidth="7" markerHeight="5" viewBox="0 0 10 7" refX="9" refY="3.5"
+                    orient="auto-start-reverse">
+              @switch (m.kind) {
+                @case ('open') { <polygon points="1 1,9 3.5,1 6" class="dg__marker-open" [style.stroke]="m.colour" /> }
+                @case ('line') { <polyline points="1 0.5,9 3.5,1 6.5" class="dg__marker-line" [style.stroke]="m.colour" /> }
+                @default { <polygon points="0 0,10 3.5,0 7" [style.fill]="m.colour" /> }
+              }
+            </marker>
+          }
+        </defs>
+        <g [attr.transform]="transform()">
+          @for (z of zones(); track z.z.id) {
+            <g class="dg__zone" [class.dg__zone--selected]="isSelected(z.z.id)" role="group"
+               [attr.aria-label]="'Zone ' + z.z.name + ', trust level ' + z.z.trustLevel"
+               (contextmenu)="openMenu($event, 'zone', z.z.id)">
+              <rect [attr.x]="z.r.x" [attr.y]="z.r.y" [attr.width]="z.r.w" [attr.height]="z.r.h" rx="10"
+                    class="dg__zone-box" [style]="zonePaint(z.z.id)" />
+              <rect [attr.x]="z.r.x" [attr.y]="z.r.y" [attr.width]="z.r.w" height="24" rx="10" class="dg__zone-head"
+                    (pointerdown)="onZoneDown($event, z.z.id)" (dblclick)="openZone(z.z.id)" />
+              <text [attr.x]="z.r.x + 10" [attr.y]="z.r.y + 16" class="dg__zone-label"
+                    [style]="zoneLabelPaint(z.z.id)">{{ z.z.name }} · trust {{ z.z.trustLevel }}</text>
+              @if (isSelected(z.z.id)) {
+                <rect class="dg__select-ring" [attr.x]="z.r.x - 4" [attr.y]="z.r.y - 4"
+                      [attr.width]="z.r.w + 8" [attr.height]="z.r.h + 8" rx="12" />
+              }
+              <rect [attr.x]="z.r.x + z.r.w - 12" [attr.y]="z.r.y + z.r.h - 12" width="12" height="12" class="dg__resize"
+                    (pointerdown)="onResizeDown($event, z.z.id)" />
+            </g>
+          }
+
+          @for (e of edges(); track e.f.id) {
+            <g class="dg__edge" [class.dg__edge--selected]="isSelected(e.f.id)" role="img" [attr.aria-label]="edgeLabel(e)"
+               (pointerdown)="onEdgeDown($event, e.f)" (dblclick)="openFlow(e.f)"
+               (contextmenu)="openMenu($event, 'edge', e.f.id)">
+              <path [attr.d]="e.g.d" class="dg__edge-hit" />
+              <path [attr.d]="e.g.d" class="dg__edge-line" [style]="edgePaint(e.e)"
+                    [attr.marker-end]="'url(#' + markerOf(e.e) + ')'"
+                    [attr.marker-start]="e.f.bidirectional ? 'url(#' + markerOf(e.e) + ')' : null" />
+              @if (e.f.label) {
+                <!-- A background behind the label, as in the model editor, so the line does not cross it. -->
+                <rect class="dg__edge-label-bg" [attr.x]="e.g.label.x - labelWidth(e.f.label) / 2" [attr.y]="e.g.label.y - 9"
+                      [attr.width]="labelWidth(e.f.label)" height="18" rx="4" />
+                <text [attr.x]="e.g.label.x" [attr.y]="e.g.label.y + 4" class="dg__edge-label"
+                      [style]="edgeLabelPaint(e.e)">{{ e.f.label }}</text>
+              }
+              @if (e.marker; as m) {
+                <g class="dg__boundary" [attr.transform]="'translate(' + m.x + ' ' + m.y + ')'">
+                  <rect x="-6" y="-6" width="12" height="12" transform="rotate(45)" />
+                  <title>Crosses trust boundary</title>
+                </g>
+              }
+            </g>
+          }
+
+          @for (n of nodes(); track n.c.id) {
+            <g class="dg__node" tabindex="0" role="button"
+               [class.dg__node--selected]="isSelected(n.c.id)"
+               [attr.transform]="'translate(' + n.r.x + ' ' + n.r.y + ')'"
+               [attr.aria-label]="n.c.name + ', ' + label(n.c.type) + ', ' + zoneLabel(n.c.zoneId)"
+               (pointerdown)="onNodeDown($event, n.c)" (dblclick)="openNode(n.c)"
+               (contextmenu)="openMenu($event, 'node', n.c.id)"
+               (focus)="focusNode(n.c)" (keydown)="onNodeKey($event, n.c)">
+              @if (isBox(n)) {
+                <rect [attr.width]="n.r.w" [attr.height]="n.r.h" class="dg__shape" [style]="nodePaint(n)" />
+              } @else {
+                <path [attr.d]="shapeD(n)" class="dg__shape" [class.dg__shape--data]="isData(n)" [style]="nodePaint(n)" />
+              }
+              <text [attr.x]="n.r.w / 2" [attr.y]="n.r.h / 2" class="dg__name" [style]="namePaint(n)">{{ n.c.name }}</text>
+              <text [attr.x]="n.r.w / 2" [attr.y]="n.r.h / 2 + 16" class="dg__type">
+                {{ icon[n.c.layer] }} {{ label(n.c.type) }}{{ n.c.internetFacing ? ' · internet' : '' }}
+              </text>
+              @if (isSelected(n.c.id)) {
+                <rect class="dg__select-ring" x="-5" y="-5" [attr.width]="n.r.w + 10" [attr.height]="n.r.h + 10" rx="10" />
+              }
+              @for (a of anchors; track a) {
+                <circle class="dg__dot" [attr.cx]="dot(n, a).x" [attr.cy]="dot(n, a).y" r="5"
+                        (pointerdown)="onDotDown($event, n.c, a)">
+                  <title>Drag to another component to add a data flow</title>
+                </circle>
+              }
+            </g>
+          }
+
+          <!-- Handles of the selected flow: both ends and, when curved, the bend. -->
+          @if (selectedEdge(); as s) {
+            <g class="dg__handles">
+              <circle class="dg__end" [attr.cx]="s.g.src.x" [attr.cy]="s.g.src.y" r="6"
+                      (pointerdown)="onEndDown($event, s.f, 'source')"><title>Drag to another connector dot</title></circle>
+              <circle class="dg__end dg__end--target" [attr.cx]="s.g.tgt.x" [attr.cy]="s.g.tgt.y" r="6"
+                      (pointerdown)="onEndDown($event, s.f, 'target')"><title>Drag to another connector dot</title></circle>
+              @if (s.g.bend; as b) {
+                <rect class="dg__bend" [attr.x]="b.x - 5" [attr.y]="b.y - 5" width="10" height="10"
+                      [attr.transform]="'rotate(45 ' + b.x + ' ' + b.y + ')'"
+                      (pointerdown)="onBendDown($event, s.f)" (dblclick)="straighten(s.f.id)">
+                  <title>Drag to bend; double-click to straighten</title>
+                </rect>
+              }
+            </g>
+          }
+
+          <!-- Threat badges on top of everything, so no shape hides them. -->
+          @if (overlay()) {
+            @for (e of edges(); track e.f.id) {
+              @if (badge(e.f.id); as b) {
+                <g class="dg__badge" role="button" tabindex="0"
+                   [attr.aria-label]="b.count + ' open threats on flow ' + e.name + ', highest ' + (b.level ?? 'not assessed')"
+                   [attr.transform]="'translate(' + (e.g.label.x - 48) + ' ' + (e.g.label.y - 22) + ')'"
+                   (click)="openThreats(e.f.id, $event)" (keydown.enter)="openThreats(e.f.id, $event)">
+                  <rect x="0" y="-12" width="96" height="18" rx="9" [class]="'dg__badge-bg dg__badge-bg--' + (b.level ?? 'none')" />
+                  <text x="8" y="1">{{ b.count }} · {{ b.level ? levelText[b.level] : 'Not assessed' }}</text>
+                </g>
+              }
+            }
+            @for (n of nodes(); track n.c.id) {
+              @if (badge(n.c.id); as b) {
+                <g class="dg__badge" role="button" tabindex="0"
+                   [attr.aria-label]="b.count + ' open threats on ' + n.c.name + ', highest ' + (b.level ?? 'not assessed')"
+                   [attr.transform]="'translate(' + (n.r.x + n.r.w - 60) + ' ' + (n.r.y - 8) + ')'"
+                   (click)="openThreats(n.c.id, $event)" (keydown.enter)="openThreats(n.c.id, $event)">
+                  <rect x="0" y="-12" width="96" height="18" rx="9" [class]="'dg__badge-bg dg__badge-bg--' + (b.level ?? 'none')" />
+                  <text x="8" y="1">{{ b.count }} · {{ b.level ? levelText[b.level] : 'Not assessed' }}</text>
+                </g>
+              }
+            }
+          }
+
+          @if (pointer(); as p) {
+            @if (ghostFrom(); as g) {
+              <line class="dg__ghost" [attr.x1]="g.x" [attr.y1]="g.y" [attr.x2]="p.x" [attr.y2]="p.y" />
+            }
+            <circle class="dg__ghost-dot" [attr.cx]="p.x" [attr.cy]="p.y" r="4" />
+          }
+        </g>
+      </svg>
+      @if (store.components().length === 0) {
+        <p class="dg__empty">No components yet. Choose a type and add the first one, or right-click the diagram.</p>
+      }
+      <div class="dg__minimap">
+        <tm-canvas-minimap [boxes]="boxes()" [view]="view()" [viewSize]="size()" (panTo)="panTo($event)" />
+      </div>
+    </div>
+
+    @if (selection().length > 1 && showProps()) {
+      <tm-diagram-properties [heading]="propsHeading()" [targets]="styleTargets()" [single]="null"
+                             (styleChange)="applyStyle($event)" (shapeChange)="setShapeOfSelection($event)"
+                             (resetStyle)="resetStyle()" (closed)="showProps.set(false)" />
+    }
+  </div>
+</div>
+
+@if (menu(); as m) {
+  <div #menuEl class="ctx-menu" role="menu" tabindex="-1" [attr.aria-label]="menuTitle(m)"
+       [style.left.px]="m.sx" [style.top.px]="m.sy" (keydown)="onMenuKey($event)">
+    <div class="ctx-header">{{ menuTitle(m) }}</div>
+    <div class="ctx-sep"></div>
+
+    @switch (m.kind) {
+      @case ('node') {
+        <button class="ctx-item" role="menuitem" (click)="run('edit')">Edit Details… <span class="ctx-shortcut">Enter</span></button>
+        <button class="ctx-item" role="menuitem" (click)="run('properties')">Properties…</button>
+        <button class="ctx-item" role="menuitem" (click)="run('add-flow')">Add Data Flow</button>
+        <div class="ctx-sep"></div>
+        <button class="ctx-item" role="menuitem" [class.ctx-item--checked]="!menuNodeShape()" (click)="run('shape')">Shape by Type</button>
+        @for (sh of shapes; track sh.value) {
+          <button class="ctx-item" role="menuitem" [class.ctx-item--checked]="menuNodeShape() === sh.value"
+                  (click)="run('shape', sh.value)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path [attr.d]="shapeIcon(sh.value).d" [attr.transform]="shapeIcon(sh.value).transform" />
+            </svg>
+            Make {{ sh.label }}
+          </button>
+        }
+        <div class="ctx-sep"></div>
+        @for (z of store.zones(); track z.id) {
+          @if (menuNode()?.zoneId !== z.id) {
+            <button class="ctx-item" role="menuitem" (click)="run('zone', z.id)">Move to {{ z.name }}</button>
+          }
+        }
+        @if (menuNode()?.zoneId) {
+          <button class="ctx-item" role="menuitem" (click)="run('zone')">Remove from Zone</button>
+        }
+        <div class="ctx-sep"></div>
+        <button class="ctx-item" role="menuitem" (click)="run('threats')">Show Threats</button>
+        <div class="ctx-sep"></div>
+        <button class="ctx-item ctx-item--danger" role="menuitem" (click)="run('delete')">Delete Component <span class="ctx-shortcut">Del</span></button>
+      }
+      @case ('edge') {
+        <button class="ctx-item" role="menuitem" (click)="run('edit')">Edit Details…</button>
+        <button class="ctx-item" role="menuitem" (click)="run('properties')">Properties…</button>
+        <button class="ctx-item" role="menuitem" (click)="run('reverse')">Reverse Direction</button>
+        <div class="ctx-sep"></div>
+        @if (menuEdge()?.routing === 'orthogonal') {
+          <button class="ctx-item" role="menuitem" (click)="run('routing', 'curved')">Curved Routing</button>
+        } @else {
+          <button class="ctx-item" role="menuitem" (click)="run('routing', 'orthogonal')">Right-Angle Routing</button>
+        }
+        @if (menuEdge()?.curve) {
+          <button class="ctx-item" role="menuitem" (click)="run('straighten')">Straighten</button>
+        }
+        <div class="ctx-sep"></div>
+        <button class="ctx-item" role="menuitem" (click)="run('threats')">Show Threats</button>
+        <div class="ctx-sep"></div>
+        <button class="ctx-item ctx-item--danger" role="menuitem" (click)="run('delete')">Delete Data Flow <span class="ctx-shortcut">Del</span></button>
+      }
+      @case ('zone') {
+        <button class="ctx-item" role="menuitem" (click)="run('edit')">Edit Details…</button>
+        <button class="ctx-item" role="menuitem" (click)="run('properties')">Properties…</button>
+        <button class="ctx-item" role="menuitem" (click)="run('fit-zone')">Fit to Contents</button>
+        <div class="ctx-sep"></div>
+        <button class="ctx-item ctx-item--danger" role="menuitem" (click)="run('delete')">Delete Zone</button>
+      }
+      @default {
+        <button class="ctx-item" role="menuitem" (click)="run('add-here')">Add {{ label(newType()) }} Here</button>
+        <button class="ctx-item" role="menuitem" (click)="run('zone-here')">Add Zone Here</button>
+        <div class="ctx-sep"></div>
+        <button class="ctx-item" role="menuitem" (click)="run('fit')">Zoom to Fit <span class="ctx-shortcut">Shift+1</span></button>
+        <button class="ctx-item" role="menuitem" [class.ctx-item--checked]="overlay()" (click)="run('overlay')">Show Threat Badges</button>
+      }
+    }
+  </div>
+}
+
+<!-- The Properties tab of the detail view: shown inside whichever editor is open. -->
+<ng-template #props>
+  <tm-diagram-properties [bare]="true" [targets]="styleTargets()" [single]="single()"
+                         (styleChange)="applyStyle($event)" (shapeChange)="setShapeOfSelection($event)"
+                         (routingChange)="setRouting(selection()[0].id, $event)"
+                         (straighten)="straighten(selection()[0].id)" (resetStyle)="resetStyle()" />
+</ng-template>
+<tm-components-tab [embedded]="true" [propertiesTpl]="props" />
+<tm-flows-tab [embedded]="true" [propertiesTpl]="props" />
+<tm-zones-tab [embedded]="true" [propertiesTpl]="props" />

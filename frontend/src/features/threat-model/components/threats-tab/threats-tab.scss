@@ -1,0 +1,20 @@
+.tt__message { color: var(--clr-text-600); }
+
+.tt__candidate {
+  background: var(--clr-brand-50);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: var(--text-sm);
+}
+
+.tt__why {
+  border: 1px dashed var(--clr-surface-200);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+
+  h3 { font-size: var(--text-sm); margin: 0 0 4px; }
+  h4 { font-size: var(--text-xs); margin: 8px 0 2px; color: var(--clr-text-600); }
+  ul { margin: 0; padding-left: 18px; }
+  li { margin: 2px 0; }
+}

@@ -22,3 +22,4 @@ Use [0000-template.md](0000-template.md). Number sequentially.
 | [0008](0008-backend-is-the-only-store.md) | The backend is the only store of models | Accepted |
 | [0009](0009-test-result-import.md) | Importing test results: matching by tag, parsing safely | Accepted |
 | [0010](0010-editor-layout-is-opaque.md) | The editor's layout is stored with the model, opaque to the backend | Accepted |
+| [0011](0011-threat-model-entities-and-security-tests.md) | Threat models have their own entities, and security tests are a separate list | Accepted |

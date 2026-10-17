@@ -1,0 +1,116 @@
+<div class="tm-filters">
+  <select class="select" aria-label="Status" (change)="status.set($any($event.target).value)">
+    <option value="">All statuses</option>
+    @for (s of statuses; track s) { <option [value]="s" [selected]="status() === s">{{ label(s) }}</option> }
+  </select>
+  <select class="select" aria-label="Type" (change)="type.set($any($event.target).value)">
+    <option value="">All types</option>
+    @for (t of types; track t) { <option [value]="t">{{ label(t) }}</option> }
+  </select>
+  <select class="select" aria-label="Latest result" (change)="result.set($any($event.target).value)">
+    <option value="">Any result</option>
+    @for (o of outcomes; track o) { <option [value]="o">{{ label(o) }}</option> }
+    <option value="none">No result</option>
+  </select>
+</div>
+
+<details class="st__generate">
+  <summary>Generate tests from threats</summary>
+  <p class="field__hint">Drafts are generated from versioned STRIDE templates for open and accepted threats, one per linked control.
+    Choose threats, or none for all of them. Existing tests are never changed.</p>
+  <div class="st__pick">
+    @for (o of threatOptions(); track o.id) {
+      <label class="toggle-row">
+        <input type="checkbox" [checked]="selectedThreats().includes(o.id)"
+               (change)="toggleThreat(o.id)" />
+        {{ o.label }}
+      </label>
+    } @empty { <p class="field__hint">No open or accepted threats.</p> }
+  </div>
+  <button class="btn btn--secondary" type="button" (click)="generate()">
+    Generate tests{{ selectedThreats().length ? ' for ' + selectedThreats().length + ' threat(s)' : '' }}
+  </button>
+</details>
+
+@if (message(); as m) { <p class="field__hint" role="status">{{ m }}</p> }
+
+<tm-entity-table caption="Security tests" [rows]="rows()" [columns]="columns()" [selectable]="true"
+                 [selectedId]="editor.editing()?.item?.id ?? null"
+                 emptyText="No security tests yet. Generate them from threats, or add one."
+                 (open)="edit($event)" (checkedChange)="checked.set($event)">
+  <button toolbar class="btn btn--secondary" type="button" [disabled]="!checked().length" (click)="markReady()">Mark ready</button>
+  <button toolbar class="btn btn--secondary" type="button" [disabled]="!rows().length" (click)="exportCsv()">Export CSV</button>
+  <button toolbar class="btn btn--secondary" type="button" [disabled]="!rows().length" (click)="exportGherkin()">Export Gherkin</button>
+  <button toolbar class="btn btn--primary" type="button" (click)="add()">Add test</button>
+</tm-entity-table>
+
+@if (editor.editing(); as e) {
+  <tm-editor-drawer [heading]="e.item ? e.item.displayId + ' ' + e.item.title : 'New security test'"
+                    [busy]="editor.busy()" [canDelete]="!!e.item" [error]="editor.error()"
+                    (save)="editor.save()" (closed)="editor.close()"
+                    (remove)="editor.remove('Delete security test ' + e.item?.displayId + ' and its results?')">
+    @if (e.item?.stale) { <p class="stale-badge">⚠ Stale: {{ e.item!.stale }}</p> }
+    @if (e.item) {
+      <p class="field__hint">Latest result: {{ resultText(e.item) }}{{ e.item.lastResult?.note ? ' — ' + e.item.lastResult!.note : '' }}
+        {{ e.item.lastResult ? '(' + e.item.lastResult.executedAt.slice(0, 10) + ')' : '' }}</p>
+      @if (e.item.status === 'ready') {
+        <button class="btn btn--secondary" type="button" (click)="startRecording(e.item)">Record result</button>
+      }
+    }
+    <label class="field"><span class="field__label">Title</span>
+      <input class="input" name="title" required [(ngModel)]="e.draft.title" /></label>
+    <label class="field"><span class="field__label">Type</span>
+      <select class="select" name="type" [(ngModel)]="e.draft.type">
+        @for (t of types; track t) { <option [value]="t">{{ label(t) }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Status</span>
+      <select class="select" name="status" [(ngModel)]="e.draft.status">
+        @for (s of statuses; track s) { <option [value]="s">{{ label(s) }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Objective<span class="field__opt">optional</span></span>
+      <input class="input" name="objective" [(ngModel)]="e.draft.objective" /></label>
+    <label class="field"><span class="field__label">Preconditions<span class="field__opt">one per line</span></span>
+      <textarea class="textarea" name="preconditions" rows="2" [(ngModel)]="e.draft.preconditionsText"></textarea></label>
+    <fieldset class="st__steps">
+      <legend class="field__label">Steps</legend>
+      @for (s of e.draft.steps; track $index; let i = $index) {
+        <div class="st__step">
+          <span class="st__no">{{ i + 1 }}</span>
+          <input class="input" [name]="'action' + i" [attr.aria-label]="'Step ' + (i + 1) + ' action'"
+                 placeholder="Action" [(ngModel)]="s.action" />
+          <input class="input" [name]="'expected' + i" [attr.aria-label]="'Step ' + (i + 1) + ' expected result'"
+                 placeholder="Expected result" [(ngModel)]="s.expected" />
+          <button class="icon-btn" type="button" [attr.aria-label]="'Remove step ' + (i + 1)" (click)="removeStep(e.draft, i)">✕</button>
+        </div>
+      }
+      <button class="btn btn--secondary" type="button" (click)="addStep(e.draft)">Add step</button>
+    </fieldset>
+    <tm-multi-pick legend="Verifies threats" [options]="threatOptions()" [(value)]="e.draft.threatIds" />
+    <tm-multi-pick legend="Verifies controls" [options]="controlOptions()" [(value)]="e.draft.controlIds"
+                   emptyText="No controls yet." />
+  </tm-editor-drawer>
+}
+
+@if (recording(); as t) {
+  <div class="dialog-backdrop">
+    <form class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'Record result of ' + t.displayId"
+          (submit)="$event.preventDefault(); record()">
+      <h2>Result of {{ t.displayId }} {{ t.title }}</h2>
+      <fieldset class="st__outcomes">
+        <legend class="field__label">Outcome</legend>
+        @for (o of outcomes; track o) {
+          <label class="toggle-row"><input type="radio" name="outcome" [value]="o" [checked]="outcome() === o"
+                 (change)="outcome.set(o)" /> {{ label(o) }}</label>
+        }
+      </fieldset>
+      <label class="field"><span class="field__label">Note<span class="field__opt">optional</span></span>
+        <textarea class="textarea" name="note" rows="2" maxlength="2000" [value]="note()"
+                  (input)="note.set($any($event.target).value)"></textarea></label>
+      @if (recordError(); as err) { <p role="alert">{{ err }}</p> }
+      <div class="st__actions">
+        <button class="btn btn--secondary" type="button" (click)="recording.set(null)">Cancel</button>
+        <button class="btn btn--primary" type="submit">Record</button>
+      </div>
+    </form>
+  </div>
+}

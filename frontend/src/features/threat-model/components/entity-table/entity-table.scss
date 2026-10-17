@@ -1,0 +1,37 @@
+.et__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3, 12px);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-3, 12px);
+}
+
+.et__count {
+  color: var(--clr-text-600);
+  font-size: 0.85rem;
+}
+
+.et__sort {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.et__check { width: 2rem; }
+
+.et__table tbody tr:focus-visible {
+  outline: 2px solid var(--clr-brand-500);
+  outline-offset: -2px;
+}
+
+.et__row--selected { background: var(--clr-brand-50); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

@@ -1,0 +1,58 @@
+<div class="tm-filters">
+  <select class="select" aria-label="Status" (change)="status.set($any($event.target).value)">
+    <option value="">All statuses</option>
+    @for (s of statuses; track s) { <option [value]="s">{{ label(s) }}</option> }
+  </select>
+  <select class="select" aria-label="Coverage gap" (change)="gap.set($any($event.target).value)">
+    <option value="">Any coverage</option>
+    <option value="no-threats">Without threats</option>
+    <option value="no-tests">Without tests</option>
+  </select>
+</div>
+
+<tm-entity-table caption="Security controls" [rows]="rows()" [columns]="columns()"
+                 [selectedId]="editor.editing()?.item?.id ?? null"
+                 emptyText="No controls yet. Controls prevent, detect or correct threats."
+                 (open)="edit($event)">
+  <button toolbar class="btn btn--primary" type="button" (click)="add()">Add control</button>
+</tm-entity-table>
+
+@if (editor.editing(); as e) {
+  <tm-editor-drawer [heading]="e.item ? e.item.displayId + ' ' + e.item.name : 'New control'" [busy]="editor.busy()"
+                    [canDelete]="!!e.item" [error]="editor.error()"
+                    (save)="editor.save()" (closed)="editor.close()"
+                    (remove)="editor.remove('Delete control ' + e.item?.displayId + '? Its threats stay, with their ratings.')">
+    <label class="field"><span class="field__label">Name</span>
+      <input class="input" name="name" required [(ngModel)]="e.draft.name" /></label>
+    <label class="field"><span class="field__label">Type</span>
+      <select class="select" name="type" [(ngModel)]="e.draft.type">
+        @for (t of types; track t) { <option [value]="t">{{ label(t) }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Category</span>
+      <select class="select" name="category" [(ngModel)]="e.draft.category">
+        @for (c of categories; track c) { <option [value]="c">{{ label(c) }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Status</span>
+      <select class="select" name="status" [(ngModel)]="e.draft.status">
+        @for (s of statuses; track s) { <option [value]="s">{{ label(s) }}</option> }
+      </select></label>
+    @if (e.item?.verifiedAt) { <p class="field__hint">Verified on {{ e.item!.verifiedAt!.slice(0, 10) }}</p> }
+    <label class="field"><span class="field__label">Owner<span class="field__opt">optional</span></span>
+      <input class="input" name="owner" [(ngModel)]="e.draft.owner" /></label>
+    <label class="field"><span class="field__label">Acceptance criteria<span class="field__opt">optional</span></span>
+      <textarea class="textarea" name="criteria" rows="2" [(ngModel)]="e.draft.acceptanceCriteria"></textarea></label>
+    <tm-multi-pick legend="Addresses threats" [options]="threatOptions()" [(value)]="e.draft.threatIds"
+                   emptyText="No threats yet." />
+    <tm-multi-pick legend="Applies to components" [options]="componentOptions()" [(value)]="e.draft.componentIds" />
+    @if (e.item) {
+      <h3 class="field__label">Security tests</h3>
+      <ul>
+        @for (t of testsOf(e.item); track t.id) {
+          <li><button class="link-btn" type="button" (click)="nav.go('security-tests', { select: t.id })">{{ t.displayId }} {{ t.title }}</button></li>
+        } @empty { <li class="field__hint">No security test verifies this control yet.</li> }
+      </ul>
+    }
+    <label class="field"><span class="field__label">Description<span class="field__opt">optional</span></span>
+      <textarea class="textarea" name="description" rows="3" [(ngModel)]="e.draft.description"></textarea></label>
+  </tm-editor-drawer>
+}

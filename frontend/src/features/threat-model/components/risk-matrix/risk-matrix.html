@@ -1,0 +1,27 @@
+<table class="rm">
+  <caption class="rm__caption">{{ caption() }}</caption>
+  <thead>
+    <tr>
+      <th scope="col"><span class="rm__axis">Likelihood ↓ / Impact →</span></th>
+      @for (i of impacts; track i) { <th scope="col">{{ i }} {{ impactNames[i - 1] }}</th> }
+    </tr>
+  </thead>
+  <tbody>
+    @for (l of likelihoods; track l) {
+      <tr>
+        <th scope="row">{{ l }} {{ likelihoodNames[l - 1] }}</th>
+        @for (i of impacts; track i) {
+          <td>
+            <button type="button" class="rm__cell" [class]="'rm__cell rm__cell--' + level(l, i)"
+                    [class.rm__cell--selected]="isSelected(l, i)"
+                    [attr.aria-pressed]="isSelected(l, i)" [attr.aria-label]="label(l, i)"
+                    (click)="pick.emit({ likelihood: l, impact: i })">
+              <span class="rm__score">{{ l * i }}</span>
+              @if (count(l, i)) { <span class="rm__count">{{ count(l, i) }}</span> }
+            </button>
+          </td>
+        }
+      </tr>
+    }
+  </tbody>
+</table>

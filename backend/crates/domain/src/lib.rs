@@ -5,6 +5,7 @@ pub mod expr;
 pub mod graph;
 pub mod layout;
 pub mod links;
+pub mod threat;
 pub mod validation;
 
 pub use entities::*;

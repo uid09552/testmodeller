@@ -22,6 +22,7 @@ TestModeller supports model-based testing: testers describe features by scenario
 - Test case generation with coverage criteria
 - AI proposals (models, transitions, test cases) with review workflow
 - Export (JSON, CSV, Gherkin)
+- Threat modeling per project: architecture components, data flows, exposure zones, assets, STRIDE threats, risk rating, security controls and security test cases (see [09-threat-modeling.md](09-threat-modeling.md))
 
 ## Out of scope (v1)
 - Test execution / automation runners

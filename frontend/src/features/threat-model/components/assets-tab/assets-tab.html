@@ -1,0 +1,43 @@
+<tm-entity-table caption="Assets" [rows]="store.assets()" [columns]="columns()"
+                 [selectedId]="editor.editing()?.item?.id ?? null"
+                 emptyText="No assets yet. Assets are what is worth protecting: data, secrets, code, capabilities."
+                 (open)="edit($event)">
+  <button toolbar class="btn btn--primary" type="button" (click)="add()">Add asset</button>
+</tm-entity-table>
+
+@if (editor.editing(); as e) {
+  <tm-editor-drawer [heading]="e.item ? 'Asset ' + e.item.name : 'New asset'" [busy]="editor.busy()"
+                    [canDelete]="!!e.item" [error]="editor.error()"
+                    (save)="editor.save()" (closed)="editor.close()"
+                    (remove)="editor.remove('Delete asset &quot;' + e.item?.name + '&quot; and its links?')">
+    <label class="field"><span class="field__label">Name</span>
+      <input class="input" name="name" required [(ngModel)]="e.draft.name" /></label>
+    <label class="field"><span class="field__label">Category</span>
+      <select class="select" name="category" [(ngModel)]="e.draft.category">
+        @for (c of categories; track c) { <option [value]="c">{{ label(c) }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Confidentiality</span>
+      <select class="select" name="conf" [(ngModel)]="e.draft.confidentiality">
+        <option [ngValue]="null">Not set</option>
+        @for (l of cia; track l) { <option [ngValue]="l">{{ label(l) }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Integrity</span>
+      <select class="select" name="integ" [(ngModel)]="e.draft.integrity">
+        <option [ngValue]="null">Not set</option>
+        @for (l of cia; track l) { <option [ngValue]="l">{{ label(l) }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Availability</span>
+      <select class="select" name="avail" [(ngModel)]="e.draft.availability">
+        <option [ngValue]="null">Not set</option>
+        @for (l of cia; track l) { <option [ngValue]="l">{{ label(l) }}</option> }
+      </select></label>
+    <label class="toggle-row"><input type="checkbox" name="pd" [(ngModel)]="e.draft.personalData" /> Contains personal data</label>
+    <label class="field"><span class="field__label">Owner<span class="field__opt">optional</span></span>
+      <input class="input" name="owner" [(ngModel)]="e.draft.owner" /></label>
+    <tm-multi-pick legend="Handled by components" [options]="componentOptions()" [(value)]="e.draft.componentIds" />
+    <tm-multi-pick legend="Carried by data flows" [options]="flowOptions()" [(value)]="e.draft.flowIds"
+                   emptyText="No data flows yet." />
+    <label class="field"><span class="field__label">Description<span class="field__opt">optional</span></span>
+      <textarea class="textarea" name="description" rows="3" [(ngModel)]="e.draft.description"></textarea></label>
+  </tm-editor-drawer>
+}

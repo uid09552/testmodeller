@@ -1,8 +1,12 @@
 import {
   ChangeDetectionStrategy, Component, computed, effect, HostListener, inject, signal,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router } from '@angular/router';
+import { filter, map } from 'rxjs';
 import { AutofocusDirective } from '../../../../shared/components/autofocus';
+import { ThreatModelIndex } from '../../../threat-model/state/threat-model-index';
+import { errorMessage } from '../../../threat-model/state/threat-model.store';
 import {
   ExplorerStore, ExplorerProject, ExplorerComponent, ExplorerFeature, ExplorerModel,
   NewItemKind,
@@ -10,6 +14,7 @@ import {
 
 type CtxTarget =
   | { kind: 'project';   project: ExplorerProject }
+  | { kind: 'threat-model'; project: ExplorerProject }
   | { kind: 'component'; project: ExplorerProject; component: ExplorerComponent }
   | { kind: 'feature';   project: ExplorerProject; component: ExplorerComponent; feature: ExplorerFeature }
   | { kind: 'model';     project: ExplorerProject; component: ExplorerComponent; feature: ExplorerFeature; model: ExplorerModel };
@@ -32,6 +37,13 @@ interface ContextMenu { x: number; y: number; target: CtxTarget }
 export class ExplorerTreeComponent {
   readonly store = inject(ExplorerStore);
   private readonly router = inject(Router);
+  readonly threatModels = inject(ThreatModelIndex);
+
+  /** The current URL, to show which project's threat model is open. */
+  private readonly url = toSignal(
+    this.router.events.pipe(filter(e => e instanceof NavigationEnd), map(() => this.router.url)),
+    { initialValue: this.router.url },
+  );
 
   // ── Inline rename ──────────────────────────────────────────────────────────
   readonly editId    = signal<string | null>(null);
@@ -65,6 +77,54 @@ export class ExplorerTreeComponent {
     this.store.select({ kind: 'project', projectId: project.id });
     this.store.toggleProject(project.id);
     void this.router.navigate(['/explorer']);
+  }
+
+  /** Whether the threat model of the project is the open page. */
+  isThreatModelOpen(projectId: string): boolean {
+    return this.url().startsWith(`/threat-modeling/${projectId}`);
+  }
+
+  /** Opens the project's threat model workspace. */
+  openThreatModel(project: ExplorerProject): void {
+    this.store.select(null);
+    void this.router.navigate(['/threat-modeling', project.id, 'overview']);
+  }
+
+  /** Creates the project's threat model, named after the project, and opens it. */
+  async createThreatModel(project: ExplorerProject): Promise<void> {
+    try {
+      await this.threatModels.create(project.id, `${project.name} threat model`);
+      this.store.error.set(null);
+      this.openThreatModel(project);
+    } catch (e) {
+      this.store.error.set(errorMessage(e));
+    }
+  }
+
+  private async deleteThreatModel(project: ExplorerProject): Promise<void> {
+    const name = this.threatModels.of(project.id)?.name ?? 'threat model';
+    if (!confirm(`Delete "${name}"? Its components, threats, risks, controls and security tests are deleted with it.`)) return;
+    try {
+      await this.threatModels.remove(project.id);
+      if (this.isThreatModelOpen(project.id)) void this.router.navigate(['/explorer']);
+    } catch (e) {
+      this.store.error.set(errorMessage(e));
+    }
+  }
+
+  /** Title and kind of a context menu target. */
+  ctxTitle(t: CtxTarget): string {
+    switch (t.kind) {
+      case 'project': return t.project.name;
+      case 'threat-model': return this.threatModels.of(t.project.id)?.name ?? 'Threat model';
+      case 'component': return t.component.name;
+      case 'feature': return t.feature.name;
+      case 'model': return t.model.name;
+    }
+  }
+
+  ctxKind(t: CtxTarget): string {
+    return t.kind === 'threat-model' ? 'threat model' : t.kind;
   }
 
   selectComponent(project: ExplorerProject, component: ExplorerComponent): void {
@@ -145,6 +205,7 @@ export class ExplorerTreeComponent {
 
     switch (action) {
       case 'rename':
+        if (t.kind === 'threat-model') return;
         if (t.kind === 'project')   this.startEdit(t.project.id,   t.project.name);
         if (t.kind === 'component') this.startEdit(t.component.id, t.component.name);
         if (t.kind === 'feature')   this.startEdit(t.feature.id,   t.feature.name);
@@ -153,6 +214,15 @@ export class ExplorerTreeComponent {
       case 'add-component':
         if (t.kind === 'project') this.openNewPrompt('component', t.project.id);
         break;
+      case 'new-threat-model':
+        if (t.kind === 'project') void this.createThreatModel(t.project);
+        break;
+      case 'open-threat-model':
+        if (t.kind === 'project' || t.kind === 'threat-model') this.openThreatModel(t.project);
+        break;
+      case 'delete-threat-model':
+        if (t.kind === 'threat-model') void this.deleteThreatModel(t.project);
+        return;
       case 'add-feature':
         if (t.kind === 'component') this.openNewPrompt('feature', t.project.id, t.component.id);
         break;
@@ -163,6 +233,7 @@ export class ExplorerTreeComponent {
         if (t.kind === 'model') this.openModel(t.model, t.feature);
         break;
       case 'delete':
+        if (t.kind === 'threat-model') return;
         if (t.kind === 'project')   this.store.deleteProject(t.project.id);
         if (t.kind === 'component') this.store.deleteComponent(t.project.id, t.component.id);
         if (t.kind === 'feature')   this.store.deleteFeature(t.project.id, t.component.id, t.feature.id);

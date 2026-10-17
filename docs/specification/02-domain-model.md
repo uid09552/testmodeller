@@ -38,6 +38,10 @@ All entities: `id` (UUID), `name`, `description`, `createdAt`, `updatedAt`, `ver
 - **Assignment**: links a TestCase to a State or Transition (optionally a test step) of a Model of the same feature
 - **Proposal**: `kind`, `payload` (JSON), `status` (pending|accepted|rejected), `rationale`, `source` (LLM id)
 
+## Threat model
+
+A project may have one threat model with its own entities (exposure zones, architecture components, assets, data flows, threats, security controls, security tests). They are described in [09-threat-modeling.md](09-threat-modeling.md). The only links into the entities above are an architecture component's optional `linkedComponentId` / `linkedFeatureId` (same project, cleared when that Component or Feature is deleted). Security tests are not `TestCase`s.
+
 ## Invariants
 - A model has exactly one initial state.
 - Transitions reference states of the same model.

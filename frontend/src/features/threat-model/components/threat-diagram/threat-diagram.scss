@@ -1,0 +1,146 @@
+// Looks like the model editor's canvas (canvas.scss, canvas-edges.scss): the
+// same node, edge, dot and handle defaults. User styles are bound inline and
+// win over these defaults; status cues (selection ring, crossing marker,
+// badges) are drawn as separate shapes so a style cannot hide them.
+
+.dg {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dg__toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  .select { width: auto; }
+}
+
+.dg__sep { width: 1px; height: 20px; background: var(--clr-surface-200); }
+.dg__toggle { margin: 0; }
+.dg__msg { color: var(--clr-text-600); font-size: var(--text-sm); }
+
+.dg__body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.dg__stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  // As much of the window as the header, tabs and toolbar leave.
+  height: max(520px, calc(100vh - 290px));
+  border: 1px solid var(--clr-surface-200);
+  border-radius: 8px;
+  background: var(--clr-surface-50);
+  overflow: hidden;
+}
+
+.dg__svg {
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+  &:focus-visible { outline: 2px solid var(--clr-brand-500); outline-offset: -2px; }
+}
+
+.dg__empty {
+  position: absolute;
+  inset: 40% 0 auto;
+  text-align: center;
+  color: var(--clr-text-400);
+  pointer-events: none;
+}
+
+.dg__minimap { position: absolute; right: 8px; bottom: 8px; }
+
+// ── Zones ───────────────────────────────────────────────────────────────
+.dg__zone-box { fill: rgba(99, 102, 241, 0.04); stroke: var(--clr-text-400); stroke-width: 1; stroke-dasharray: 6 4; }
+.dg__zone-head { fill: rgba(99, 102, 241, 0.08); cursor: move; }
+.dg__zone-label { font-family: var(--font-sans); font-size: 12px; font-weight: 600; fill: var(--clr-text-600); pointer-events: none; }
+.dg__resize { fill: var(--clr-text-400); cursor: nwse-resize; opacity: 0.5; }
+
+// ── Components (as .node-bg / .node-label) ──────────────────────────────
+.dg__node { cursor: grab; outline: none; &:active { cursor: grabbing; } }
+
+.dg__shape {
+  fill: var(--clr-surface-0);
+  stroke: var(--clr-surface-200);
+  stroke-width: 1.5;
+  transition: stroke var(--transition-fast), fill var(--transition-fast);
+  .dg__node:hover & { stroke: var(--clr-brand-400); }
+}
+
+.dg__name {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  fill: var(--clr-text-900);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.dg__type { font-family: var(--font-sans); font-size: 10px; text-anchor: middle; fill: var(--clr-text-400); pointer-events: none; }
+
+.dg__select-ring {
+  fill: none;
+  stroke: var(--clr-brand-500);
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+  pointer-events: none;
+}
+
+.dg__node:focus-visible .dg__select-ring { stroke-width: 3; }
+
+// Connector dots, as .connector-dot: shown on hover and when selected.
+.dg__dot {
+  fill: var(--clr-brand-500);
+  stroke: var(--clr-surface-0);
+  stroke-width: 2;
+  cursor: crosshair;
+  opacity: 0;
+  transition: opacity var(--transition-fast), r var(--transition-fast);
+  .dg__node:hover &,
+  .dg__node--selected & { opacity: 1; }
+  &:hover { r: 7; }
+}
+
+// ── Flows (as .edge-line / .edge-label) ─────────────────────────────────
+.dg__edge { cursor: pointer; }
+.dg__edge-hit { fill: none; stroke: transparent; stroke-width: 12; }
+.dg__edge-line { fill: none; stroke: var(--clr-edge); stroke-width: 1.5; }
+.dg__edge:hover .dg__edge-line { stroke: var(--clr-edge-hover); }
+.dg__edge--selected .dg__edge-line { stroke: var(--clr-brand-500) !important; stroke-width: 2.5 !important; }
+.dg__edge-label-bg { fill: var(--clr-surface-0); stroke: var(--clr-surface-200); stroke-width: 1; }
+.dg__edge-label { font-family: var(--font-sans); font-size: 11px; text-anchor: middle; fill: var(--clr-text-600); pointer-events: none; }
+.dg__marker-open { fill: var(--clr-surface-0); stroke-width: 1.4; }
+.dg__marker-line { fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.dg__boundary rect { fill: var(--clr-surface-0); stroke: var(--clr-warning); stroke-width: 2; }
+
+// Handles of the selected flow, as .edge-handle / .edge-bend__dot.
+.dg__end {
+  fill: var(--clr-surface-0);
+  stroke: var(--clr-brand-500);
+  stroke-width: 2.5;
+  cursor: grab;
+  &:hover { r: 8; fill: var(--clr-brand-50); }
+  &--target { fill: var(--clr-brand-500); stroke: var(--clr-surface-0); }
+}
+
+.dg__bend { fill: var(--clr-surface-0); stroke: var(--clr-brand-500); stroke-width: 2; cursor: move; }
+
+.dg__ghost { stroke: var(--clr-brand-500); stroke-dasharray: 4 3; stroke-width: 2; pointer-events: none; }
+.dg__ghost-dot { fill: var(--clr-brand-500); pointer-events: none; }
+
+// ── Threat badges ───────────────────────────────────────────────────────
+.dg__badge { cursor: pointer; font-size: 10px; font-weight: 600; }
+.dg__badge-bg { stroke: var(--clr-text-400); }
+.dg__badge-bg--none { fill: var(--clr-surface-100); }
+.dg__badge-bg--low { fill: #dcfce7; }
+.dg__badge-bg--moderate { fill: #fef9c3; }
+.dg__badge-bg--high { fill: #fed7aa; }
+.dg__badge-bg--critical { fill: #fecaca; }
