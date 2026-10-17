@@ -30,11 +30,11 @@ function model(partial: Partial<PersistedModel> = {}): PersistedModel {
     status: 'review', testSeq: 4,
     nodes: [
       { id: A, label: 'Start', kind: 'initial', x: 10, y: 20, w: 88, h: 88,
-        shape: 'circle', color: '#22c55e', tests: [test()] },
+        shape: 'circle', style: { stroke: '#22c55e' }, tests: [test()] },
       { id: B, label: 'Check', kind: 'decision', x: 200, y: 20, w: 172, h: 104,
-        shape: 'diamond', color: null, tests: [] },
+        shape: 'diamond', tests: [] },
       { id: C, label: 'Home', kind: 'final', x: 400, y: 20, w: 144, h: 48,
-        shape: 'rect', color: null, tests: [] },
+        shape: 'rect', tests: [] },
     ],
     edges: [
       { id: E, fromId: A, toId: B, label: 'login', guard: 'ok', action: 'n := 1',
@@ -215,7 +215,7 @@ describe('fromRemote', () => {
 
     expect(reloaded.nodes[0].label).toBe('Renamed elsewhere');
     // …but keeps what only the overlay can know.
-    expect(reloaded.nodes[0].color).toBe('#22c55e');
+    expect(reloaded.nodes[0].style?.stroke).toBe('#22c55e');
     expect(reloaded.nodes[0].shape).toBe('circle');
   });
 
@@ -264,7 +264,7 @@ describe('remoteFingerprint', () => {
   it('changes when only presentation changes, so restyling is saved (ADR 0010)', () => {
     const before = remoteFingerprint(model());
     const restyled = model();
-    restyled.nodes[0] = { ...restyled.nodes[0], color: '#ef4444' };
+    restyled.nodes[0] = { ...restyled.nodes[0], style: { stroke: '#ef4444' } };
     expect(remoteFingerprint(restyled)).not.toBe(before);
     const bent = model();
     bent.edges[0] = { ...bent.edges[0], curve: 80 };

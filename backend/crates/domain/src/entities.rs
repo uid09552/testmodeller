@@ -2,8 +2,6 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::graph::ModelGraph;
@@ -21,7 +19,7 @@ pub struct ParseEnumError {
 macro_rules! string_enum {
     ($(#[$meta:meta])* $name:ident { $($variant:ident => $text:literal),+ $(,)? }) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ::serde::Serialize, ::serde::Deserialize)]
         pub enum $name {
             $(
                 #[serde(rename = $text)]
@@ -38,24 +36,25 @@ macro_rules! string_enum {
             }
         }
 
-        impl FromStr for $name {
-            type Err = ParseEnumError;
+        impl ::std::str::FromStr for $name {
+            type Err = $crate::entities::ParseEnumError;
 
             fn from_str(s: &str) -> Result<Self, Self::Err> {
                 match s {
                     $($text => Ok(Self::$variant),)+
-                    _ => Err(ParseEnumError { kind: stringify!($name), value: s.to_owned() }),
+                    _ => Err($crate::entities::ParseEnumError { kind: stringify!($name), value: s.to_owned() }),
                 }
             }
         }
 
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        impl ::std::fmt::Display for $name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 f.write_str(self.as_str())
             }
         }
     };
 }
+pub(crate) use string_enum;
 
 string_enum!(
     /// How a test case came into existence.

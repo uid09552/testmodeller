@@ -94,4 +94,20 @@ mod tests {
             })
         );
     }
+
+    #[test]
+    fn leaves_annotations_unchanged() {
+        // Notes and text boxes are not graph elements: their ids are not in
+        // the map, so a duplicate keeps them, text and all.
+        let (state, state2, note) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let ids = HashMap::from([(state, state2)]);
+        let layout = json!({
+            "v": 1,
+            "annotations": [ {
+                "id": note.to_string(), "kind": "note", "x": 1, "y": 2, "w": 168, "h": 96,
+                "text": "Ask ops about the timeout", "style": { "fill": "#dbeafe" }
+            } ],
+        });
+        assert_eq!(remap_layout_ids(&layout, &ids), layout);
+    }
 }

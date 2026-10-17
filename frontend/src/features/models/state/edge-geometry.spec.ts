@@ -5,7 +5,7 @@ import {
 import { CanvasEdge, CanvasNode } from './model-editor.store';
 
 const node = (id: string, x: number, y: number): CanvasNode => ({
-  id, label: id, kind: 'regular', x, y, w: 100, h: 40, shape: 'rect', color: null, tests: [],
+  id, label: id, kind: 'regular', x, y, w: 100, h: 40, shape: 'rect', tests: [],
 });
 const A = node('a', 0, 0);       // centre (50, 20)
 const B = node('b', 400, 0);     // centre (450, 20)

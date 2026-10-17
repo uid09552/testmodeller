@@ -17,7 +17,7 @@ import {
 } from '../../../core/api/api.types';
 import { layoutOf, overlayFromLayout } from './layout-doc';
 import {
-  CanvasEdge, CanvasGroup, CanvasNode, ModelStatus, SHAPE_FOR_KIND, SIZE_FOR_SHAPE, StateKind,
+  CanvasAnnotation, CanvasEdge, CanvasGroup, CanvasNode, ModelStatus, SHAPE_FOR_KIND, SIZE_FOR_SHAPE, StateKind,
   StateTest, TestCategory,
 } from './model-editor.store';
 
@@ -31,6 +31,8 @@ export interface PersistedModel {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   groups?: CanvasGroup[];
+  /** Notes and text boxes; layout only. */
+  annotations?: CanvasAnnotation[];
   /** Next test-id counter, so ids are never reused across sessions. */
   testSeq: number;
   /** Stored variables; not edited here, but sent back on every save. */
@@ -281,7 +283,7 @@ export function fromRemote(
       y: s.position?.y ?? 80 + Math.floor(i / 4) * 140,
       ...size,
       shape,
-      color: prior?.color ?? null,
+      ...(prior?.style ? { style: prior.style } : {}),
       description: s.description,
       tests: (testsByState.get(id) ?? []).sort((a, b) => a.seq - b.seq),
     };
@@ -304,6 +306,7 @@ export function fromRemote(
       ...(prior?.waypoints ? { waypoints: prior.waypoints } : {}),
       ...(prior?.routing ? { routing: prior.routing } : {}),
       ...(prior?.labelOffset ? { labelOffset: prior.labelOffset } : {}),
+      ...(prior?.style ? { style: prior.style } : {}),
     };
   });
 
@@ -317,6 +320,7 @@ export function fromRemote(
     nodes,
     edges,
     groups: local?.groups ?? [],
+    ...(local?.annotations?.length ? { annotations: local.annotations } : {}),
     testSeq: Math.max(nextSeq, maxSeq + 1),
     variables: remote.variables ?? [],
   };

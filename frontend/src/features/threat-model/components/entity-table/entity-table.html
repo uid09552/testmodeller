@@ -1,0 +1,66 @@
+<div class="et">
+  <div class="et__tools">
+    <div class="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input class="search__input" [attr.aria-label]="'Filter ' + caption()" placeholder="Filter…"
+             [value]="filter()" (input)="filter.set($any($event.target).value)" />
+    </div>
+    <span class="et__count">{{ visible().length }} of {{ rows().length }}</span>
+    <ng-content select="[toolbar]" />
+  </div>
+
+  @if (rows().length === 0) {
+    <div class="empty"><p>{{ emptyText() }}</p></div>
+  } @else {
+    <div class="table-wrap">
+      <table class="table et__table">
+        <caption class="sr-only">{{ caption() }}</caption>
+        <thead>
+          <tr>
+            @if (selectable()) {
+              <th class="et__check">
+                <input type="checkbox" aria-label="Select all" [checked]="allChecked()" (change)="toggleAll()" />
+              </th>
+            }
+            @for (c of columns(); track c.key) {
+              <th [attr.aria-sort]="ariaSort(c.key)">
+                <button class="et__sort" type="button" (click)="sortBy(c.key)">
+                  {{ c.label }}
+                  @if (sortKey() === c.key) { <span aria-hidden="true">{{ sortDir() === 1 ? '▲' : '▼' }}</span> }
+                </button>
+              </th>
+            }
+          </tr>
+        </thead>
+        <tbody #body>
+          @for (r of visible(); track r.id; let i = $index) {
+            <tr tabindex="0" [class.et__row--selected]="selectedId() === r.id"
+                [attr.aria-selected]="selectedId() === r.id"
+                (keydown)="onRowKey($event, r, i)" (dblclick)="open.emit(r)">
+              @if (selectable()) {
+                <td class="et__check">
+                  <input type="checkbox" [attr.aria-label]="'Select ' + columns()[0].text(r)"
+                         [checked]="checked().has(r.id)" (change)="toggle(r.id)" />
+                </td>
+              }
+              @for (c of columns(); track c.key; let first = $first) {
+                <td>
+                  @if (first) {
+                    <button class="link-btn" type="button" tabindex="-1" (click)="open.emit(r)">{{ c.text(r) }}</button>
+                  } @else {
+                    {{ c.text(r) }}
+                  }
+                </td>
+              }
+            </tr>
+          } @empty {
+            <tr><td [attr.colspan]="columns().length + (selectable() ? 1 : 0)">No rows match the filter.</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>

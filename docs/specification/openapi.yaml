@@ -25,6 +25,7 @@ tags:
   - name: Export
   - name: AI
   - name: Settings
+  - name: ThreatModel
 
 paths:
   /health:
@@ -632,6 +633,350 @@ paths:
       responses:
         '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/AiSettings' } } } }
 
+  /projects/{projectId}/threat-model:
+    parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Get the project's threat model
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ThreatModel' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [ThreatModel]
+      summary: Create the project's threat model (at most one per project)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ThreatModelInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ThreatModel' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /threat-models/{threatModelId}:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Get threat model (scope, thresholds, layout)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ThreatModel' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [ThreatModel]
+      summary: Replace scope fields and thresholds (layout is not touched)
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ThreatModelInput' } } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/ThreatModel' } } } }
+        '412': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [ThreatModel]
+      summary: Delete threat model and everything in it
+      responses:
+        '204': { description: Deleted }
+
+  /threat-models/{threatModelId}/layout:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    put:
+      tags: [ThreatModel]
+      summary: Replace the diagram layout (opaque to the backend, max 256 KB)
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          description: The threat model's `layoutVersion`
+          schema: { type: integer, minimum: 0 }
+      requestBody: { required: true, content: { application/json: { schema: { type: [object, 'null'] } } } }
+      responses:
+        '200':
+          description: Saved
+          content: { application/json: { schema: { type: object, required: [layoutVersion], properties: { layoutVersion: { type: integer } } } } }
+        '412': { $ref: '#/components/responses/Problem' }
+
+  /threat-models/{threatModelId}/summary:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Overview counts, matrix and gap lists
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ThreatModelSummary' } } } }
+
+  # ---- Collections. Every list returns a plain array (threat models are small; no paging).
+  # ---- Every item path returns 404 when the item does not belong to {threatModelId}.
+
+  /threat-models/{threatModelId}/zones:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: List exposure zones
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TmZone' } } } } }
+    post:
+      tags: [ThreatModel]
+      summary: Create exposure zone
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TmZoneInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/TmZone' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /threat-models/{threatModelId}/zones/{itemId}:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Get zone
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TmZone' } } } }, '404': { $ref: '#/components/responses/Problem' } }
+    put:
+      tags: [ThreatModel]
+      summary: Replace zone
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TmZoneInput' } } } }
+      responses: { '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/TmZone' } } } }, '412': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
+    delete:
+      tags: [ThreatModel]
+      summary: Delete zone (its components are left without a zone)
+      responses: { '204': { description: Deleted } }
+
+  /threat-models/{threatModelId}/components:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: List architecture components (with computed warnings)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ArchComponent' } } } } }
+    post:
+      tags: [ThreatModel]
+      summary: Create architecture component
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ArchComponentInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ArchComponent' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /threat-models/{threatModelId}/components/{itemId}:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Get architecture component
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ArchComponent' } } } }, '404': { $ref: '#/components/responses/Problem' } }
+    put:
+      tags: [ThreatModel]
+      summary: Replace architecture component (asset links replaced as a whole)
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ArchComponentInput' } } } }
+      responses: { '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/ArchComponent' } } } }, '409': { $ref: '#/components/responses/Problem' }, '412': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
+    delete:
+      tags: [ThreatModel]
+      summary: Delete architecture component and the flows that start or end at it
+      responses: { '204': { description: Deleted } }
+
+  /threat-models/{threatModelId}/assets:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: List assets
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TmAsset' } } } } }
+    post:
+      tags: [ThreatModel]
+      summary: Create asset
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TmAssetInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/TmAsset' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /threat-models/{threatModelId}/assets/{itemId}:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Get asset
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TmAsset' } } } }, '404': { $ref: '#/components/responses/Problem' } }
+    put:
+      tags: [ThreatModel]
+      summary: Replace asset
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TmAssetInput' } } } }
+      responses: { '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/TmAsset' } } } }, '409': { $ref: '#/components/responses/Problem' }, '412': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
+    delete:
+      tags: [ThreatModel]
+      summary: Delete asset and its links
+      responses: { '204': { description: Deleted } }
+
+  /threat-models/{threatModelId}/flows:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: List data flows (with computed crossing and warnings)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TmFlow' } } } } }
+    post:
+      tags: [ThreatModel]
+      summary: Create data flow
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TmFlowInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/TmFlow' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /threat-models/{threatModelId}/flows/{itemId}:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Get data flow
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TmFlow' } } } }, '404': { $ref: '#/components/responses/Problem' } }
+    put:
+      tags: [ThreatModel]
+      summary: Replace data flow (asset links replaced as a whole)
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TmFlowInput' } } } }
+      responses: { '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/TmFlow' } } } }, '412': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
+    delete:
+      tags: [ThreatModel]
+      summary: Delete data flow
+      responses: { '204': { description: Deleted } }
+
+  /threat-models/{threatModelId}/threats:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: List threats (with computed level and flags)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Threat' } } } } }
+    post:
+      tags: [ThreatModel]
+      summary: Create manual threat
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ThreatInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Threat' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /threat-models/{threatModelId}/threats/{itemId}:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Get threat
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Threat' } } } }, '404': { $ref: '#/components/responses/Problem' } }
+    put:
+      tags: [ThreatModel]
+      summary: Replace threat (targets, assets and controls replaced as a whole)
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ThreatInput' } } } }
+      responses: { '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/Threat' } } } }, '412': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
+    delete:
+      tags: [ThreatModel]
+      summary: Delete threat (a rule-created threat's rule key is kept, so the rule does not suggest it again)
+      responses: { '204': { description: Deleted } }
+  /threat-models/{threatModelId}/threats/suggest:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    post:
+      tags: [ThreatModel]
+      summary: Apply the STRIDE rules and create candidate threats for new matches
+      responses:
+        '200': { description: Result, content: { application/json: { schema: { $ref: '#/components/schemas/SuggestThreatsResult' } } } }
+  /threat-models/{threatModelId}/threats/bulk-status:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    post:
+      tags: [ThreatModel]
+      summary: Set the status of several threats at once (confirm or dismiss)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ThreatBulkStatus' } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Threat' } } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /threat-models/{threatModelId}/controls:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: List security controls
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SecurityControl' } } } } }
+    post:
+      tags: [ThreatModel]
+      summary: Create security control
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityControlInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityControl' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /threat-models/{threatModelId}/controls/{itemId}:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Get security control
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityControl' } } } }, '404': { $ref: '#/components/responses/Problem' } }
+    put:
+      tags: [ThreatModel]
+      summary: Replace security control (threat and component links replaced as a whole)
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityControlInput' } } } }
+      responses: { '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityControl' } } } }, '412': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
+    delete:
+      tags: [ThreatModel]
+      summary: Delete security control and its links
+      responses: { '204': { description: Deleted } }
+
+  /threat-models/{threatModelId}/security-tests:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: List security tests (with staleness and latest result)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SecurityTest' } } } } }
+    post:
+      tags: [ThreatModel]
+      summary: Create manual security test
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityTestInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityTest' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /threat-models/{threatModelId}/security-tests/{itemId}:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Get security test
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityTest' } } } }, '404': { $ref: '#/components/responses/Problem' } }
+    put:
+      tags: [ThreatModel]
+      summary: Replace security test including steps and links
+      parameters: [ { $ref: '#/components/parameters/IfMatch' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityTestInput' } } } }
+      responses: { '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityTest' } } } }, '412': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
+    delete:
+      tags: [ThreatModel]
+      summary: Delete security test and its results
+      responses: { '204': { description: Deleted } }
+  /threat-models/{threatModelId}/security-tests/generate:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    post:
+      tags: [ThreatModel]
+      summary: Generate draft security tests from open/accepted threats
+      requestBody:
+        required: false
+        content: { application/json: { schema: { type: object, properties: { threatIds: { type: array, items: { $ref: '#/components/schemas/Id' }, description: Omit for all open and accepted threats } } } } }
+      responses:
+        '200': { description: Result, content: { application/json: { schema: { $ref: '#/components/schemas/GenerateSecurityTestsResult' } } } }
+  /threat-models/{threatModelId}/security-tests/bulk-status:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
+    post:
+      tags: [ThreatModel]
+      summary: Set the status of several security tests at once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, status]
+              properties:
+                ids: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Id' } }
+                status: { $ref: '#/components/schemas/SecurityTestStatus' }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SecurityTest' } } } } }
+  /threat-models/{threatModelId}/security-tests/{itemId}/results:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    get:
+      tags: [ThreatModel]
+      summary: Result history of a security test, newest first
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SecurityTestResult' } } } } }
+    post:
+      tags: [ThreatModel]
+      summary: Record a manual result (test must be ready)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityTestResultInput' } } } }
+      responses:
+        '201': { description: Recorded, content: { application/json: { schema: { $ref: '#/components/schemas/SecurityTestResult' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+
 components:
   parameters:
     ProjectId: { name: projectId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
@@ -651,6 +996,8 @@ components:
     Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
     Cursor: { name: cursor, in: query, schema: { type: string } }
     Cascade: { name: cascade, in: query, schema: { type: boolean, default: false } }
+    ThreatModelId: { name: threatModelId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ItemId: { name: itemId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
 
   responses:
     Problem:
@@ -1128,3 +1475,355 @@ components:
         - { $ref: '#/components/schemas/AiSettings' }
         - type: object
           properties: { apiKey: { type: string, writeOnly: true } }
+
+    # ---- Enums
+    ArchComponentType:
+      type: string
+      enum: [web-frontend, mobile-app, desktop-client, browser-extension,
+             api-gateway, api, message-broker, webhook, external-connector,
+             service, worker, scheduler, serverless-function,
+             relational-database, object-storage, cache, search-index, file-store, backup,
+             identity-provider, authorization-service, secrets-manager, key-management, audit-service,
+             cloud-service, container-platform, cicd-pipeline, third-party-saas, library,
+             human-user, external-system]
+    ArchLayer: { type: string, enum: [client, integration, logic, data, identity-security, platform, external] }
+    Criticality: { type: string, enum: [low, medium, high, critical] }
+    ZoneKind: { type: string, enum: [internet, partner, dmz, internal, restricted-data, management, identity, cicd, third-party, other] }
+    TrustLevel: { type: integer, minimum: 0, maximum: 4 }
+    AssetCategory: { type: string, enum: [business-data, identity-secrets, software-code, infrastructure, security-asset, operational-asset, business-capability] }
+    CiaLevel: { type: string, enum: [low, medium, high] }
+    FlowRelationship: { type: string, enum: [calls, sends-data, reads-writes, authenticates-through, trusts, depends-on, runs-on, publishes-subscribes, replicates-backs-up, deploys] }
+    TriState: { type: string, enum: ['yes', 'no', unknown] }
+    StrideCategory: { type: string, enum: [spoofing, tampering, repudiation, information-disclosure, denial-of-service, elevation-of-privilege] }
+    ThreatStatus: { type: string, enum: [candidate, open, mitigated, accepted, dismissed] }
+    ThreatOrigin: { type: string, enum: [manual, rule] }
+    RiskLevel: { type: string, enum: [low, moderate, high, critical] }
+    RiskTreatment: { type: string, enum: [undecided, mitigate, avoid, transfer, accept] }
+    ThreatFlag: { type: string, enum: [no-control, planned-controls-only, unsupported-reduction, overdue, failing-test] }
+    ControlType: { type: string, enum: [preventive, detective, corrective, compensating] }
+    ControlCategory: { type: string, enum: [identity-access, data-protection, application-network, detection-response, secure-development] }
+    ControlStatus: { type: string, enum: [planned, implemented, verified] }
+    SecurityTestType: { type: string, enum: [negative-authorization, authentication, input-validation, transport-security, configuration-review, resilience, logging-audit, other] }
+    SecurityTestStatus: { type: string, enum: [draft, ready, obsolete] }
+    SecurityTestOrigin: { type: string, enum: [manual, generated] }
+    SecurityTestOutcome: { type: string, enum: [passed, failed, not-run] }
+
+    Warning:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, description: 'e.g. NO_ZONE, NO_OWNER, INTERNET_FACING_NO_FLOW, CROSSING_AUTH_UNDOCUMENTED, CROSSING_ENCRYPTION_UNDOCUMENTED, ASSET_UNLINKED' }
+        message: { type: string }
+
+    # ---- Threat model
+    RiskThreshold:
+      type: object
+      required: [level, min, max]
+      properties:
+        level: { $ref: '#/components/schemas/RiskLevel' }
+        min: { type: integer, minimum: 1, maximum: 25 }
+        max: { type: integer, minimum: 1, maximum: 25 }
+    ThreatModelInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        scope: { type: string }
+        objectives: { type: string }
+        assumptions: { type: string }
+        exclusions: { type: string }
+        thresholds:
+          type: array
+          description: Must cover 1–25 contiguously without overlap; omitted on create means the defaults
+          items: { $ref: '#/components/schemas/RiskThreshold' }
+    ThreatModel:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - { $ref: '#/components/schemas/ThreatModelInput' }
+        - type: object
+          required: [projectId, thresholds, layoutVersion]
+          properties:
+            projectId: { $ref: '#/components/schemas/Id' }
+            layout: { type: [object, 'null'], description: 'Diagram layout, opaque to the backend' }
+            layoutVersion: { type: integer, minimum: 0 }
+
+    MatrixCell:
+      type: object
+      required: [likelihood, impact, count]
+      properties:
+        likelihood: { type: integer, minimum: 1, maximum: 5 }
+        impact: { type: integer, minimum: 1, maximum: 5 }
+        count: { type: integer }
+    RefLabel:
+      type: object
+      required: [id, label]
+      properties: { id: { $ref: '#/components/schemas/Id' }, label: { type: string, description: 'Display id and title, e.g. "THR-3 Unauthorized access"' } }
+    ThreatModelSummary:
+      type: object
+      required: [components, assets, flows, crossings, threatsByStatus, openByLevel, inherentMatrix, currentMatrix, controlsVerifiedRatio, threatsWithoutControl, controlsWithoutTest, warningCount, overdueCount]
+      properties:
+        components: { type: integer }
+        assets: { type: integer }
+        flows: { type: integer }
+        crossings: { type: integer }
+        threatsByStatus: { type: object, additionalProperties: { type: integer } }
+        openByLevel: { type: object, additionalProperties: { type: integer }, description: 'Keys are RiskLevel values plus "not-assessed"' }
+        inherentMatrix: { type: array, items: { $ref: '#/components/schemas/MatrixCell' } }
+        currentMatrix: { type: array, items: { $ref: '#/components/schemas/MatrixCell' } }
+        controlsVerifiedRatio: { type: [number, 'null'], minimum: 0, maximum: 1 }
+        threatsWithoutControl: { type: array, items: { $ref: '#/components/schemas/RefLabel' } }
+        controlsWithoutTest: { type: array, items: { $ref: '#/components/schemas/RefLabel' } }
+        warningCount: { type: integer }
+        overdueCount: { type: integer }
+
+    # ---- Architecture
+    TmZoneInput:
+      type: object
+      required: [name, kind, trustLevel]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+        kind: { $ref: '#/components/schemas/ZoneKind' }
+        trustLevel: { $ref: '#/components/schemas/TrustLevel' }
+    TmZone:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - { $ref: '#/components/schemas/TmZoneInput' }
+
+    ArchComponentInput:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+        type: { $ref: '#/components/schemas/ArchComponentType' }
+        owner: { type: string, maxLength: 200 }
+        technology: { type: string, maxLength: 200 }
+        criticality: { $ref: '#/components/schemas/Criticality' }
+        internetFacing: { type: boolean, default: false }
+        zoneId: { oneOf: [ { $ref: '#/components/schemas/Id' }, { type: 'null' } ] }
+        linkedComponentId: { oneOf: [ { $ref: '#/components/schemas/Id' }, { type: 'null' } ], description: An existing Component of the same project }
+        linkedFeatureId: { oneOf: [ { $ref: '#/components/schemas/Id' }, { type: 'null' } ], description: An existing Feature of the same project }
+        assetIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+    ArchComponent:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - { $ref: '#/components/schemas/ArchComponentInput' }
+        - type: object
+          required: [layer, warnings]
+          properties:
+            layer: { $ref: '#/components/schemas/ArchLayer' }
+            warnings: { type: array, items: { $ref: '#/components/schemas/Warning' } }
+
+    TmAssetInput:
+      type: object
+      required: [name, category]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+        category: { $ref: '#/components/schemas/AssetCategory' }
+        owner: { type: string, maxLength: 200 }
+        confidentiality: { $ref: '#/components/schemas/CiaLevel' }
+        integrity: { $ref: '#/components/schemas/CiaLevel' }
+        availability: { $ref: '#/components/schemas/CiaLevel' }
+        personalData: { type: boolean, default: false }
+    TmAsset:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - { $ref: '#/components/schemas/TmAssetInput' }
+        - type: object
+          required: [componentIds, flowIds, warnings]
+          properties:
+            componentIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+            flowIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+            warnings: { type: array, items: { $ref: '#/components/schemas/Warning' } }
+
+    TmFlowInput:
+      type: object
+      required: [sourceId, targetId, relationship]
+      properties:
+        sourceId: { $ref: '#/components/schemas/Id' }
+        targetId: { $ref: '#/components/schemas/Id' }
+        relationship: { $ref: '#/components/schemas/FlowRelationship' }
+        label: { type: string, maxLength: 200 }
+        protocol: { type: string, maxLength: 100 }
+        bidirectional: { type: boolean, default: false }
+        authentication: { type: string, maxLength: 200, description: '"none", "unknown" (default) or a free-text method such as "mTLS"' }
+        encrypted: { $ref: '#/components/schemas/TriState' }
+        assetIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+    Crossing:
+      type: object
+      required: [crosses]
+      properties:
+        crosses: { type: boolean }
+        direction: { type: [string, 'null'], enum: [into-more-trusted, into-less-trusted, null] }
+        fromTrust: { type: [integer, 'null'] }
+        toTrust: { type: [integer, 'null'] }
+    TmFlow:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - { $ref: '#/components/schemas/TmFlowInput' }
+        - type: object
+          required: [crossing, warnings]
+          properties:
+            crossing: { $ref: '#/components/schemas/Crossing' }
+            warnings: { type: array, items: { $ref: '#/components/schemas/Warning' } }
+
+    # ---- Threats and risk
+    Rating:
+      type: object
+      required: [likelihood, impact]
+      properties:
+        likelihood: { type: integer, minimum: 1, maximum: 5 }
+        impact: { type: integer, minimum: 1, maximum: 5 }
+    ThreatTarget:
+      type: object
+      required: [kind, id]
+      properties:
+        kind: { type: string, enum: [component, flow] }
+        id: { $ref: '#/components/schemas/Id' }
+    ThreatInput:
+      type: object
+      required: [title, category, targets]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 300 }
+        category: { $ref: '#/components/schemas/StrideCategory' }
+        scenario: { type: string }
+        attackerObjective: { type: string }
+        preconditions: { type: string }
+        consequences: { type: string }
+        targets: { type: array, minItems: 1, items: { $ref: '#/components/schemas/ThreatTarget' } }
+        assetIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+        controlIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+        status: { $ref: '#/components/schemas/ThreatStatus' }
+        dismissReason: { type: [string, 'null'], description: Required when status is dismissed }
+        inherent: { oneOf: [ { $ref: '#/components/schemas/Rating' }, { type: 'null' } ] }
+        current: { oneOf: [ { $ref: '#/components/schemas/Rating' }, { type: 'null' } ] }
+        treatment: { $ref: '#/components/schemas/RiskTreatment' }
+        riskOwner: { type: string, maxLength: 200 }
+        dueDate: { type: [string, 'null'], format: date }
+        acceptanceRationale: { type: [string, 'null'], description: Required when treatment is accept }
+        acceptedBy: { type: [string, 'null'], description: Required when treatment is accept }
+    RuleExplanation:
+      type: object
+      required: [ruleId, ruleVersion, ruleName, facts, missing, recommendations]
+      properties:
+        ruleId: { type: string }
+        ruleVersion: { type: integer }
+        ruleName: { type: string }
+        facts: { type: array, items: { type: string } }
+        missing: { type: array, items: { type: string }, description: Information that would confirm or dismiss the candidate }
+        recommendations: { type: array, items: { type: string }, description: Recommended controls }
+    Threat:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - { $ref: '#/components/schemas/ThreatInput' }
+        - type: object
+          required: [displayId, origin, inherentScore, currentScore, inherentLevel, currentLevel, flags]
+          properties:
+            displayId: { type: string, example: THR-1 }
+            origin: { $ref: '#/components/schemas/ThreatOrigin' }
+            explanation: { oneOf: [ { $ref: '#/components/schemas/RuleExplanation' }, { type: 'null' } ] }
+            inherentScore: { type: [integer, 'null'] }
+            currentScore: { type: [integer, 'null'] }
+            inherentLevel: { oneOf: [ { $ref: '#/components/schemas/RiskLevel' }, { type: 'null' } ] }
+            currentLevel: { oneOf: [ { $ref: '#/components/schemas/RiskLevel' }, { type: 'null' } ] }
+            flags: { type: array, items: { $ref: '#/components/schemas/ThreatFlag' } }
+    SuggestThreatsResult:
+      type: object
+      required: [rulesetVersion, created, skipped]
+      properties:
+        rulesetVersion: { type: integer }
+        created: { type: array, items: { $ref: '#/components/schemas/Threat' } }
+        skipped: { type: integer, description: Matches that already have a threat (incl. dismissed or deleted) }
+    ThreatBulkStatus:
+      type: object
+      required: [ids, status]
+      properties:
+        ids: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Id' } }
+        status: { type: string, enum: [open, dismissed] }
+        reason: { type: string, description: Required for dismissed }
+
+    # ---- Controls
+    SecurityControlInput:
+      type: object
+      required: [name, type, category]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 300 }
+        description: { type: string }
+        type: { $ref: '#/components/schemas/ControlType' }
+        category: { $ref: '#/components/schemas/ControlCategory' }
+        status: { $ref: '#/components/schemas/ControlStatus' }
+        owner: { type: string, maxLength: 200 }
+        acceptanceCriteria: { type: string }
+        componentIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+        threatIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+    SecurityControl:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - { $ref: '#/components/schemas/SecurityControlInput' }
+        - type: object
+          required: [displayId, securityTestIds]
+          properties:
+            displayId: { type: string, example: CTL-1 }
+            verifiedAt: { type: [string, 'null'], format: date-time, description: Set when status becomes verified }
+            securityTestIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+
+    # ---- Security tests
+    SecurityTestStep:
+      type: object
+      required: [action, expected]
+      properties: { action: { type: string, minLength: 1 }, expected: { type: string } }
+    SecurityTestFields:
+      type: object
+      required: [title, type]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 300 }
+        objective: { type: string }
+        preconditions: { type: array, items: { type: string } }
+        steps: { type: array, items: { $ref: '#/components/schemas/SecurityTestStep' } }
+        type: { $ref: '#/components/schemas/SecurityTestType' }
+        status: { $ref: '#/components/schemas/SecurityTestStatus' }
+        controlIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+    SecurityTestInput:
+      allOf:
+        - { $ref: '#/components/schemas/SecurityTestFields' }
+        - type: object
+          required: [threatIds]
+          properties:
+            threatIds: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Id' } }
+    SecurityTestResultInput:
+      type: object
+      required: [outcome]
+      properties:
+        outcome: { $ref: '#/components/schemas/SecurityTestOutcome' }
+        note: { type: string, maxLength: 2000 }
+        executedAt: { $ref: '#/components/schemas/Timestamp', description: Defaults to now }
+    SecurityTestResult:
+      allOf:
+        - { $ref: '#/components/schemas/SecurityTestResultInput' }
+        - type: object
+          required: [id, securityTestId, executedAt]
+          properties:
+            id: { $ref: '#/components/schemas/Id' }
+            securityTestId: { $ref: '#/components/schemas/Id' }
+    SecurityTest:
+      allOf:
+        - { $ref: '#/components/schemas/Audit' }
+        - { $ref: '#/components/schemas/SecurityTestFields' }
+        - type: object
+          required: [displayId, origin, threatIds]
+          properties:
+            threatIds: { type: array, items: { $ref: '#/components/schemas/Id' }, description: Empty when all its threats were deleted (the test is then stale) }
+            displayId: { type: string, example: SEC-1 }
+            origin: { $ref: '#/components/schemas/SecurityTestOrigin' }
+            templateId: { type: [string, 'null'] }
+            templateVersion: { type: [integer, 'null'] }
+            stale: { type: [string, 'null'], description: 'Reason the generated test is stale, e.g. "threat dismissed", "no threat", "control unlinked: CTL-2"' }
+            lastResult: { oneOf: [ { $ref: '#/components/schemas/SecurityTestResult' }, { type: 'null' } ] }
+    GenerateSecurityTestsResult:
+      type: object
+      required: [created, skipped]
+      properties:
+        created: { type: array, items: { $ref: '#/components/schemas/SecurityTest' } }
+        skipped: { type: integer, description: Template/threat/control combinations that already have a non-obsolete test }

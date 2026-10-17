@@ -1,0 +1,57 @@
+@if (!embedded()) {
+<tm-entity-table caption="Data flows" [rows]="rows()" [columns]="columns()"
+                 [selectedId]="editor.editing()?.item?.id ?? null"
+                 emptyText="No data flows yet. A flow says how two components talk: protocol, authentication, encryption and the data exchanged."
+                 (open)="edit($event)">
+  <label toolbar class="toggle-row">
+    <input type="checkbox" [checked]="crossingOnly()" (change)="crossingOnly.set($any($event.target).checked)" />
+    Crosses trust boundary
+  </label>
+  <button toolbar class="btn btn--primary" type="button" [disabled]="store.components().length === 0" (click)="add()">
+    Add data flow
+  </button>
+</tm-entity-table>
+}
+
+@if (editor.editing(); as e) {
+  <tm-editor-drawer [properties]="propertiesTpl()" [(tab)]="drawerTab" [heading]="heading(e.item)" [busy]="editor.busy()" [canDelete]="!!e.item" [error]="editor.error()"
+                    (save)="editor.save()" (closed)="editor.close()" (remove)="editor.remove('Delete this data flow?')">
+    <label class="field"><span class="field__label">From</span>
+      <select class="select" name="source" [(ngModel)]="e.draft.sourceId">
+        @for (c of store.components(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">To</span>
+      <select class="select" name="target" [(ngModel)]="e.draft.targetId">
+        @for (c of store.components(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Relationship</span>
+      <select class="select" name="rel" [(ngModel)]="e.draft.relationship">
+        @for (r of relationships; track r) { <option [value]="r">{{ label(r) }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Label<span class="field__opt">optional</span></span>
+      <input class="input" name="label" [(ngModel)]="e.draft.label" /></label>
+    <label class="field"><span class="field__label">Protocol<span class="field__opt">optional</span></span>
+      <input class="input" name="protocol" placeholder="HTTPS, gRPC, SQL, AMQP…" [(ngModel)]="e.draft.protocol" /></label>
+    <label class="toggle-row"><input type="checkbox" name="bidi" [(ngModel)]="e.draft.bidirectional" /> Data goes both ways</label>
+    <label class="field"><span class="field__label">Authentication</span>
+      <select class="select" name="authMode" [(ngModel)]="e.draft.authMode">
+        <option value="unknown">Not documented</option>
+        <option value="none">None</option>
+        <option value="method">Method…</option>
+      </select></label>
+    @if (e.draft.authMode === 'method') {
+      <label class="field"><span class="field__label">Method</span>
+        <input class="input" name="method" placeholder="mTLS, OAuth2 bearer token…" [(ngModel)]="e.draft.method" /></label>
+    }
+    <label class="field"><span class="field__label">Encrypted in transit</span>
+      <select class="select" name="enc" [(ngModel)]="e.draft.encrypted">
+        @for (t of tri; track t) { <option [value]="t">{{ t === 'unknown' ? 'Not documented' : label(t) }}</option> }
+      </select></label>
+    <tm-multi-pick legend="Data exchanged (assets)" [options]="assetOptions()" [(value)]="e.draft.assetIds"
+                   emptyText="No assets registered yet." />
+    @if (e.item) {
+      <p class="field__hint">Trust boundary: {{ e.item.crossing.crosses ? 'crosses' : 'does not cross' }}</p>
+      @for (w of e.item.warnings; track w.code) { <p class="field__hint">⚠ {{ w.message }}</p> }
+    }
+  </tm-editor-drawer>
+}

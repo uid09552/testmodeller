@@ -1,0 +1,95 @@
+<div class="tm-filters">
+  <select class="select" aria-label="Status" (change)="status.set($any($event.target).value)">
+    <option value="">All statuses</option>
+    @for (s of statuses; track s) { <option [value]="s" [selected]="status() === s">{{ label(s) }}</option> }
+  </select>
+  <select class="select" aria-label="Category" (change)="category.set($any($event.target).value)">
+    <option value="">All categories</option>
+    @for (c of categories; track c) { <option [value]="c">{{ label(c) }}</option> }
+  </select>
+  <select class="select" aria-label="Origin" (change)="origin.set($any($event.target).value)">
+    <option value="">Any origin</option>
+    <option value="manual">Manual</option>
+    <option value="rule">Rule</option>
+  </select>
+  <select class="select" aria-label="Current risk level" (change)="level.set($any($event.target).value)">
+    <option value="">Any risk</option>
+    @for (l of levels; track l) { <option [value]="l">{{ label(l) }}</option> }
+    <option value="none">Not assessed</option>
+  </select>
+  <select class="select" aria-label="Target" (change)="target.set($any($event.target).value)">
+    <option value="">All targets</option>
+    @for (o of targetOptions(); track o.id) { <option [value]="o.id" [selected]="target() === o.id">{{ o.label }}</option> }
+  </select>
+</div>
+
+@if (message(); as m) { <p class="tt__message" role="status">{{ m }}</p> }
+
+<tm-entity-table caption="Threats" [rows]="rows()" [columns]="columns()" [selectable]="true"
+                 [selectedId]="editor.editing()?.item?.id ?? null"
+                 emptyText="No threats yet. Add one, or let the STRIDE rules suggest candidates from the architecture."
+                 (open)="edit($event)" (checkedChange)="checked.set($event)">
+  <button toolbar class="btn btn--secondary" type="button" [disabled]="!checked().length" (click)="bulk('open')">Confirm</button>
+  <button toolbar class="btn btn--secondary" type="button" [disabled]="!checked().length" (click)="bulk('dismissed')">Dismiss</button>
+  <button toolbar class="btn btn--secondary" type="button" (click)="suggest()">Suggest threats</button>
+  <button toolbar class="btn btn--primary" type="button" (click)="add()">Add threat</button>
+</tm-entity-table>
+
+@if (editor.editing(); as e) {
+  <tm-editor-drawer [heading]="e.item ? e.item.displayId + ' ' + e.item.title : 'New threat'"
+                    [busy]="editor.busy()" [canDelete]="!!e.item" [error]="editor.error()"
+                    (save)="editor.save()" (closed)="editor.close()"
+                    (remove)="editor.remove('Delete threat ' + e.item?.displayId + '?')">
+    @if (e.item?.status === 'candidate') {
+      <p class="tt__candidate">◌ Candidate — suggested by a rule. Confirm it to make it an open threat, or dismiss it.</p>
+    }
+    @if (e.item?.explanation; as x) {
+      <section class="tt__why" aria-label="Why this was suggested">
+        <h3>Why: {{ x.ruleName }} <span class="mono">({{ x.ruleId }} v{{ x.ruleVersion }})</span></h3>
+        <ul>@for (f of x.facts; track f) { <li>{{ f }}</li> }</ul>
+        <h4>To confirm or dismiss</h4>
+        <ul>@for (m of x.missing; track m) { <li>{{ m }}</li> }</ul>
+        <h4>Recommended controls</h4>
+        <ul>
+          @for (r of x.recommendations; track r) {
+            <li>{{ r }}
+              @if (!hasControlNamed(e.item!, r)) {
+                <button class="btn btn--secondary btn--sm" type="button" (click)="addControl(e.item!, r)">Add as control</button>
+              } @else { <span class="field__hint">(linked)</span> }
+            </li>
+          }
+        </ul>
+      </section>
+    }
+    @for (f of e.item?.flags ?? []; track f) { <p class="field__hint">⚠ {{ flagText[f] }}</p> }
+    <label class="field"><span class="field__label">Title</span>
+      <input class="input" name="title" required [(ngModel)]="e.draft.title" /></label>
+    <label class="field"><span class="field__label">STRIDE category</span>
+      <select class="select" name="category" [(ngModel)]="e.draft.category">
+        @for (c of categories; track c) { <option [value]="c">{{ label(c) }}</option> }
+      </select></label>
+    <label class="field"><span class="field__label">Status</span>
+      <select class="select" name="status" [(ngModel)]="e.draft.status">
+        @for (s of statuses; track s) {
+          @if (s !== 'candidate' || e.item?.status === 'candidate') { <option [value]="s">{{ label(s) }}</option> }
+        }
+      </select></label>
+    @if (e.draft.status === 'dismissed') {
+      <label class="field"><span class="field__label">Reason for dismissal</span>
+        <input class="input" name="dismissReason" required [(ngModel)]="e.draft.dismissReason" /></label>
+    }
+    <tm-multi-pick legend="Targets (components and flows)" [options]="targetOptions()" [(value)]="e.draft.targetIds" />
+    <label class="field"><span class="field__label">Scenario</span>
+      <textarea class="textarea" name="scenario" rows="3" [(ngModel)]="e.draft.scenario"></textarea></label>
+    <label class="field"><span class="field__label">Attacker objective<span class="field__opt">optional</span></span>
+      <input class="input" name="objective" [(ngModel)]="e.draft.attackerObjective" /></label>
+    <label class="field"><span class="field__label">Preconditions<span class="field__opt">optional</span></span>
+      <textarea class="textarea" name="preconditions" rows="2" [(ngModel)]="e.draft.preconditions"></textarea></label>
+    <label class="field"><span class="field__label">Consequences<span class="field__opt">optional</span></span>
+      <textarea class="textarea" name="consequences" rows="2" [(ngModel)]="e.draft.consequences"></textarea></label>
+    <tm-multi-pick legend="Affected assets" [options]="assetOptions()" [(value)]="e.draft.assetIds" />
+    <tm-multi-pick legend="Addressed by controls" [options]="controlOptions()" [(value)]="e.draft.controlIds"
+                   emptyText="No controls yet." />
+    <p class="field__hint">Rate the risk and decide its treatment on the Risks tab.</p>
+  </tm-editor-drawer>
+}

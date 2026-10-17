@@ -1,20 +1,45 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { singleLine } from '../../state/node-fit';
+import { ALL_SHAPES, shapeIcon } from '../../state/node-shapes';
+import { StyleChange, StyleSectionComponent, StyleTarget } from '../style-section/style-section';
 import {
-  CanvasEdge, CanvasNode, ModelEditorStore, ModelStatus, StateKind,
-  NodeShape, NODE_COLORS, GROUP_COLORS, AlignMode, CanvasGroup,
+  ANNOTATION_MAX_TEXT, CanvasAnnotation, CanvasEdge, CanvasNode, ModelEditorStore, ModelStatus, StateKind,
+  GROUP_COLORS, AlignMode, CanvasGroup,
 } from '../../state/model-editor.store';
 
 @Component({
   selector: 'tm-properties-panel',
-  imports: [FormsModule],
+  imports: [FormsModule, StyleSectionComponent],
   templateUrl: './properties-panel.html',
   styleUrl: './properties-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PropertiesPanelComponent {
   readonly store = inject(ModelEditorStore);
+
+  // ── Style ─────────────────────────────────────────────────────────────
+  /** The selected states and transitions, as the style section sees them. */
+  readonly styleTargets = computed<StyleTarget[]>(() => {
+    const ids = new Set(this.store.selection().map(s => s.id));
+    return [
+      ...this.store.nodes().filter(n => ids.has(n.id)).map(n => ({ kind: 'node' as const, style: n.style })),
+      ...this.store.edges().filter(e => ids.has(e.id)).map(e => ({ kind: 'edge' as const, style: e.style })),
+      ...this.store.annotations().filter(a => ids.has(a.id)).map(a => ({ kind: a.kind, style: a.style })),
+    ];
+  });
+
+  // ── Annotation bindings ───────────────────────────────────────────────
+  readonly maxNoteText = ANNOTATION_MAX_TEXT;
+
+  /** Committing the text field is one undo step; an emptied annotation is removed. */
+  setNoteText(a: CanvasAnnotation, v: string): void {
+    this.store.checkpoint();
+    this.store.commitAnnotationText(a.id, v);
+  }
+
+  /** A style change applies to everything selected, as one undo step. */
+  applyStyle(c: StyleChange): void { this.store.styleSelection(c.key, c.value); }
 
   // ── Node bindings ─────────────────────────────────────────────────────
   getNodeLabel(n: CanvasNode): string { return n.label; }
@@ -42,7 +67,6 @@ export class PropertiesPanelComponent {
   // ── Model meta ────────────────────────────────────────────────────────
   statusOptions: ModelStatus[] = ['draft', 'review', 'approved'];
 
-  readonly colors = NODE_COLORS;
   readonly groupColors = GROUP_COLORS;
 
   readonly alignActions: { mode: AlignMode; label: string; path: string }[] = [
@@ -68,9 +92,6 @@ export class PropertiesPanelComponent {
   setGroupOpacity(id: string, percent: string): void {
     this.store.updateGroup(id, { opacity: Number(percent) / 100 });
   }
-  readonly shapes: { value: NodeShape; label: string }[] = [
-    { value: 'circle',    label: 'Circle' },
-    { value: 'rect',      label: 'Rectangle' },
-    { value: 'diamond',   label: 'Diamond (decision)' },
-  ];
+  readonly shapes = ALL_SHAPES;
+  readonly shapeIcon = shapeIcon;
 }

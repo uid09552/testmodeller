@@ -1,0 +1,36 @@
+.st__generate {
+  margin-bottom: 12px;
+  font-size: var(--text-sm);
+
+  summary { cursor: pointer; font-weight: 600; }
+}
+
+.st__pick {
+  max-height: 160px;
+  overflow: auto;
+  margin: 6px 0 8px;
+}
+
+.st__steps {
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+}
+
+.st__step {
+  display: grid;
+  grid-template-columns: 20px 1fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.st__no { color: var(--clr-text-400); font-size: var(--text-xs); }
+
+.st__outcomes { border: 0; padding: 0; }
+
+.st__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

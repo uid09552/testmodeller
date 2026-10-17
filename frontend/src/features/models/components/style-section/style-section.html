@@ -1,0 +1,92 @@
+<section class="style" aria-label="Style">
+  @if (hasLine()) {
+    <span class="props__label">Line</span>
+    @if (has('dash')) {
+      <div class="style__row" role="radiogroup" aria-label="Line pattern">
+        @for (d of dashes; track d.label) {
+          <button type="button" class="shape-btn" role="radio"
+                  [class.shape-btn--on]="checked('dash', d.value) === 'true'"
+                  [attr.aria-checked]="checked('dash', d.value)"
+                  [title]="d.label" [attr.aria-label]="d.label" (click)="set('dash', d.value)">
+            <svg width="22" height="10" viewBox="0 0 22 10" aria-hidden="true">
+              <line x1="2" y1="5" x2="20" y2="5" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" [attr.stroke-dasharray]="d.dash" />
+            </svg>
+          </button>
+        }
+      </div>
+    }
+    @if (has('width')) {
+      <div class="style__row" role="radiogroup" aria-label="Line width">
+        @for (w of widths; track w.label) {
+          <button type="button" class="shape-btn style__text-btn" role="radio"
+                  [class.shape-btn--on]="checked('width', w.value) === 'true'"
+                  [attr.aria-checked]="checked('width', w.value)"
+                  [title]="w.value ? w.label + ' px' : 'Default width'"
+                  [attr.aria-label]="w.value ? 'Width ' + w.label + ' px' : 'Default width'"
+                  (click)="set('width', w.value)">{{ w.label }}</button>
+        }
+      </div>
+    }
+    @if (has('stroke')) {
+      <tm-color-control label="Line colour" [value]="colour('stroke')" (pick)="set('stroke', $event)" />
+    }
+  }
+
+  @if (has('arrow')) {
+    <span class="props__label">Arrowhead</span>
+    <div class="style__row" role="radiogroup" aria-label="Arrowhead">
+      @for (a of arrows; track a.label) {
+        <button type="button" class="shape-btn" role="radio"
+                [class.shape-btn--on]="checked('arrow', a.value) === 'true'"
+                [attr.aria-checked]="checked('arrow', a.value)"
+                [title]="a.label" [attr.aria-label]="a.label" (click)="set('arrow', a.value)">
+          <svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true" stroke="currentColor"
+               stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
+            <line x1="2" y1="6" x2="14" y2="6" />
+            @switch (a.value) {
+              @case ('open') { <polygon points="13 2,20 6,13 10" fill="none" /> }
+              @case ('line') { <polyline points="14 2,20 6,14 10" fill="none" /> }
+              @default { <polygon points="13 2,20 6,13 10" fill="currentColor" /> }
+            }
+          </svg>
+        </button>
+      }
+    </div>
+  }
+
+  @if (has('fill')) {
+    <span class="props__label">Fill</span>
+    <tm-color-control label="Fill colour" [value]="colour('fill')" (pick)="set('fill', $event)" />
+  }
+
+  @if (hasText()) {
+    <span class="props__label">Text</span>
+    <div class="style__row">
+      @if (has('size')) {
+        <div class="style__row" role="radiogroup" aria-label="Text size">
+          @for (z of sizes; track z.label) {
+            <button type="button" class="shape-btn style__text-btn" role="radio"
+                    [class.shape-btn--on]="checked('size', z.value) === 'true'"
+                    [attr.aria-checked]="checked('size', z.value)"
+                    [title]="z.name" [attr.aria-label]="z.name + ' text'"
+                    (click)="set('size', z.value)">{{ z.label }}</button>
+          }
+        </div>
+      }
+      @if (has('bold')) {
+        <button type="button" class="shape-btn style__text-btn style__bold"
+                [class.shape-btn--on]="pressed('bold') === 'true'" [attr.aria-pressed]="pressed('bold')"
+                title="Bold" aria-label="Bold" (click)="toggle('bold')">B</button>
+      }
+      @if (has('italic')) {
+        <button type="button" class="shape-btn style__text-btn style__italic"
+                [class.shape-btn--on]="pressed('italic') === 'true'" [attr.aria-pressed]="pressed('italic')"
+                title="Italic" aria-label="Italic" (click)="toggle('italic')">I</button>
+      }
+    </div>
+    @if (has('text')) {
+      <tm-color-control label="Text colour" [value]="colour('text')" (pick)="set('text', $event)" />
+    }
+  }
+</section>

@@ -1,0 +1,40 @@
+.ov__start { margin-bottom: 16px; }
+
+.ov__stats { margin-bottom: 16px; }
+
+// The matrix has a fixed width; the other cards share what is left and wrap
+// below it on narrow screens, so nothing overlaps.
+.ov__grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.ov__card {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 16px;
+
+  &--matrix {
+    flex: 0 0 auto;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  h2 { font-size: var(--text-sm); margin: 0 0 8px; }
+  h2:not(:first-child) { margin-top: 16px; }
+  ul { margin: 0; padding-left: 18px; font-size: var(--text-sm); }
+}
+
+.ov__list {
+  list-style: none;
+  padding: 0 !important;
+
+  li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+}
+
+.ov__scope { padding: 16px; max-width: 720px; }
+
+.ov__error { color: var(--clr-danger); }

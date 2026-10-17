@@ -1,0 +1,72 @@
+@if (s(); as s) {
+  @if (s.components === 0) {
+    <div class="empty ov__start">
+      <p>Start by registering what you are building: the components of the system, the zones they run in, and the data they handle.</p>
+      <button class="btn btn--primary" type="button" (click)="nav.go('components')">Register the first component</button>
+    </div>
+  }
+
+  <div class="stat-row ov__stats">
+    <div class="stat"><div class="stat__label">Components</div><div class="stat__value">{{ s.components }}</div></div>
+    <div class="stat"><div class="stat__label">Assets</div><div class="stat__value">{{ s.assets }}</div></div>
+    <div class="stat"><div class="stat__label">Data flows</div><div class="stat__value">{{ s.flows }}</div></div>
+    <div class="stat"><div class="stat__label">Trust-boundary crossings</div><div class="stat__value">{{ s.crossings }}</div></div>
+    <div class="stat"><div class="stat__label">Open threats</div><div class="stat__value">{{ openThreats() }}</div></div>
+    <div class="stat"><div class="stat__label">Controls verified</div><div class="stat__value">{{ verified() }}</div></div>
+    <div class="stat"><div class="stat__label">⚠ Missing information</div><div class="stat__value">{{ s.warningCount }}</div></div>
+    <div class="stat"><div class="stat__label">Overdue</div><div class="stat__value">{{ s.overdueCount }}</div></div>
+  </div>
+
+  <div class="ov__grid">
+    <section class="card ov__card" aria-label="Threats">
+      <h2>Threats by status</h2>
+      <ul class="ov__list">
+        @for (k of ['candidate', 'open', 'mitigated', 'accepted', 'dismissed']; track k) {
+          <li><span>{{ label(k) }}</span><strong>{{ s.threatsByStatus[k] || 0 }}</strong></li>
+        }
+      </ul>
+      <h2>Open threats by current risk</h2>
+      <ul class="ov__list">
+        @for (l of levels; track l) { <li><span>{{ levelText(l) }}</span><strong>{{ s.openByLevel[l] || 0 }}</strong></li> }
+        <li><span>Not assessed</span><strong>{{ s.openByLevel['not-assessed'] || 0 }}</strong></li>
+      </ul>
+    </section>
+
+    <section class="card ov__card ov__card--matrix">
+      <tm-risk-matrix [cells]="s.currentMatrix" [thresholds]="store.model()!.thresholds"
+                      caption="Open threats by current risk" (pick)="nav.go('risks')" />
+    </section>
+
+    <section class="card ov__card" aria-label="Gaps">
+      <h2>Open threats without a control</h2>
+      <ul>
+        @for (r of s.threatsWithoutControl; track r.id) {
+          <li><button class="link-btn" type="button" (click)="nav.go('threats', { select: r.id })">{{ r.label }}</button></li>
+        } @empty { <li class="field__hint">None.</li> }
+      </ul>
+      <h2>Controls without a security test</h2>
+      <ul>
+        @for (r of s.controlsWithoutTest; track r.id) {
+          <li><button class="link-btn" type="button" (click)="nav.go('controls', { select: r.id })">{{ r.label }}</button></li>
+        } @empty { <li class="field__hint">None.</li> }
+      </ul>
+    </section>
+  </div>
+}
+
+<form class="card ov__scope" (submit)="$event.preventDefault(); save()">
+  <h2>Scope</h2>
+  <label class="field"><span class="field__label">Name</span>
+    <input class="input" name="name" required [(ngModel)]="draft().name" /></label>
+  <label class="field"><span class="field__label">Scope</span>
+    <textarea class="textarea" name="scope" rows="3" [(ngModel)]="draft().scope"></textarea></label>
+  <label class="field"><span class="field__label">Objectives</span>
+    <textarea class="textarea" name="objectives" rows="3" [(ngModel)]="draft().objectives"></textarea></label>
+  <label class="field"><span class="field__label">Assumptions</span>
+    <textarea class="textarea" name="assumptions" rows="3" [(ngModel)]="draft().assumptions"></textarea></label>
+  <label class="field"><span class="field__label">Exclusions</span>
+    <textarea class="textarea" name="exclusions" rows="3" [(ngModel)]="draft().exclusions"></textarea></label>
+  @if (error(); as err) { <p class="ov__error" role="alert">{{ err }}</p> }
+  @if (saved()) { <p class="field__hint" role="status">Saved.</p> }
+  <button class="btn btn--primary" type="submit" [disabled]="saving()">Save scope</button>
+</form>

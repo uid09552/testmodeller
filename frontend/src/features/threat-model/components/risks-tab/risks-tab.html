@@ -1,0 +1,92 @@
+<div class="rt">
+  <div class="rt__matrix">
+    <div class="chips" role="group" aria-label="Rating shown">
+      <button class="chip" type="button" [class.chip--active]="basis() === 'current'"
+              [attr.aria-pressed]="basis() === 'current'" (click)="setBasis('current')">Current</button>
+      <button class="chip" type="button" [class.chip--active]="basis() === 'inherent'"
+              [attr.aria-pressed]="basis() === 'inherent'" (click)="setBasis('inherent')">Inherent</button>
+    </div>
+    <tm-risk-matrix [cells]="cells()" [thresholds]="store.model()!.thresholds" [selected]="cell()"
+                    [caption]="(basis() === 'current' ? 'Current' : 'Inherent') + ' risk of open and accepted threats'"
+                    (pick)="pick($event)" />
+    @if (cell(); as c) {
+      <p class="field__hint">Showing threats rated {{ c.likelihood }} × {{ c.impact }}.
+        <button class="btn btn--secondary" type="button" (click)="cell.set(null)">Show all</button></p>
+    }
+
+    <section class="rt__thresholds" aria-label="Risk level thresholds">
+      <h3>Levels</h3>
+      @if (editingThresholds(); as ts) {
+        @for (t of ts; track t.level) {
+          <div class="rt__th-row">
+            <span>{{ label(t.level) }}</span>
+            <input class="input" type="number" min="1" max="25" [attr.aria-label]="label(t.level) + ' from'"
+                   [value]="t.min" (input)="t.min = +$any($event.target).value" />
+            <span>–</span>
+            <input class="input" type="number" min="1" max="25" [attr.aria-label]="label(t.level) + ' to'"
+                   [value]="t.max" (input)="t.max = +$any($event.target).value" />
+          </div>
+        }
+        @if (thresholdError(); as err) { <p class="rt__error" role="alert">{{ err }}</p> }
+        <button class="btn btn--primary" type="button" (click)="saveThresholds()">Save levels</button>
+        <button class="btn btn--secondary" type="button" (click)="editingThresholds.set(null)">Cancel</button>
+      } @else {
+        <ul>
+          @for (t of store.model()!.thresholds; track t.level) { <li>{{ label(t.level) }}: {{ t.min }}–{{ t.max }}</li> }
+        </ul>
+        <button class="btn btn--secondary" type="button" (click)="editThresholds()">Change levels</button>
+      }
+    </section>
+  </div>
+
+  <div class="rt__register">
+    <tm-entity-table caption="Risk register" [rows]="rows()" [columns]="columns()"
+                     [selectedId]="editor.editing()?.item?.id ?? null"
+                     emptyText="No open threats to assess yet." (open)="edit($event)">
+      <button toolbar class="btn btn--secondary" type="button" [disabled]="!rows().length" (click)="exportCsv()">Export CSV</button>
+    </tm-entity-table>
+  </div>
+</div>
+
+@if (editor.editing(); as e) {
+  <tm-editor-drawer [heading]="'Risk of ' + e.item?.displayId + ' ' + e.item?.title" [busy]="editor.busy()"
+                    [error]="editor.error()" (save)="editor.save()" (closed)="editor.close()">
+    <fieldset class="rt__rating">
+      <legend class="field__label">Inherent risk (before controls)</legend>
+      <select class="select" name="il" aria-label="Inherent likelihood" [(ngModel)]="e.draft.il">
+        <option [ngValue]="null">Likelihood: not assessed</option>
+        @for (n of scale; track n) { <option [ngValue]="n">{{ n }} {{ likelihoodNames[n - 1] }}</option> }
+      </select>
+      <select class="select" name="ii" aria-label="Inherent impact" [(ngModel)]="e.draft.ii">
+        <option [ngValue]="null">Impact: not assessed</option>
+        @for (n of scale; track n) { <option [ngValue]="n">{{ n }} {{ impactNames[n - 1] }}</option> }
+      </select>
+    </fieldset>
+    <fieldset class="rt__rating">
+      <legend class="field__label">Current risk (with the controls that exist)</legend>
+      <select class="select" name="cl" aria-label="Current likelihood" [(ngModel)]="e.draft.cl">
+        <option [ngValue]="null">Likelihood: not assessed</option>
+        @for (n of scale; track n) { <option [ngValue]="n">{{ n }} {{ likelihoodNames[n - 1] }}</option> }
+      </select>
+      <select class="select" name="ci" aria-label="Current impact" [(ngModel)]="e.draft.ci">
+        <option [ngValue]="null">Impact: not assessed</option>
+        @for (n of scale; track n) { <option [ngValue]="n">{{ n }} {{ impactNames[n - 1] }}</option> }
+      </select>
+      <p class="field__hint">Your judgement: linking controls never lowers a rating by itself.</p>
+    </fieldset>
+    <label class="field"><span class="field__label">Treatment</span>
+      <select class="select" name="treatment" [(ngModel)]="e.draft.treatment">
+        @for (t of treatments; track t) { <option [value]="t">{{ label(t) }}</option> }
+      </select></label>
+    @if (e.draft.treatment === 'accept') {
+      <label class="field"><span class="field__label">Why the risk is accepted</span>
+        <textarea class="textarea" name="rationale" rows="2" required [(ngModel)]="e.draft.acceptanceRationale"></textarea></label>
+      <label class="field"><span class="field__label">Accepted by</span>
+        <input class="input" name="acceptedBy" required [(ngModel)]="e.draft.acceptedBy" /></label>
+    }
+    <label class="field"><span class="field__label">Risk owner<span class="field__opt">optional</span></span>
+      <input class="input" name="owner" [(ngModel)]="e.draft.riskOwner" /></label>
+    <label class="field"><span class="field__label">Due date<span class="field__opt">optional</span></span>
+      <input class="input" type="date" name="due" [(ngModel)]="e.draft.dueDate" /></label>
+  </tm-editor-drawer>
+}

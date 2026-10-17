@@ -75,6 +75,7 @@
   }
 
   // Indents are tighter than on a full-width page: the nav is narrower.
+  &--threat    { padding-left: 18px; }
   &--component { padding-left: 18px; }
   &--feature   { padding-left: 32px; }
   &--model     { padding-left: 52px; font-size: var(--text-xs); }
@@ -97,6 +98,8 @@
     &--component { color: var(--clr-brand-400); }
     &--feature   { color: var(--clr-text-400); }
     &--model     { color: var(--clr-brand-500); }
+    // Security: a shield, in its own colour so it stands out from the test hierarchy.
+    &--threat    { color: #b45309; }
   }
 
   // Status dot on model rows

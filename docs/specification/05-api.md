@@ -29,6 +29,7 @@ REST/JSON under `/api/v1`. Errors use RFC 7807 problem details. Updates require 
 | Export | JSON/CSV/Gherkin export, JSON import |
 | AI | Async proposal jobs, list/accept/reject proposals |
 | Settings | AI provider settings |
+| ThreatModel | One threat model per project (`/projects/{id}/threat-model`); under `/threat-models/{id}`: scope and risk thresholds, diagram `layout` (opaque, own `layoutVersion`), summary, and CRUD of zones, architecture components, assets, data flows, threats, controls and security tests; suggest threats (STRIDE rules), bulk status, generate security tests, manual results. See [09-threat-modeling.md](09-threat-modeling.md) |
 | System | Health |
 
 ## Conventions
@@ -37,3 +38,5 @@ REST/JSON under `/api/v1`. Errors use RFC 7807 problem details. Updates require 
 - AI endpoints may be slow: return `202` with a job resource, poll `/jobs/{id}`.
 - Concurrency: `PUT`/`PATCH` require `If-Match`; mismatch returns `412`.
 - Assignment targets must belong to a model of the test case's feature, otherwise `422`.
+- Threat model collections return plain arrays (no paging). An item path whose item belongs to another threat model returns `404`. Link lists in an input (`assetIds`, `targets`, `controlIds`, …) replace the stored links as a whole; ids outside the threat model return `422`.
+- Computed fields (a flow's `crossing`, `warnings`, a threat's scores, levels and `flags`, a security test's `stale` and `lastResult`) are derived on every read and ignored on input.

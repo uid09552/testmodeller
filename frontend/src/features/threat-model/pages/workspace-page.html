@@ -1,0 +1,58 @@
+<section class="page tmw" [class.tmw--wide]="tab() === 'diagram'">
+  <header class="page__head">
+    <div>
+      <h1 class="page__title">Threat Modeling</h1>
+      <p class="page__sub">What we build, what can go wrong, how serious it is, what we do about it, and whether it worked</p>
+    </div>
+    @if (projects().length) {
+      <select class="select tmw__project" aria-label="Project" (change)="setProject($any($event.target).value)">
+        @for (p of projects(); track p.id) {
+          <option [value]="p.id" [selected]="projectId() === p.id">{{ p.name }}</option>
+        }
+      </select>
+    }
+  </header>
+
+  @if (store.error(); as err) { <p class="tmw__error" role="alert">{{ err }}</p> }
+
+  @if (projects().length === 0) {
+    <div class="empty"><p>No projects yet. Create a project first.</p></div>
+  } @else if (store.missing()) {
+    <div class="empty tmw__create">
+      <p>This project has no threat model yet.</p>
+      <label class="field">
+        <span class="field__label">Name<span class="field__opt">optional</span></span>
+        <input class="input" [value]="newName()" (input)="newName.set($any($event.target).value)" />
+      </label>
+      <button class="btn btn--primary" type="button" (click)="create()">Create threat model</button>
+    </div>
+  } @else if (store.model()) {
+    <div class="tmw__tabs" role="tablist" aria-label="Threat model">
+      @for (t of tabs; track t.slug; let i = $index) {
+        <button #tabBtn type="button" role="tab" class="tmw__tab"
+                [class.tmw__tab--active]="tab() === t.slug"
+                [attr.aria-selected]="tab() === t.slug"
+                [attr.tabindex]="focusIndex() === i ? 0 : -1"
+                [attr.id]="'tm-tab-' + t.slug" [attr.aria-controls]="'tm-panel'"
+                (keydown)="onTabKey($event)" (click)="open(t.slug)">{{ t.label }}</button>
+      }
+    </div>
+
+    <div class="tmw__panel" role="tabpanel" id="tm-panel" [attr.aria-labelledby]="'tm-tab-' + tab()">
+      @switch (tab()) {
+        @case ('overview') { <tm-overview-tab /> }
+        @case ('diagram') { <tm-threat-diagram /> }
+        @case ('components') { <tm-components-tab [selectId]="query().get('select')" /> }
+        @case ('data-flows') { <tm-flows-tab [selectId]="query().get('select')" /> }
+        @case ('zones') { <tm-zones-tab [selectId]="query().get('select')" /> }
+        @case ('assets') { <tm-assets-tab [selectId]="query().get('select')" /> }
+        @case ('threats') { <tm-threats-tab [selectId]="query().get('select')" [targetId]="query().get('target')" /> }
+        @case ('risks') { <tm-risks-tab /> }
+        @case ('controls') { <tm-controls-tab [selectId]="query().get('select')" /> }
+        @case ('security-tests') { <tm-security-tests-tab [selectId]="query().get('select')" /> }
+      }
+    </div>
+  } @else if (store.loading()) {
+    <p>Loading…</p>
+  }
+</section>

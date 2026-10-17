@@ -1,0 +1,31 @@
+<aside class="drawer" role="dialog" aria-modal="false" [attr.aria-label]="heading()">
+  <header class="drawer__head">
+    <h2 class="drawer__title">{{ heading() }}</h2>
+    <button class="icon-btn" type="button" aria-label="Close" (click)="closed.emit()">✕</button>
+  </header>
+  @if (properties()) {
+    <div class="drawer__tabs" role="tablist" aria-label="Detail view">
+      <button type="button" role="tab" class="drawer__tab" [class.drawer__tab--active]="tab() === 'details'"
+              [attr.aria-selected]="tab() === 'details'" (click)="tab.set('details')">Details</button>
+      <button type="button" role="tab" class="drawer__tab" [class.drawer__tab--active]="tab() === 'properties'"
+              [attr.aria-selected]="tab() === 'properties'" (click)="tab.set('properties')">Properties</button>
+    </div>
+    @if (tab() === 'properties') {
+      <div class="drawer__body" role="tabpanel" aria-label="Properties">
+        <ng-container [ngTemplateOutlet]="properties()" />
+      </div>
+    }
+  }
+  <form class="drawer__body" (submit)="$event.preventDefault(); save.emit()" [hidden]="tab() === 'properties' && !!properties()">
+    <ng-content />
+    @if (error(); as err) { <p class="drawer__error" role="alert">{{ err }}</p> }
+    <footer class="drawer__foot">
+      @if (canDelete()) {
+        <button class="btn btn--danger" type="button" [disabled]="busy()" (click)="remove.emit()">Delete</button>
+      }
+      <span class="drawer__spacer"></span>
+      <button class="btn btn--secondary" type="button" (click)="closed.emit()">Cancel</button>
+      <button class="btn btn--primary" type="submit" [disabled]="busy()">Save</button>
+    </footer>
+  </form>
+</aside>

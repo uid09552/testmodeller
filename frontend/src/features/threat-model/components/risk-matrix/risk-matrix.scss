@@ -1,0 +1,42 @@
+.rm {
+  border-collapse: separate;
+  border-spacing: 3px;
+  font-size: var(--text-xs);
+
+  th { font-weight: 600; color: var(--clr-text-600); text-align: left; padding: 2px 6px; }
+}
+
+.rm__caption {
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 6px;
+}
+
+.rm__cell {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  width: 64px;
+  height: 44px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border: 2px solid transparent;
+
+  &:focus-visible { outline: 2px solid var(--clr-brand-500); outline-offset: 1px; }
+  &--low      { background: #f0fdf4; }
+  &--moderate { background: #fefce8; }
+  &--high     { background: #ffedd5; }
+  &--critical { background: #fee2e2; }
+  &--selected { border-color: var(--clr-text-900); }
+}
+
+.rm__score { color: var(--clr-text-400); }
+
+.rm__count {
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: var(--clr-text-900);
+}

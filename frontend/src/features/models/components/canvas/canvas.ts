@@ -9,12 +9,18 @@ import {
   NodeShape, SIZE_FOR_SHAPE, SHAPE_FOR_KIND, NODE_COLORS,
   Anchor, ANCHORS, anchorPoint, nearestAnchor,
   AlignMode, CanvasGroup, GROUP_COLORS, ResizeHandle, CoverageView, coverageLabel, collapsedNode,
-  COLLAPSED_W, COLLAPSED_H, SearchHit,
+  COLLAPSED_W, COLLAPSED_H, SearchHit, AnnotationKind, ANNOTATION_SIZE,
 } from '../../state/model-editor.store';
-import { LABEL_LINE_H, labelLines } from '../../state/node-fit';
+import { innerWidthFrac, LABEL_FONT_PX, labelLineH, labelLines } from '../../state/node-fit';
+import { InlineStyle, labelIsLight, shapePaint, textPaint } from '../../state/style-render';
+import { ALL_SHAPES, shapeIcon, shapePath } from '../../state/node-shapes';
+
+/** Shapes with no SVG primitive of their own. */
+const PATH_SHAPES = new Set<NodeShape>(['hexagon', 'parallelogram', 'cylinder', 'document']);
 import {
   curveThrough, EdgeGeometry, edgeGeometry, insertIndex, loopIndices,
 } from '../../state/edge-geometry';
+import { AnnotationGrab, CanvasAnnotationsComponent } from '../canvas-annotations/canvas-annotations';
 import { CanvasEdgesComponent, EdgeGrab } from '../canvas-edges/canvas-edges';
 import { CanvasSearchComponent } from '../canvas-search/canvas-search';
 import { CanvasMinimapComponent } from '../canvas-minimap/canvas-minimap';
@@ -37,6 +43,12 @@ export const PALETTE: { kind: StateKind; label: string }[] = [
   { kind: 'final',    label: 'End state' },
 ];
 
+/** Palette tools for elements that are not part of the model. */
+export const ANNOTATION_TOOLS: { kind: AnnotationKind; label: string }[] = [
+  { kind: 'note', label: 'Note' },
+  { kind: 'text', label: 'Text' },
+];
+
 /**
  * What a left-drag on the canvas does.
  *
@@ -52,9 +64,20 @@ const TEST_CHIP_W = 31;
 const TEST_CHIP_STEP = 34;
 
 interface DragState {
-  nodeId: string; startX: number; startY: number; origX: number; origY: number;
+  /** The grabbed state or annotation (`isNote`). */
+  nodeId: string; isNote?: boolean; startX: number; startY: number; origX: number; origY: number;
   /** Starting positions of every co-selected state, for moving them together. */
   others: { id: string; x: number; y: number }[];
+  /** Starting positions of every co-selected annotation. */
+  notes: { id: string; x: number; y: number }[];
+  /** Set on the first move, which records the drag's one undo step. */
+  moved?: boolean;
+}
+
+/** Dragging one of an annotation's resize handles. */
+interface NoteResize {
+  id: string; handle: ResizeHandle; startX: number; startY: number;
+  orig: { x: number; y: number; w: number; h: number };
 }
 
 /** Rubber-band selection rectangle, in canvas coordinates. */
@@ -97,7 +120,8 @@ function toCanvas(e: MouseEvent, svg: SVGSVGElement, zoom: number, panX: number,
 @Component({
   selector: 'tm-canvas',
   imports: [
-    FormsModule, CanvasEdgesComponent, CanvasSearchComponent, CanvasMinimapComponent, CanvasHelpComponent,
+    FormsModule, CanvasEdgesComponent, CanvasAnnotationsComponent, CanvasSearchComponent,
+    CanvasMinimapComponent, CanvasHelpComponent,
   ],
   templateUrl: './canvas.html',
   styleUrl: './canvas.scss',
@@ -140,6 +164,8 @@ export class CanvasComponent {
 
   // ── Interaction state ─────────────────────────────────────────────────
   protected drag     = signal<DragState | null>(null);
+  private readonly noteResize = signal<NoteResize | null>(null);
+  private readonly annotationLayer = viewChild(CanvasAnnotationsComponent);
   readonly drawing      = signal<DrawEdge | null>(null);
   readonly reconnecting = signal<Reconnect | null>(null);
   readonly marquee      = signal<Marquee | null>(null);
@@ -175,12 +201,15 @@ export class CanvasComponent {
 
   // ── Quick bar (drag sources) ──────────────────────────────────────────
   readonly palette = PALETTE;
+  readonly annotationTools = ANNOTATION_TOOLS;
   readonly colors  = NODE_COLORS;
-  /** Kind currently being dragged out of the palette. */
-  readonly dragKind = signal<StateKind | null>(null);
+  readonly shapes  = ALL_SHAPES;
+  readonly shapeIcon = shapeIcon;
+  /** Kind currently being dragged out of the palette: a state or an annotation. */
+  readonly dragKind = signal<StateKind | AnnotationKind | null>(null);
   readonly dragOver = signal(false);
 
-  onPaletteDragStart(e: DragEvent, kind: StateKind): void {
+  onPaletteDragStart(e: DragEvent, kind: StateKind | AnnotationKind): void {
     this.dragKind.set(kind);
     e.dataTransfer?.setData('text/plain', kind);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
@@ -206,11 +235,21 @@ export class CanvasComponent {
     if (this.readonly()) return;
     e.preventDefault();
     const kind = this.dragKind()
-      ?? (e.dataTransfer?.getData('text/plain') as StateKind | undefined)
+      ?? (e.dataTransfer?.getData('text/plain') as StateKind | AnnotationKind | undefined)
       ?? null;
     this.dragOver.set(false);
     this.dragKind.set(null);
     if (!kind) return;
+
+    if (kind === 'note' || kind === 'text') {
+      const { w, h } = ANNOTATION_SIZE[kind];
+      const at = toCanvas(e, this.svgEl().nativeElement, this.zoom(), this.panX(), this.panY());
+      const a = this.store.addAnnotation(kind, at.x - w / 2, at.y - h / 2);
+      this.store.select(a.id, 'annotation');
+      this.cdr.markForCheck();
+      this.editAnnotation(a.id);
+      return;
+    }
 
     const shape = SHAPE_FOR_KIND[kind];
     const { w, h } = SIZE_FOR_SHAPE[shape];
@@ -224,8 +263,7 @@ export class CanvasComponent {
   applyColor(value: string | null, nodeId?: string): void {
     const id = nodeId ?? (this.store.selected()?.type === 'node' ? this.store.selected()!.id : null);
     if (!id) return;
-    this.store.checkpoint();
-    this.store.updateNode(id, { color: value });
+    this.store.setStyle([id], 'stroke', value);
   }
 
   /** Change the shape of the selected state. */
@@ -237,12 +275,16 @@ export class CanvasComponent {
   }
 
   /** SVG polygon for a diamond (UML decision) of this size. */
+  /** Shapes drawn from `node-shapes.ts` paths rather than SVG primitives. */
+  isPathShape(n: CanvasNode): boolean { return PATH_SHAPES.has(n.shape); }
+
+  shapePathOf(n: CanvasNode): string { return shapePath(n.shape, n.w, n.h); }
+
   diamondPoints(n: CanvasNode): string {
     const hw = n.w / 2, hh = n.h / 2;
     return `${hw},0 ${n.w},${hh} ${hw},${n.h} 0,${hh}`;
   }
 
-  readonly lineHeight = LABEL_LINE_H;
 
   // ── Coverage overlay ──────────────────────────────────────────────────
   /** e.g. "3/5 states, 4/7 transitions (as of last save)". */
@@ -306,17 +348,28 @@ export class CanvasComponent {
   }
 
   /** The label wrapped as the sizing logic did, so it fits the state. */
-  labelLines(n: CanvasNode): string[] { return labelLines(n.label, n.shape); }
+  labelLines(n: CanvasNode): string[] { return labelLines(n.label, n.shape, n.style); }
+
+  lineHeightOf(n: CanvasNode): number { return labelLineH(n.style); }
 
   /** Baseline of the first line, so the block is centred vertically. */
   labelY(n: CanvasNode, lineCount: number): number {
-    return n.h / 2 + 5 - ((lineCount - 1) * LABEL_LINE_H) / 2;
+    const lh = labelLineH(n.style);
+    return n.h / 2 + lh * 0.3 - ((lineCount - 1) * lh) / 2;
   }
 
-  /** Only the blue-filled initial state needs light text. */
+  /** Light text on a dark fill: the initial state's blue, or a dark user fill. */
   labelIsLight(n: CanvasNode): boolean {
-    return n.kind === 'initial';
+    return labelIsLight(n.style, n.kind === 'initial');
   }
+
+  /** The user's outline and fill for a state's body. */
+  nodePaint(n: CanvasNode): InlineStyle {
+    return shapePaint(n.style, n.style?.stroke ? 2.5 : 1.5);
+  }
+
+  /** The user's text style for a state's label. */
+  labelPaint(n: CanvasNode): InlineStyle { return textPaint(n.style, LABEL_FONT_PX); }
 
   // ── Context menu ──────────────────────────────────────────────────────
   readonly contextMenu = signal<ContextMenu | null>(null);
@@ -415,6 +468,10 @@ export class CanvasComponent {
     const m = this.contextMenu();
     this.closeContextMenu();
     if (!m) return;
+    if (action.startsWith('shape-')) {
+      this.applyShape(action.slice('shape-'.length) as NodeShape, m.targetId!);
+      return;
+    }
 
     switch (action) {
       case 'rename-node': {
@@ -439,9 +496,6 @@ export class CanvasComponent {
         }
         break;
       }
-      case 'shape-circle':    this.applyShape('circle', m.targetId!); break;
-      case 'shape-rect':      this.applyShape('rect', m.targetId!); break;
-      case 'shape-diamond':   this.applyShape('diamond', m.targetId!); break;
       case 'add-test': {
         this.store.addTest(m.targetId!);
         this.store.select(m.targetId!, 'node');
@@ -630,6 +684,8 @@ export class CanvasComponent {
       case 'rename': {
         const n = this.store.selectedNode();
         if (n) { e.preventDefault(); this.startEdit(n.id, n.label); }
+        const a = this.store.selectedAnnotation();
+        if (a) { e.preventDefault(); this.editAnnotation(a.id); }
         break;
       }
       case 'move-left': case 'move-right': case 'move-up': case 'move-down': {
@@ -892,11 +948,43 @@ export class CanvasComponent {
     const others = this.store.selectedNodes()
       .filter(n => n.id !== node.id)
       .map(n => ({ id: n.id, x: n.x, y: n.y }));
+    const notes = this.store.selectedAnnotations().map(a => ({ id: a.id, x: a.x, y: a.y }));
     this.drag.set({
       nodeId: node.id, startX: pt.x, startY: pt.y,
-      origX: node.x, origY: node.y, others,
+      origX: node.x, origY: node.y, others, notes,
     });
   }
+
+  // ── Annotations ───────────────────────────────────────────────────────
+  /** A note or text box, or one of its handles, was pressed. */
+  onAnnotationGrab(g: AnnotationGrab): void {
+    const e = g.event;
+    const a = g.annotation;
+    if (this.readonly()) { this.store.select(a.id, 'annotation'); this.startPan(e); return; }
+    if (this.handTool(e)) { this.startPan(e); return; }
+    e.stopPropagation();
+    const pt = toCanvas(e, this.svgEl().nativeElement, this.zoom(), this.panX(), this.panY());
+    if (g.kind === 'resize') {
+      this.store.select(a.id, 'annotation');
+      this.store.checkpoint();
+      this.noteResize.set({
+        id: a.id, handle: g.handle, startX: pt.x, startY: pt.y,
+        orig: { x: a.x, y: a.y, w: a.w, h: a.h },
+      });
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) { this.store.toggleSelect(a.id, 'annotation'); return; }
+    // Dragging a member of a multi-selection moves the whole selection.
+    if (!this.store.isSelectedId(a.id)) this.store.select(a.id, 'annotation');
+    this.drag.set({
+      nodeId: a.id, isNote: true, startX: pt.x, startY: pt.y, origX: a.x, origY: a.y,
+      others: this.store.selectedNodes().map(n => ({ id: n.id, x: n.x, y: n.y })),
+      notes: this.store.selectedAnnotations().filter(x => x.id !== a.id).map(x => ({ id: x.id, x: x.x, y: x.y })),
+    });
+  }
+
+  /** Opens the text editor of an annotation (F2, or after dropping a new one). */
+  editAnnotation(id: string): void { this.annotationLayer()?.edit(id); }
 
   onNodeDblClick(e: MouseEvent, node: CanvasNode): void {
     e.stopPropagation();
@@ -1161,17 +1249,27 @@ export class CanvasComponent {
       return;
     }
 
+    const nr = this.noteResize();
+    if (nr) {
+      const pt = toCanvas(e, svg, this.zoom(), this.panX(), this.panY());
+      this.store.resizeAnnotation(nr.id, nr.handle, nr.orig, pt.x - nr.startX, pt.y - nr.startY);
+      this.cdr.markForCheck();
+      return;
+    }
+
     const d = this.drag();
     if (d) {
       const pt = toCanvas(e, svg, this.zoom(), this.panX(), this.panY());
       let dx = pt.x - d.startX, dy = pt.y - d.startY;
-      // Snap the grabbed state; the rest of the selection keeps its offsets.
-      const node = this.store.nodeById(d.nodeId);
-      if (node && this.snapOn() && !e.altKey) {
-        const moved = new Set([d.nodeId, ...d.others.map(o => o.id)]);
+      // The whole move is one undo step, taken once it really moves.
+      if (!d.moved && (dx || dy)) { this.store.checkpoint(); this.drag.set({ ...d, moved: true }); }
+      // Snap the grabbed element; the rest of the selection keeps its offsets.
+      const box = d.isNote ? this.store.annotationById(d.nodeId) : this.store.nodeById(d.nodeId);
+      if (box && this.snapOn() && !e.altKey) {
+        const moved = new Set([d.nodeId, ...d.others.map(o => o.id), ...d.notes.map(o => o.id)]);
         const snapped = snapPosition(
-          { x: d.origX + dx, y: d.origY + dy, w: node.w, h: node.h },
-          this.visibleNodes().filter(n => !moved.has(n.id)),
+          { x: d.origX + dx, y: d.origY + dy, w: box.w, h: box.h },
+          [...this.visibleNodes(), ...this.store.annotations()].filter(n => !moved.has(n.id)),
           6 / this.zoom(),
         );
         dx = snapped.x - d.origX;
@@ -1180,8 +1278,10 @@ export class CanvasComponent {
       } else {
         this.guides.set([]);
       }
-      this.store.moveNode(d.nodeId, d.origX + dx, d.origY + dy);
+      if (d.isNote) this.store.moveAnnotation(d.nodeId, d.origX + dx, d.origY + dy);
+      else this.store.moveNode(d.nodeId, d.origX + dx, d.origY + dy);
       for (const o of d.others) this.store.moveNode(o.id, o.x + dx, o.y + dy);
+      for (const o of d.notes) this.store.moveAnnotation(o.id, o.x + dx, o.y + dy);
       this.cdr.markForCheck();
     }
 
@@ -1210,19 +1310,22 @@ export class CanvasComponent {
     const mq = this.marquee();
     if (mq) {
       const hits = this.store.nodesInRect(mq.x0, mq.y0, mq.x1, mq.y1);
+      const notes = this.store.annotationsInRect(mq.x0, mq.y0, mq.x1, mq.y1);
       // A click with no drag just clears; a drag selects what it covered.
       const dragged = Math.abs(mq.x1 - mq.x0) > 3 || Math.abs(mq.y1 - mq.y0) > 3;
       if (dragged) {
-        if (mq.additive) for (const id of hits) {
-          if (!this.store.isSelectedId(id)) this.store.toggleSelect(id, 'node');
+        if (mq.additive) {
+          for (const id of hits) if (!this.store.isSelectedId(id)) this.store.toggleSelect(id, 'node');
+          for (const id of notes) if (!this.store.isSelectedId(id)) this.store.toggleSelect(id, 'annotation');
         } else {
-          this.store.selectNodes(hits);
+          this.store.selectItems(hits, notes);
         }
       }
       this.marquee.set(null);
     }
 
     if (this.drag()) this.drag.set(null);
+    this.noteResize.set(null);
     this.guides.set([]);
     this.routingDrag.set(null);
     this.groupDrag.set(null);
@@ -1235,8 +1338,10 @@ export class CanvasComponent {
       // still set the transition was released on empty canvas: create the
       // target state there and connect it.
       const svg = this.svgEl()?.nativeElement;
-      if (svg && this.isInsideCanvas(e, svg)) {
-        const pt = toCanvas(e, svg, this.zoom(), this.panX(), this.panY());
+      const pt = svg ? toCanvas(e, svg, this.zoom(), this.panX(), this.panY()) : null;
+      // On a note or text box: no transition, and no new state under it.
+      const onNote = !!pt && this.store.annotationsInRect(pt.x, pt.y, pt.x, pt.y).length > 0;
+      if (svg && pt && !onNote && this.isInsideCanvas(e, svg)) {
         const node = this.store.addNodeWithEdge(
           draw.fromId, pt.x - NODE_W / 2, pt.y - NODE_H / 2, draw.fromAnchor,
         );
@@ -1321,13 +1426,11 @@ export class CanvasComponent {
    */
   editBox(n: CanvasNode): { x: number; y: number; w: number; h: number } {
     // One line is 28px; each further line adds a line height, within the state.
-    const lines = labelLines(n.label, n.shape).length;
-    const h = Math.min(Math.max(28, lines * LABEL_LINE_H + 12), n.h - 4);
+    const lines = labelLines(n.label, n.shape, n.style).length;
+    const h = Math.min(Math.max(28, lines * labelLineH(n.style) + 12), n.h - 4);
     // Fraction of the width that stays inside the outline at mid-height.
-    const frac = n.shape === 'circle'  ? 0.74
-               : n.shape === 'diamond' ? 0.58
-               : 1;
-    const w = n.shape === 'rect' ? n.w - 12 : Math.round(n.w * frac);
+    const frac = innerWidthFrac(n.shape);
+    const w = frac === 1 ? n.w - 12 : Math.round(n.w * frac);
     return { x: (n.w - w) / 2, y: n.h / 2 - h / 2, w, h };
   }
 

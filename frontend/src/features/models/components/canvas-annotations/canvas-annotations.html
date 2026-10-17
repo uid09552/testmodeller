@@ -1,0 +1,48 @@
+<!-- Notes and text boxes: not part of the model. -->
+@for (a of store.annotations(); track a.id) {
+  <svg:g class="note" [class.note--text]="a.kind === 'text'"
+         [class.note--selected]="selected(a)" [class.note--fixed]="readonly()"
+         [attr.data-annotation-id]="a.id"
+         [attr.transform]="'translate(' + a.x + ',' + a.y + ')'"
+         role="button" tabindex="0" [attr.aria-label]="ariaLabel(a)" [attr.aria-pressed]="selected(a)"
+         (mousedown)="press($event, a)" (dblclick)="onDblClick($event, a)"
+         (keydown.enter)="store.select(a.id, 'annotation')">
+    @if (a.kind === 'note') {
+      <svg:path class="note-bg" [attr.d]="notePath(a)" [style]="bodyPaint(a)" />
+      <svg:path class="note-fold" [attr.d]="foldPath(a)" />
+    } @else {
+      <!-- A text box has no outline; this catches the pointer and shows the selection. -->
+      <svg:rect class="note-box" [attr.width]="a.w" [attr.height]="a.h" />
+    }
+
+    @if (editId() === a.id) {
+      <svg:foreignObject x="0" y="0" [attr.width]="a.w" [attr.height]="a.h + (cut() ? 22 : 0)">
+        <textarea #editInput class="note-edit" xmlns="http://www.w3.org/1999/xhtml"
+                  [attr.aria-label]="a.kind === 'note' ? 'Note text' : 'Text'"
+                  (input)="onInput(editInput)" (keydown)="onKeydown($event, editInput)"
+                  (blur)="finish(editInput.value)"></textarea>
+        @if (cut()) {
+          <p class="note-edit__msg" role="status" xmlns="http://www.w3.org/1999/xhtml">
+            Cut to {{ maxText }} characters.
+          </p>
+        }
+      </svg:foreignObject>
+    } @else {
+      <svg:text class="note-text" [style]="textPaint(a)" [attr.x]="pad" [attr.y]="firstBaseline(a)">
+        @for (line of lines(a); track $index) {
+          <svg:tspan [attr.x]="pad" [attr.dy]="$index === 0 ? 0 : lineH(a)">{{ line || ' ' }}</svg:tspan>
+        }
+      </svg:text>
+    }
+
+    @if (selected(a) && !readonly() && editId() !== a.id) {
+      @for (h of handles; track h) {
+        <svg:rect [attr.data-handle]="h"
+                  [attr.x]="handlePos(a, h).x - 4" [attr.y]="handlePos(a, h).y - 4"
+                  width="8" height="8" rx="2"
+                  [class]="'note-handle note-handle--' + h"
+                  (mousedown)="pressHandle($event, a, h)" />
+      }
+    }
+  </svg:g>
+}

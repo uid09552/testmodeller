@@ -1,0 +1,48 @@
+@use 'styles/page' as *;
+
+// The page scrolls inside the shell, like every other page.
+:host { @include page-host; }
+
+.tmw__project { max-width: 260px; }
+
+// The diagram uses the full width of the window.
+.tmw--wide { max-width: none; }
+
+.tmw__error {
+  color: var(--clr-danger);
+  margin: 0 0 12px;
+}
+
+.tmw__create {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tmw__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--clr-surface-200);
+  margin-bottom: 16px;
+}
+
+.tmw__tab {
+  all: unset;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  color: var(--clr-text-600);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+
+  &:hover { color: var(--clr-text-900); }
+  &:focus-visible { outline: 2px solid var(--clr-brand-500); outline-offset: -2px; }
+
+  &--active {
+    color: var(--clr-brand-600);
+    border-bottom-color: var(--clr-brand-500);
+    font-weight: 600;
+  }
+}
