@@ -11,13 +11,17 @@ related: []
 Model-based testing: draw a model of how a feature behaves, and generate the
 test cases that cover it. States and transitions go on a canvas, test cases
 hang off the states they exercise, and an AI assistant proposes both — nothing
-it proposes is saved until you accept it.
+it proposes is saved until you accept it. Alongside the tests, each project can
+carry a **threat model**: its architecture, the threats against it, how serious
+they are, the controls that answer them, and security tests that check the
+controls.
 
 ![The model editor, with the project tree in the nav bar and test cases in the right-hand panel](screenshots/02-model-editor.png)
 
 - **Source**: <https://github.com/uid09552/testmodeller>
 - **Getting started**: [Running it](#running-it)
 - **Concepts**: [Glossary](specification/01-glossary.md) · [Domain model](specification/02-domain-model.md)
+- **Threat modeling**: [Tour](#threat-modeling) · [Guide](guides/threat-modeling-guide.md) · [Specification](specification/09-threat-modeling.md)
 
 ## A tour
 
@@ -98,6 +102,93 @@ TM_AI_BASE_URL=http://host.docker.internal:11434/v1   # Ollama on this machine
 
 ![AI provider settings](screenshots/08-settings.png)
 
+## Threat modeling
+
+Each project can have one threat model, listed in the project tree directly
+under the project. It answers five questions — what are we building, what can
+go wrong, how serious is it, what do we do about it, and did it work — in a
+workspace of tabs. The [threat modeling guide](guides/threat-modeling-guide.md)
+walks through it step by step.
+
+### Overview
+
+Counts, threats by status and level, the risk matrix, and what is missing: open
+threats without a control, controls without a test, components without an owner
+or a zone, and acceptances about to expire. The scope, objectives, assumptions
+and exclusions are edited here.
+
+![The threat model overview](screenshots/09-threat-overview.png)
+
+### Architecture: diagram, components, flows, zones, assets
+
+The data-flow diagram draws components inside dashed **exposure zones**, each
+with a trust level from 0 (untrusted) to 4. A diamond marks a flow that crosses
+a trust boundary. The same data is editable in the Components, Data Flows,
+Zones and Assets tables, and anything not yet documented — an owner, how a
+crossing flow authenticates, whether it is encrypted — shows as a warning
+instead of defaulting to "fine".
+
+![The data-flow diagram of the Webshop](screenshots/10-threat-diagram.png)
+
+![The components table, with owners, zones and warnings](screenshots/11-threat-components.png)
+
+### Threats
+
+Threats are classified by STRIDE. Add them by hand, or let **Suggest threats**
+apply a fixed set of rules to the architecture: each match becomes a
+*candidate* that says why it was suggested, what is missing to confirm or
+dismiss it, and which controls it recommends. Candidates are not findings until
+you confirm them.
+
+![The threats register, with manual threats and rule-suggested candidates](screenshots/12-threat-threats.png)
+
+### Risks
+
+Each threat is rated by likelihood × impact as inherent (before controls),
+current (with the controls that exist) and residual (once planned measures are
+verified). The ratings are yours: linking a control never changes one. A risk
+can be accepted only with a rationale, an approver and an expiry date.
+
+![The risk matrix and register](screenshots/13-threat-risks.png)
+
+### Controls and evidence
+
+Controls are planned, implemented or verified. A control can be marked verified
+only when it has evidence, a reference to a report, scan, configuration or
+review.
+
+![The controls table](screenshots/14-threat-controls.png)
+
+### Security tests
+
+A list of its own, separate from the feature test cases. Drafts can be
+generated from threats and controls, results are recorded by hand, and the
+list exports as CSV or Gherkin.
+
+![The security tests](screenshots/15-threat-security-tests.png)
+
+### Baselines and the report
+
+A baseline is an immutable snapshot of the threat model, which can be compared
+with the live model or another baseline. The report renders either as a threat
+and risk assessment that can be printed or exported as Markdown.
+
+![Baselines](screenshots/16-threat-baselines.png)
+
+![The threat and risk assessment report](screenshots/17-threat-report.png)
+
+### The threat model's AI assistant
+
+Off by default for every threat model. Once enabled, it proposes architecture,
+threats, ratings, controls and security tests as cards you accept or reject,
+and it can never verify a control, accept a risk or delete anything. *Preview
+context* shows what would be sent to the provider before it is.
+
+![The AI assistant over the Threats tab](screenshots/18-threat-ai-assistant.png)
+
+See [AI integration](specification/07-ai-integration.md#threat-model-assistant)
+for the kinds of proposal and the safeguards.
+
 ## Running it
 
 ```bash
@@ -131,6 +222,7 @@ its tokens.
 - [06 UI](specification/06-ui.md)
 - [07 AI integration](specification/07-ai-integration.md)
 - [08 User management](specification/08-usermanagement.md)
+- [09 Threat modeling](specification/09-threat-modeling.md)
 
 ### Architecture
 - [Architecture overview](architecture/overview.md)
@@ -138,6 +230,7 @@ its tokens.
 
 ### Guides
 - [Configuring authentication](guides/authentication-setup.md)
+- [Threat modeling guide](guides/threat-modeling-guide.md)
 - [Rust coding guide](guides/rust-coding-guide.md)
 - [Angular coding guide](guides/angular-coding-guide.md)
 - [Testing guide](guides/testing-guide.md)
@@ -146,7 +239,7 @@ its tokens.
 ## Status
 
 The backend implements the specification: the full API, test generation, AI
-proposals, JWT validation and tenant separation, with unit tests over the
+proposals, threat modeling, JWT validation and tenant separation, with unit tests over the
 domain, generation, parsing and authorisation logic.
 
 The frontend reads and writes everything through the API; nothing is kept in
@@ -154,7 +247,8 @@ the browser. The remaining gaps:
 
 | Area | State |
 | --- | --- |
-| Projects tree, model editor, test cases | Stored through the API only (ADR 0008). Shapes, colours, sizes, groups and edge curves are not in the contract, so they reset on reload |
+| Projects tree, model editor, test cases | Stored through the API only (ADR 0008). Shapes, colours, groups and edge curves are saved with the model as an opaque layout (ADR 0010) |
+| Threat modeling | Working end to end: architecture and diagram, STRIDE suggestions, risk ratings, controls with evidence, security tests, baselines, report, and the opt-in AI assistant |
 | AI assistant | Working. Saves the open model first, then asks (ADR 0008) |
 | Settings | Read-only view of the provider configured in `.env` |
 | Coverage dashboard, AI proposals list | Placeholder data; not wired to the API |

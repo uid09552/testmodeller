@@ -8,6 +8,7 @@ it proposes is saved until you accept it.
 ![The model editor, with the project tree in the nav bar and test cases in the right-hand panel](docs/screenshots/02-model-editor.png)
 
 **[Documentation](https://uid09552.github.io/testmodeller/)** ·
+[Threat modeling guide](docs/guides/threat-modeling-guide.md) ·
 [Specification](docs/specification/) ·
 [Decision records](docs/adr/) ·
 [Agent guidance](AGENTS.md)
@@ -28,6 +29,14 @@ it proposes is saved until you accept it.
   OpenAI-compatible endpoint are supported, configured in `.env`.
 - **See coverage** per model, feature and component, and export to JSON, CSV or
   Gherkin.
+- **Threat-model a project**: draw its architecture as components, data flows
+  and exposure zones, get STRIDE threats suggested by rules, rate their risk
+  (inherent, current, residual), plan and verify controls with evidence, and
+  generate security tests. Baselines snapshot the model for review, and a
+  report can be printed or exported. The AI assistant is off until you enable
+  it per threat model.
+
+![The data-flow diagram of a threat model, with exposure zones and trust-boundary crossings](docs/screenshots/10-threat-diagram.png)
 
 The [documentation](https://uid09552.github.io/testmodeller/) has a screenshot
 tour.
@@ -71,7 +80,7 @@ TM_AI_PROVIDER=ollama TM_AI_MODEL=llama3.1 make dev
 | `make test` | Backend unit and doc tests |
 | `make test-fe` | Frontend unit tests |
 | `make build-fe` | Production build of the Angular app |
-| `make screenshots` | Regenerate the documentation screenshots |
+| `make screenshots` | Regenerate the documentation screenshots (runs the backend against a throwaway database, so it needs Docker) |
 | `make up` / `make down` | Start / stop the container stack |
 | `make logs` / `make ps` | Follow logs / show container status |
 | `make down-volumes` | Stop the stack and delete the database volume |
@@ -118,14 +127,11 @@ does not drift.
 ## Status
 
 The backend implements the specification: the full API, test generation, AI
-proposals, JWT validation and tenant separation.
+proposals, threat modeling, JWT validation and tenant separation.
 
-The frontend is further behind the contract than it looks. The editor, the
-projects tree and the test cases work, but against the browser's
-`localStorage` rather than the API; the AI assistant and Settings call the real
-API; the coverage dashboard and the proposals list still show placeholder data.
-Moving the editor onto the API is the next substantial piece of work, and needs
-no change to the contract. The
+The frontend reads and writes everything through the API; nothing is kept in
+the browser. The coverage dashboard and the AI proposals list still show
+placeholder data and are not wired to the API yet. The
 [documentation](https://uid09552.github.io/testmodeller/#status) has the
 breakdown.
 
