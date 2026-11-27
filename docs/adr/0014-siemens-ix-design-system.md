@@ -1,8 +1,8 @@
 ---
 title: 0014. The UI uses the Siemens iX design system
 type: adr
-status: proposed
-date:  # YYYY-MM-DD, the day the decision is accepted
+status: accepted
+date: 2026-11-27
 tags: [ui, frontend, design-system]
 related: [../../DESIGN.md, ../specification/06-ui.md, ../guides/angular-coding-guide.md]
 ---
