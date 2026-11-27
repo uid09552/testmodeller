@@ -19,9 +19,9 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: var(--clr-surface-0);
-  border: 1px solid var(--clr-surface-200);
-  border-radius: var(--radius-md);
+  background: var(--si-sys-color-background-1);
+  border: 1px solid var(--si-sys-color-border-3);
+  border-radius: var(--si-sys-sizing-border-radius-sm);
 
   &__center {
     position: absolute;
@@ -41,16 +41,16 @@
   }
 
   &__lbl {
-    font-size: 10px;
+    font-size: 0.625rem;
     text-transform: uppercase;
     letter-spacing: .06em;
-    color: var(--clr-text-400);
+    color: var(--si-sys-color-text-secondary);
     margin-top: 3px;
   }
 
   &__detail {
-    font-size: var(--text-xs);
-    color: var(--clr-text-400);
+    font-size: 0.75rem;
+    color: var(--si-sys-color-text-secondary);
     margin-top: 6px;
   }
 }
@@ -62,7 +62,7 @@
 
   &__track {
     fill: none;
-    stroke: var(--clr-surface-100);
+    stroke: var(--si-sys-color-border-4);
     stroke-width: 9;
   }
 
@@ -72,9 +72,9 @@
     stroke-linecap: round;
     transition: stroke-dashoffset 600ms ease;
 
-    &--high { stroke: #22c55e; }
-    &--mid  { stroke: var(--clr-warning); }
-    &--low  { stroke: var(--clr-danger); }
+    &--high { stroke: var(--si-sys-color-border-success); }
+    &--mid  { stroke: var(--si-sys-color-border-warning); }
+    &--low  { stroke: var(--si-sys-color-border-danger); }
   }
 }
 
@@ -91,8 +91,8 @@
   gap: 8px;
 
   &__txt {
-    font-size: var(--text-xs);
-    color: var(--clr-text-400);
+    font-size: 0.75rem;
+    color: var(--si-sys-color-text-secondary);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
     min-width: 34px;
@@ -103,7 +103,7 @@
   flex: 1;
   height: 6px;
   min-width: 50px;
-  background: var(--clr-surface-100);
+  background: var(--si-sys-color-background-2);
   border-radius: 3px;
   overflow: hidden;
 
@@ -112,9 +112,9 @@
     border-radius: 3px;
     transition: width 500ms ease;
 
-    &--high { background: #22c55e; }
-    &--mid  { background: var(--clr-warning); }
-    &--low  { background: var(--clr-danger); }
+    &--high { background: var(--si-sys-color-background-success); }
+    &--mid  { background: var(--si-sys-color-background-warning); }
+    &--low  { background: var(--si-sys-color-background-danger); }
   }
 }
 

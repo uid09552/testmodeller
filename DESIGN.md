@@ -43,6 +43,10 @@ same change.
    colour alone (add icon or text), WCAG 2.1 AA contrast.
 7. **One primary action per view/dialog.** See [Buttons](#buttons).
 
+Exempt from rule 2: colours the *user* picks for a node or group (stored in
+the model's `layout`, so they are data, not styling), and the report's print
+stylesheet, which targets paper (black on white) whatever the screen schema.
+
 The model canvas (SVG graph editor) and threat-model diagram are custom
 drawing surfaces. Their *chrome* (toolbars, palettes, context menus,
 dialogs) uses iX components; the drawing itself uses iX colour tokens
@@ -61,15 +65,17 @@ npm i @siemens/ix-aggrid ag-grid-community
 
 `@siemens/ix-angular` 6 requires Angular `>=21.2.25`.
 
-### Global styles (`angular.json` → `styles`, or `styles.scss`)
+### Global styles (`angular.json` → `styles`)
 
-```scss
-@use '@siemens/ix/dist/siemens-ix/siemens-ix.css';
+```json
+"styles": ["node_modules/@siemens/ix/dist/siemens-ix/siemens-ix.css", "src/styles.scss"]
 ```
 
 `siemens-ix.css` contains reset, foundation, utilities, typography and the
-`community` theme (dark + light). Remove the old Inter font import and the
-`--clr-*` palette from `styles/_tokens.scss` as screens migrate.
+`community` theme (dark + light). It comes first so the app's own partials
+(`styles/_tokens.scss` holds only shell geometry) can build on it. The
+iX stylesheet and the shell's iX components cost about 100 kB gzipped, which
+is why the initial bundle budget is 1.2 MB (warning) / 1.5 MB (error).
 
 ### Theme attributes (`index.html`)
 
@@ -111,6 +117,14 @@ export class FeatureForm {}
   `MessageService` and `LoadingService` from `@siemens/ix-angular` — never
   build modal/toast DOM yourself.
 - Do not use `IxModule.forRoot()`; this app is standalone-only.
+- Icons: import the constants from `@siemens/ix-icons/icons` (e.g.
+  `iconSearch`) and bind them to `icon` / `name`. Named imports keep the
+  bundle to the icons actually used.
+- Host a component inside an iX slot with `host: { slot: '…' }` (the shell's
+  `tm-topbar` and `tm-sidenav` do this for `ix-application`).
+- Set initial-only props such as `ix-menu`'s `start-expanded` as static
+  attributes; a property binding arrives after the component has initialised
+  and is ignored.
 
 ## Foundations
 
@@ -125,7 +139,7 @@ Use semantic tokens by role, never reference tokens (`--si-ref-*`) or hex.
 | Accent (primary action) | `background-accent`, `-hover`, `-active`; `text-on-accent` |
 | Secondary accent | `background-accent-secondary`, `-hover`, `-active`; `text-on-accent-secondary` |
 | Text | `text-primary`, `text-secondary`, `text-disabled`, `text-accent`, `text-inverse` |
-| Borders | `border-1` (subtle) … `border-4` (strong), `border-accent`, `border-disabled` |
+| Borders | `border-1` (strongest) … `border-4` (subtlest — dividers, card outlines), `border-accent`, `border-disabled` |
 | Status | `{background,text,border}-{danger,critical,warning,caution,success,information,neutral}`; subtle fills `background-*-subtle`; text on fill `text-on-*` |
 | Charts / categories | `data-categorical-1` … `-17`; sequential `data-sequential-<hue>-1..4`; ratings `data-rating-{excellent,good,average,poor,bad}` |
 | Code | `code-1` … `code-12` |
@@ -188,8 +202,8 @@ The application shell maps onto iX like this (see `06-ui.md` → Layout):
 | TestModeller area | iX |
 | --- | --- |
 | App root | `ix-application` |
-| Top bar (product name, user) | `ix-application-header` (+ `ix-avatar`) |
-| Nav bar with Projects tree | `ix-menu` with `ix-menu-item`/`ix-menu-category`; tree in `ix-tree`/`ix-tree-item`; `ix-menu-settings`, `ix-menu-about` for Settings/About |
+| Top bar (product name, user) | `ix-application-header` (`tm-topbar`): route breadcrumb in `slot="secondary"`, actions as `ix-icon-button`, user menu as `ix-avatar` + `ix-dropdown-item` |
+| Nav bar with Projects tree | `ix-menu` (`tm-sidenav`): the project tree in its default slot, shown only while expanded; views as `ix-menu-item`; Settings as a `slot="bottom"` item. Width via `--ix-menu--width--expanded` |
 | Page body | `ix-content` + `ix-content-header` (title, back, actions) |
 | Editor side & bottom panels | `ix-pane-layout` + `ix-pane` |
 | Panel tabs (Test Cases / Properties, bottom tabs) | `ix-tabs` + `ix-tab-item` |
@@ -266,8 +280,22 @@ A frontend change is not done unless:
 
 ## Migration
 
-The current UI predates this decision and uses its own tokens
-(`frontend/src/styles/_tokens.scss`, `_ui.scss`). Migrate incrementally:
-any component you touch moves to iX in the same change; no new code uses
-the legacy `--clr-*` tokens or `_ui.scss` primitives. Delete legacy tokens
-once nothing references them.
+Done:
+
+- iX is installed and loaded globally; theme `community`, schema `system`.
+- Every colour, radius, shadow, font and motion value uses iX tokens; the
+  legacy `--clr-*`, `--radius-*`, `--shadow-*`, `--text-*` and
+  `--transition-*` tokens are gone. Dark and light both work.
+- The shell is iX: `ix-application`, `ix-application-header`,
+  `ix-breadcrumb`, `ix-avatar` and `ix-menu`.
+
+Still to do, incrementally — any component you touch moves to iX in the same
+change:
+
+- Feature pages still use the hand-built controls from `styles/_ui.scss`
+  (`.btn`, tabs, dialogs, inputs, selects, pills, tables). Replace them with
+  the iX components in the [Component map](#component-map), and delete each
+  `_ui.scss` primitive once nothing uses it.
+- Inline SVG icons in feature templates move to `@siemens/ix-icons`.
+- Font sizes are rem values on the iX scale; move them to `typography-*`
+  classes as templates are touched.

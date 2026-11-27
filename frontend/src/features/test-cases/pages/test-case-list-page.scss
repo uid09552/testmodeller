@@ -24,7 +24,7 @@
   padding: 7px 10px;
 }
 
-.btn--sm { padding: 6px 11px; font-size: var(--text-xs); }
+.btn--sm { padding: 6px 11px; font-size: 0.75rem; }
 
 .view-opts {
   display: flex;
@@ -33,9 +33,9 @@
   margin-left: auto;
 
   &__label {
-    font-size: var(--text-xs);
+    font-size: 0.75rem;
     font-weight: 500;
-    color: var(--clr-text-400);
+    color: var(--si-sys-color-text-secondary);
     white-space: nowrap;
   }
 }
@@ -51,18 +51,18 @@
     padding: 8px 12px;
     min-width: 190px;
     font-family: inherit;
-    font-size: var(--text-sm);
+    font-size: 0.875rem;
     font-weight: 500;
-    color: var(--clr-text-900);
-    background: var(--clr-surface-0);
-    border: 1px solid var(--clr-surface-200);
-    border-radius: var(--radius-sm);
+    color: var(--si-sys-color-text-primary);
+    background: var(--si-sys-color-background-1);
+    border: 1px solid var(--si-sys-color-border-3);
+    border-radius: var(--si-sys-sizing-border-radius-sm);
     cursor: pointer;
-    transition: border-color var(--transition-fast), background var(--transition-fast);
+    transition: border-color var(--theme-default-time) ease, background var(--theme-default-time) ease;
 
-    &:hover { border-color: var(--clr-brand-400); }
+    &:hover { border-color: var(--si-sys-color-border-accent-hover); }
 
-    svg:first-child { color: var(--clr-brand-500); flex-shrink: 0; }
+    svg:first-child { color: var(--si-sys-color-text-accent); flex-shrink: 0; }
   }
 
   &__label {
@@ -75,8 +75,8 @@
 
   &__chev {
     flex-shrink: 0;
-    color: var(--clr-text-400);
-    transition: transform var(--transition-fast);
+    color: var(--si-sys-color-text-secondary);
+    transition: transform var(--theme-default-time) ease;
     &--open { transform: rotate(180deg); }
   }
 
@@ -88,10 +88,10 @@
     min-width: 100%;
     max-height: 280px;
     overflow-y: auto;
-    background: var(--clr-surface-0);
-    border: 1px solid var(--clr-surface-200);
-    border-radius: var(--radius-md);
-    box-shadow: 0 6px 20px rgba(0,0,0,.14);
+    background: var(--si-sys-color-background-1);
+    border: 1px solid var(--si-sys-color-border-3);
+    border-radius: var(--si-sys-sizing-border-radius-sm);
+    box-shadow: var(--si-sys-color-effects-shadow-40);
     padding: 4px 0;
     list-style: none;
   }
@@ -105,26 +105,26 @@
     padding: 7px 14px;
     text-align: left;
     font-family: inherit;
-    font-size: var(--text-sm);
-    color: var(--clr-text-900);
+    font-size: 0.875rem;
+    color: var(--si-sys-color-text-primary);
     background: none;
     border: none;
     cursor: pointer;
     white-space: nowrap;
-    transition: background var(--transition-fast);
+    transition: background var(--theme-default-time) ease;
 
-    &:hover { background: var(--clr-surface-50); }
+    &:hover { background: var(--si-sys-color-background-0); }
 
     &--on {
-      background: var(--clr-brand-50);
-      color: var(--clr-brand-600);
+      background: var(--si-sys-color-background-selected);
+      color: var(--si-sys-color-text-accent-active);
       font-weight: 600;
     }
   }
 
   &__count {
-    font-size: var(--text-xs);
-    color: var(--clr-text-400);
+    font-size: 0.75rem;
+    color: var(--si-sys-color-text-secondary);
     font-variant-numeric: tabular-nums;
   }
 }
@@ -143,18 +143,18 @@
   border: none;
   cursor: pointer;
 
-  &:hover { color: var(--clr-text-900); }
+  &:hover { color: var(--si-sys-color-text-primary); }
 
   &__icon {
     opacity: 0;
-    transition: transform var(--transition-fast), opacity var(--transition-fast);
+    transition: transform var(--theme-default-time) ease, opacity var(--theme-default-time) ease;
     &--desc { transform: rotate(180deg); }
   }
 
   &:hover &__icon { opacity: .5; }
 
   &--on {
-    color: var(--clr-brand-600);
+    color: var(--si-sys-color-text-accent-active);
     .th-sort__icon { opacity: 1; }
   }
 }
@@ -165,8 +165,8 @@
 
   td {
     padding: 0;
-    background: var(--clr-surface-50);
-    border-bottom: 1px solid var(--clr-surface-200);
+    background: var(--si-sys-color-background-0);
+    border-bottom: 1px solid var(--si-sys-color-border-3);
   }
 
   &:hover { background: none; }
@@ -179,25 +179,25 @@
   width: 100%;
   padding: 8px 14px;
   font-family: inherit;
-  font-size: var(--text-xs);
+  font-size: 0.75rem;
   text-align: left;
-  color: var(--clr-text-900);
+  color: var(--si-sys-color-text-primary);
   background: none;
   border: none;
   cursor: pointer;
 
-  &:hover { background: var(--clr-surface-100); }
+  &:hover { background: var(--si-sys-color-background-2); }
 }
 
 .grp-row__chev {
   flex-shrink: 0;
-  color: var(--clr-text-400);
-  transition: transform var(--transition-fast);
+  color: var(--si-sys-color-text-secondary);
+  transition: transform var(--theme-default-time) ease;
   &--closed { transform: rotate(-90deg); }
 }
 
 .grp-row__label { font-weight: 600; text-transform: capitalize; }
-.grp-row__ctx   { color: var(--clr-text-400); }
+.grp-row__ctx   { color: var(--si-sys-color-text-secondary); }
 
 .grp-row__count {
   margin-left: auto;
@@ -205,15 +205,15 @@
   border-radius: 10px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  background: var(--clr-surface-100);
-  color: var(--clr-text-600);
+  background: var(--si-sys-color-background-2);
+  color: var(--si-sys-color-text-secondary);
 }
 
 .grp-row__pol {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  &--pos { color: #16a34a; }
-  &--neg { color: var(--clr-danger); }
+  &--pos { color: var(--si-sys-color-text-success); }
+  &--neg { color: var(--si-sys-color-text-danger); }
 }
 
 // ── Table cells ───────────────────────────────────────────────────────────────
@@ -228,37 +228,37 @@
 
 .tc-ref {
   font-family: monospace;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 6px;
-  background: var(--clr-surface-100);
-  color: var(--clr-text-600);
+  background: var(--si-sys-color-background-2);
+  color: var(--si-sys-color-text-secondary);
   white-space: nowrap;
 }
 
-.tc-dim { color: var(--clr-text-600); font-size: var(--text-xs); }
+.tc-dim { color: var(--si-sys-color-text-secondary); font-size: 0.75rem; }
 
 .tc-model {
   display: block;
-  font-size: var(--text-xs);
+  font-size: 0.75rem;
   font-weight: 500;
-  color: var(--clr-text-900);
+  color: var(--si-sys-color-text-primary);
 }
 
 .tc-state {
   display: block;
-  font-size: 10px;
-  color: var(--clr-text-400);
+  font-size: 0.625rem;
+  color: var(--si-sys-color-text-secondary);
   margin-top: 1px;
 }
 
-.tc-name { font-size: var(--text-xs); font-weight: 500; line-height: 1.4; }
+.tc-name { font-size: 0.75rem; font-weight: 500; line-height: 1.4; }
 
 .tc-steps {
   font-family: monospace;
-  font-size: 10px;
-  color: var(--clr-text-400);
+  font-size: 0.625rem;
+  color: var(--si-sys-color-text-secondary);
   line-height: 1.45;
   margin-top: 2px;
   overflow: hidden;
@@ -271,7 +271,7 @@
   display: flex;
   gap: 1px;
   opacity: 0;
-  transition: opacity var(--transition-fast);
+  transition: opacity var(--theme-default-time) ease;
 }
 
 @media (max-width: 1000px) {
@@ -280,6 +280,6 @@
 }
 
 // Grouped tables have one <tbody> per group; keep the divider between them.
-.tc-table tbody:not(:last-of-type) tr:last-child td { border-bottom: 1px solid var(--clr-surface-100); }
+.tc-table tbody:not(:last-of-type) tr:last-child td { border-bottom: 1px solid var(--si-sys-color-border-4); }
 
 .page__actions { display: flex; gap: 8px; }

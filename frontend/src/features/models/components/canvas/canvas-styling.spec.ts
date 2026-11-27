@@ -195,7 +195,7 @@ describe('CanvasComponent status cues over user styles', () => {
       r.selectorText.includes('edge-group--uncovered') && r.selectorText.includes('edge-line'));
     expect(rule?.style.getPropertyPriority('stroke-dasharray')).toBe('important');
     // jsdom drops the priority of var() values, so read the stroke from the source.
-    expect(styleText()).toMatch(/edge-group--uncovered[^{]*edge-line[^{]*\{\s*stroke: var\(--clr-warning\) !important/);
+    expect(styleText()).toMatch(/edge-group--uncovered[^{]*edge-line[^{]*\{\s*stroke: var\(--si-sys-color-border-warning\) !important/);
 
     store.coverageView.set('off');
     fixture.detectChanges();

@@ -58,8 +58,8 @@ const LAYER_ICON: Record<string, string> = {
 };
 
 const SAVE_DELAY_MS = 600;
-const EDGE_COLOUR = 'var(--clr-edge)';
-const SELECTED_COLOUR = 'var(--clr-brand-500)';
+const EDGE_COLOUR = 'var(--si-sys-color-border-2)';
+const SELECTED_COLOUR = 'var(--si-sys-color-text-accent)';
 const NAME_PX = 13;
 const LABEL_PX = 11;
 

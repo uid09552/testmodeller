@@ -20,7 +20,7 @@ export interface PickOption { id: string; label: string }
   `,
   styles: `
     .mp { border: 0; padding: 0; margin: 0 0 12px; max-height: 180px; overflow: auto; }
-    .mp__row { display: flex; gap: 6px; align-items: center; font-size: var(--text-sm); padding: 2px 0; }
+    .mp__row { display: flex; gap: 6px; align-items: center; font-size: 0.875rem; padding: 2px 0; }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

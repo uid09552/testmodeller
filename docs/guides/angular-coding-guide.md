@@ -21,6 +21,14 @@ related: [testing-guide.md, workflow.md]
 - Tests: Jest or Karma per ADR; test components via harnesses; mock API at service level.
 - Lint: ESLint with `@angular-eslint`; Prettier for formatting.
 
+## Bundle budgets
+
+The initial bundle budget is 1.2 MB (warning) / 1.5 MB (error), raised from
+500 kB / 1 MB when Siemens iX was adopted (ADR 0014): the iX stylesheet and the
+shell's iX components account for the difference. Import iX components and
+icons by name from `@siemens/ix-angular/standalone` and
+`@siemens/ix-icons/icons` so only what is used is bundled.
+
 ## Component style budgets
 
 `angular.json` sets `anyComponentStyle` to warn at 8 kB and fail at 14 kB
@@ -38,6 +46,9 @@ inlines them into every consumer, so a 7 kB partial used by eight components
 costs 56 kB and trips the budget in eight places at once. `styles/_page.scss`
 therefore contains only a mixin; shared classes belong in `styles/_ui.scss`,
 which only the global `styles.scss` pulls in.
+
+The model canvas keeps its chrome (toolbar, quick bar, selection bar) in
+`canvas-chrome.scss`, separate from the drawing in `canvas.scss`.
 
 What remains over 8 kB is genuinely component-specific: the model canvas is an
 SVG diagram editor with a toolbar, a shape palette, four node shapes, edge

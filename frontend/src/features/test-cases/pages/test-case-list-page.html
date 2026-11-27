@@ -164,11 +164,11 @@
     </div>
     <div class="stat">
       <div class="stat__label">Positive</div>
-      <div class="stat__value" style="color:#16a34a">{{ positiveCount() }}</div>
+      <div class="stat__value" style="color:var(--si-sys-color-text-success)">{{ positiveCount() }}</div>
     </div>
     <div class="stat">
       <div class="stat__label">Negative</div>
-      <div class="stat__value" style="color:var(--clr-danger)">{{ negativeCount() }}</div>
+      <div class="stat__value" style="color:var(--si-sys-color-text-danger)">{{ negativeCount() }}</div>
     </div>
     <div class="stat">
       <div class="stat__label">Models covered</div>
@@ -189,7 +189,7 @@
       </svg>
       @if (allRows().length === 0) {
         <p>No test cases yet.</p>
-        <p style="font-size:var(--text-xs);margin-top:4px">
+        <p style="font-size:0.75rem;margin-top:4px">
           Open a model from the Projects tree, right-click a state and choose <strong>Add Test Case</strong>.
         </p>
       } @else {

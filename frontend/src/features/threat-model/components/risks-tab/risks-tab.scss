@@ -16,9 +16,9 @@
 }
 
 .rt__thresholds {
-  font-size: var(--text-sm);
+  font-size: 0.875rem;
 
-  h3 { font-size: var(--text-sm); margin: 8px 0 4px; }
+  h3 { font-size: 0.875rem; margin: 8px 0 4px; }
   ul { margin: 0 0 8px; padding-left: 18px; }
 }
 
@@ -30,7 +30,7 @@
   margin-bottom: 4px;
 }
 
-.rt__error { color: var(--clr-danger); }
+.rt__error { color: var(--si-sys-color-text-danger); }
 
 .rt__rating {
   border: 0;

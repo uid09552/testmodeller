@@ -31,7 +31,7 @@
                 "input": "public"
               }
             ],
-            "styles": ["src/styles.scss"],
+            "styles": ["node_modules/@siemens/ix/dist/siemens-ix/siemens-ix.css", "src/styles.scss"],
             "stylePreprocessorOptions": {
               "includePaths": ["src"]
             }
@@ -41,8 +41,8 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
-                  "maximumError": "1MB"
+                  "maximumWarning": "1.2MB",
+                  "maximumError": "1.5MB"
                 },
                 {
                   "type": "anyComponentStyle",

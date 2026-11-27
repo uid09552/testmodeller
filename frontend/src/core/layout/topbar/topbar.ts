@@ -1,36 +1,38 @@
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import {
-  ChangeDetectionStrategy,
-  Component,
-  HostListener,
-  output,
-  signal,
-} from '@angular/core';
+  IxApplicationHeader,
+  IxAvatar,
+  IxDivider,
+  IxDropdownItem,
+  IxIconButton,
+} from '@siemens/ix-angular/standalone';
+import { iconCogwheel, iconLogOut, iconSearch, iconUserProfile } from '@siemens/ix-icons/icons';
+import { SessionService } from '../../auth/session';
 import { BreadcrumbComponent } from './breadcrumb';
-import { UserMenuComponent } from './user-menu';
 
+/** The application header: product name, breadcrumb, global actions, user menu. */
 @Component({
   selector: 'tm-topbar',
-  imports: [BreadcrumbComponent, UserMenuComponent],
+  imports: [IxApplicationHeader, IxAvatar, IxDivider, IxDropdownItem, IxIconButton, BreadcrumbComponent],
   templateUrl: './topbar.html',
   styleUrl: './topbar.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // `ix-application` places this host in its header area.
+  host: { slot: 'application-header' },
 })
 export class TopbarComponent {
-  readonly menuClick = output<void>();
+  private readonly router = inject(Router);
+  private readonly session = inject(SessionService);
 
-  readonly userMenuOpen = signal(false);
+  readonly icons = { search: iconSearch, profile: iconUserProfile, settings: iconCogwheel, signOut: iconLogOut };
 
-  toggleUserMenu(): void {
-    this.userMenuOpen.update((v) => !v);
+  open(route: string): void {
+    void this.router.navigateByUrl(route);
   }
 
-  closeUserMenu(): void {
-    this.userMenuOpen.set(false);
-  }
-
-  /** Close menu on outside click. */
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
-    this.closeUserMenu();
+  /** Ends the gateway session (FR-046). */
+  signOut(): void {
+    this.session.signOut();
   }
 }

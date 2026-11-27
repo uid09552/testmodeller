@@ -68,7 +68,7 @@ export const measureLabel: TextMeasure = (text, font) => {
     try {
       ctx = typeof OffscreenCanvas === 'undefined' ? null : new OffscreenCanvas(1, 1).getContext('2d');
       if (ctx) {
-        family = getComputedStyle(document.documentElement).getPropertyValue('--font-sans').trim()
+        family = getComputedStyle(document.documentElement).getPropertyValue('--theme-font-family').trim()
           || 'system-ui, sans-serif';
       }
     } catch {

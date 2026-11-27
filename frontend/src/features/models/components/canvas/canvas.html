@@ -207,16 +207,16 @@
 
     <defs>
       <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-        <polygon points="0 0,10 3.5,0 7" fill="var(--clr-edge)" />
+        <polygon points="0 0,10 3.5,0 7" fill="var(--si-sys-color-border-2)" />
       </marker>
       <marker id="arrow-selected" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-        <polygon points="0 0,10 3.5,0 7" fill="var(--clr-brand-500)" />
+        <polygon points="0 0,10 3.5,0 7" fill="var(--si-sys-color-background-accent)" />
       </marker>
       <marker id="arrow-drawing" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-        <polygon points="0 0,10 3.5,0 7" fill="var(--clr-edge)" />
+        <polygon points="0 0,10 3.5,0 7" fill="var(--si-sys-color-border-2)" />
       </marker>
       <pattern id="dotgrid" width="24" height="24" patternUnits="userSpaceOnUse">
-        <circle cx="1" cy="1" r="1" fill="var(--clr-surface-200)" />
+        <circle cx="1" cy="1" r="1" fill="var(--si-sys-color-background-3)" />
       </pattern>
     </defs>
 
@@ -581,23 +581,23 @@
         @switch (item.kind) {
           @case ('initial') {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
-              <circle cx="12" cy="12" r="8" fill="var(--clr-brand-500)" stroke="var(--clr-brand-600)"/>
+              <circle cx="12" cy="12" r="8" fill="var(--si-sys-color-background-accent)" stroke="var(--si-sys-color-border-accent-active)"/>
             </svg>
           }
           @case ('regular') {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
-              <rect x="3" y="7" width="18" height="10" rx="2" fill="var(--clr-surface-0)"/>
+              <rect x="3" y="7" width="18" height="10" rx="2" fill="var(--si-sys-color-background-1)"/>
             </svg>
           }
           @case ('decision') {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
-              <polygon points="12,4 20,12 12,20 4,12" fill="#fffbeb" stroke="#f59e0b"/>
+              <polygon points="12,4 20,12 12,20 4,12" fill="var(--si-sys-color-background-warning-subtle)" stroke="var(--si-sys-color-border-warning)"/>
             </svg>
           }
           @default {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
-              <rect x="3" y="7" width="18" height="10" rx="2" fill="var(--clr-surface-0)" stroke="#16a34a"/>
-              <rect x="5.5" y="9.5" width="13" height="5" rx="1" fill="none" stroke="#16a34a" stroke-width="1.2"/>
+              <rect x="3" y="7" width="18" height="10" rx="2" fill="var(--si-sys-color-background-1)" stroke="var(--si-sys-color-border-success)"/>
+              <rect x="5.5" y="9.5" width="13" height="5" rx="1" fill="none" stroke="var(--si-sys-color-border-success)" stroke-width="1.2"/>
             </svg>
           }
         }
@@ -615,8 +615,8 @@
               [title]="item.label + ' — drag onto the canvas'"
               [attr.aria-label]="item.label">
         @if (item.kind === 'note') {
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="1.6" stroke-linejoin="round">
-            <path d="M4 4h12l4 4v12H4z" fill="#fef9c3"/><path d="M16 4v4h4"/>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--si-sys-color-border-caution)" stroke-width="1.6" stroke-linejoin="round">
+            <path d="M4 4h12l4 4v12H4z" fill="var(--si-sys-color-background-caution-subtle)"/><path d="M16 4v4h4"/>
           </svg>
         } @else {
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">

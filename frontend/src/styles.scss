@@ -1,5 +1,5 @@
+// Siemens iX (reset, foundation, typography, community theme) is loaded first
+// from angular.json; these partials only add the app's own layout rules.
 @use 'styles/tokens';
 @use 'styles/reset';
 @use 'styles/ui';
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
