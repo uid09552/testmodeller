@@ -2,6 +2,7 @@
 //! See docs/adr/0002-postgresql-storage.md.
 
 mod ai;
+mod api_keys;
 mod export;
 mod models;
 mod organization;
@@ -21,6 +22,7 @@ use uuid::Uuid;
 
 pub use ai::Acceptance;
 pub use ai::ProposalFilter;
+pub use api_keys::{ApiKeyRecord, NewApiKey, MAX_ACTIVE_KEYS};
 pub use export::{
     ExportBundle, ExportComponent, ExportFeature, ExportScope, ImportComponent, ImportCounts,
     ImportFeature, ImportModel, ImportTestCase,

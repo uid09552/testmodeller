@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy, Component, computed, inject, OnInit, signal,
 } from '@angular/core';
 import { AiApi } from '../../../core/api/ai-api';
+import { McpAccessComponent } from '../components/mcp-access/mcp-access';
 import { ApiError } from '../../../core/api/api-error';
 import { AiSettings } from '../../../core/api/api.types';
 import {
@@ -10,6 +11,7 @@ import {
 
 @Component({
   selector: 'tm-settings-page',
+  imports: [McpAccessComponent],
   templateUrl: './settings-page.html',
   styleUrl: './settings-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

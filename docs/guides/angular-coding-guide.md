@@ -29,6 +29,14 @@ shell's iX components account for the difference. Import iX components and
 icons by name from `@siemens/ix-angular/standalone` and
 `@siemens/ix-icons/icons` so only what is used is bundled.
 
+`@siemens/ix-angular/standalone` is a single module, so the bundler cannot
+split it: once a lazy page uses an iX component, that component's element
+definition joins the chunk the shell already loads. Using `ix-input`,
+`ix-select` and the message service in Settings added about 30 kB gzipped to
+the initial load (1.34 MB raw, over the 1.2 MB warning). Expect the initial
+bundle to grow towards "every iX component the app uses" as pages migrate;
+revisit the budget then rather than hand-loading elements per page.
+
 ## Component style budgets
 
 `angular.json` sets `anyComponentStyle` to warn at 8 kB and fail at 14 kB

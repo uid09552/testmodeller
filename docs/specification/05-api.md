@@ -30,7 +30,41 @@ REST/JSON under `/api/v1`. Errors use RFC 7807 problem details. Updates require 
 | AI | Async proposal jobs, list/accept/reject proposals |
 | Settings | AI provider settings |
 | ThreatModel | One threat model per project (`/projects/{id}/threat-model`); under `/threat-models/{id}`: scope and risk thresholds, diagram `layout` (opaque, own `layoutVersion`), summary, and CRUD of zones, architecture components, assets, data flows, threats, controls and security tests; suggest threats (STRIDE rules), bulk status, generate security tests, manual results. See [09-threat-modeling.md](09-threat-modeling.md) |
+| ApiKeys | The caller's own API keys for the MCP endpoint: list, create (key shown once), revoke (`/me/api-keys`). See [08-usermanagement.md](08-usermanagement.md#api-keys) |
+| Mcp | Model Context Protocol endpoint for AI clients such as VS Code (`POST /mcp`); see [MCP tools](#mcp-tools) |
 | System | Health |
+
+## MCP tools
+
+`POST /api/v1/mcp` speaks MCP over Streamable HTTP: JSON-RPC 2.0 in the body, a
+JSON response (no SSE stream; `GET` is `405`), protocol version `2025-06-18`.
+It is authenticated with an API key (`Authorization: Bearer tm_…`), never a
+JWT. Each tool is a task-level aggregate of the REST operations above and runs
+them in-process as the key's tenant and role, so the tenant guard, the role rule,
+validation and error mapping are the API's own. A failed operation becomes a tool
+result with `isError: true` and the problem details as text; it is not a JSON-RPC
+error. Tools that write (marked ✎) need a key with the `Editor` role.
+
+| Tool | Arguments | Aggregates |
+| --- | --- | --- |
+| `list_projects` | – | `GET /projects` (all pages) and `GET /projects/{id}/tree` for each |
+| `search` | `projectId`, `query`, `types?` | `GET /projects/{id}/search` |
+| `get_model` | `modelId` | `GET /models/{id}`, `POST /models/{id}/validate`, `GET /models/{id}/coverage` |
+| `save_model` ✎ | `featureId` (create) or `modelId` (replace), `name`, `states`, `transitions`, `description?` | `POST /features/{id}/models`, or `GET` + `PUT /models/{id}` with the current version |
+| `generate_test_cases` ✎ | `modelId`, `criterion?` (default `transition`), `seed?`, `maxPathLength?`, `save?` | `POST /models/{id}/generate` |
+| `list_test_cases` | `featureId` or `modelId` | `GET /features/{id}/test-cases` or `GET /models/{id}/test-cases` |
+| `export` | `projectId`, `format` (`gherkin`, `csv`, `json`), `featureId?`, `componentId?` | `GET /projects/{id}/export` |
+| `import_test_results` ✎ | `projectId`, `format` (`junit`, `cucumber`), `content`, `dryRun?` | `POST /projects/{id}/test-results` |
+| `get_coverage` | one of `modelId`, `featureId`, `componentId` | `GET /{models,features,components}/{id}/coverage` |
+| `get_traceability` | `projectId` | `GET /projects/{id}/traceability` |
+| `get_threat_model` | `projectId` | `GET /projects/{id}/threat-model`, `…/summary`, `…/threats`, `…/controls` |
+| `request_ai_proposals` ✎ | `featureId`, `kind`, `modelId?`, `prompt?`, `count?` | `POST /ai/proposals`, then polls `GET /jobs/{id}` for up to 30 s |
+| `list_proposals` | `projectId`, `status?` | `GET /projects/{id}/proposals` |
+| `decide_proposal` ✎ | `proposalId`, `decision` (`accept`, `reject`), `payload?` | `POST /proposals/{id}/accept` or `/reject` |
+
+No tool accepts a proposal on its own: `request_ai_proposals` only creates
+pending proposals, and `decide_proposal` is a separate, explicit call
+(AGENTS.md rule 8).
 
 ## Conventions
 - IDs are UUIDs; timestamps RFC 3339 UTC; fields camelCase.

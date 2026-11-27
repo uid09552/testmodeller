@@ -37,7 +37,13 @@ describe('SettingsPageComponent env example', () => {
     const { provideHttpClient } = await import('@angular/common/http');
     const { SettingsPageComponent } = await import('../pages/settings-page');
     TestBed.resetTestingModule();
+    const { CUSTOM_ELEMENTS_SCHEMA } = await import('@angular/core');
+    const { McpAccessComponent } = await import('../components/mcp-access/mcp-access');
     TestBed.configureTestingModule({ providers: [provideHttpClient()] });
+    // The MCP card has its own spec; here it is an inert element.
+    TestBed.overrideComponent(SettingsPageComponent, {
+      remove: { imports: [McpAccessComponent] }, add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+    });
     const page = TestBed.createComponent(SettingsPageComponent).componentInstance;
     page.settings.set(settings);
     return page;

@@ -442,6 +442,21 @@ pub enum AuthMode {
     Dev,
     /// Tokens are validated against a JWKS.
     Jwt(Arc<Authenticator>),
+    /// In-process calls from the MCP endpoint, which has already
+    /// authenticated an API key and attaches the [`Identity`] as a request
+    /// extension. Extensions cannot come from the wire, so this mode is only
+    /// reachable through the router the MCP endpoint holds; it is never
+    /// mounted publicly (ADR 0015).
+    Internal,
+}
+
+/// Whether `path` is the caller's own account (`/me/…`).
+///
+/// It is not project data, so the role rule does not apply: a `User` may
+/// manage their own API keys (08-usermanagement.md).
+pub fn is_own_account(path: &str) -> bool {
+    let relative = path.strip_prefix("/api/v1").unwrap_or(path);
+    relative == "/me" || relative.starts_with("/me/")
 }
 
 /// Authenticates the request and enforces the role rule (FR-041, FR-045).
@@ -462,9 +477,14 @@ pub async fn authenticate(
                 .ok_or_else(|| unauthorized("no \"Authorization\" header"))?;
             auth.authenticate(raw).await?
         }
+        AuthMode::Internal => request
+            .extensions()
+            .get::<Identity>()
+            .cloned()
+            .ok_or_else(|| unauthorized("an internal call arrived without an identity"))?,
     };
 
-    if !identity.role.may(request.method()) {
+    if !is_own_account(request.uri().path()) && !identity.role.may(request.method()) {
         return Err(forbidden(format!(
             "the {} role may not {} this resource",
             identity.role.as_str(),
@@ -480,6 +500,15 @@ pub async fn authenticate(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn only_the_me_subtree_is_the_callers_own_account() {
+        assert!(is_own_account("/me/api-keys"));
+        assert!(is_own_account("/api/v1/me/api-keys/x"));
+        assert!(!is_own_account("/projects"));
+        assert!(!is_own_account("/media"));
+        assert!(!is_own_account("/projects/x/me/y"));
+    }
 
     #[test]
     fn editor_may_write_and_user_may_not() {

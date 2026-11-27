@@ -25,6 +25,7 @@ TestModeller: model-based testing tool. See [docs/specification/00-overview.md](
 | Domain model, pure logic | `backend/crates/domain` |
 | Test generation algorithms | `backend/crates/generation` |
 | LLM integration | `backend/crates/ai` |
+| MCP protocol and tools | `backend/crates/mcp` (transport and API keys in `backend/crates/api`) |
 | Persistence | `backend/crates/storage` |
 | HTTP API (binary) | `backend/crates/api` |
 | Angular app | `frontend/` |

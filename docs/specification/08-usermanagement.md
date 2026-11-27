@@ -92,6 +92,31 @@ them and `GET /jobs/{id}` is scoped to it.
 The rule is applied by method, not per route, so a new endpoint is covered the
 day it is added.
 
+## API keys
+
+AI clients (the MCP endpoint, see [05-api.md](05-api.md#mcp-tools)) cannot
+take part in the gateway's browser handshake, so a user creates a personal API
+key in Settings and hands it to the client.
+
+- `POST /me/api-keys` creates a key `tm_` + 64 hex characters (256 random bits
+  from the OS). It is returned once; only its SHA-256 hash is stored, with a
+  short prefix to recognise it in the list.
+- A key belongs to the caller's `sub` and tenant and carries the caller's role
+  at creation, so a `User` gets a read-only key. A token without `sub` cannot
+  own keys (`403`).
+- Keys expire: `expiresInDays` defaults to 90, at most 365. At most 10 active
+  keys per user. `DELETE /me/api-keys/{id}` revokes one at once; expired and
+  revoked keys are rejected and not listed.
+- `/me/*` is the caller's own account, not project data, so it is exempt from
+  the role-by-method rule. It is scoped by `sub` and tenant: another user's key
+  id is `404`.
+- A key is accepted only by `POST /mcp`. Every other endpoint still requires
+  the JWT, so a leaked key cannot use the REST API or manage keys.
+- `lastUsedAt` is updated at most once a minute per key. Keys are never
+  logged; a failed key check says why, not what was sent.
+- In `--dev-mode`, `/mcp` without an `Authorization` header runs as the dev
+  identity, like every other endpoint; a presented key is still checked.
+
 ## Configuration
 
 | Flag / env | Default | Meaning |
@@ -123,6 +148,10 @@ For step-by-step setup with examples per token layout, see
   allow this".
 
 ## Gateway
+
+`/api/v1/mcp` has its own route **without** the `openid-connect` plugin: the
+backend authenticates the API key itself. It is the only backend path that
+skips the handshake.
 
 The compose stack gains an `apisix` service in standalone mode (no etcd) as the
 only published port. Two routes:

@@ -48,6 +48,11 @@ fn scope_for(segment: &str) -> Option<TenantScope> {
 /// does not belong to it (ADR 0011).
 fn scoped_ids(path: &str) -> Result<Vec<(TenantScope, Uuid)>, &str> {
     let mut found = Vec::new();
+    // `/me/…` is the caller's own account; its handlers scope every query by
+    // the caller's `sub` and tenant themselves.
+    if path == "/me" || path.starts_with("/me/") {
+        return Ok(found);
+    }
     let mut collection: Option<&str> = None;
     for segment in path.trim_start_matches('/').split('/') {
         if segment.is_empty() {
