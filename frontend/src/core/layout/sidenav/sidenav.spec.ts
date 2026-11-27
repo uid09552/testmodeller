@@ -6,7 +6,7 @@ import { ExplorerStore } from '../../../features/explorer/state/explorer.store';
 import { SidenavComponent } from './sidenav';
 
 describe('SidenavComponent', () => {
-  function render(collapsed: boolean): HTMLElement {
+  function render() {
     TestBed.configureTestingModule({
       imports: [SidenavComponent],
       providers: [provideRouter([]), { provide: ExplorerStore, useValue: { projects: signal([]) } }],
@@ -16,21 +16,33 @@ describe('SidenavComponent', () => {
       remove: { imports: [ExplorerTreeComponent] }, add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
     });
     const f = TestBed.createComponent(SidenavComponent);
-    f.componentRef.setInput('collapsed', collapsed);
     f.detectChanges();
-    return f.nativeElement;
+    return f;
   }
 
+  const items = (root: HTMLElement) => [...root.querySelectorAll('ix-menu-item')] as HTMLElement[];
+
   it('lists the cross-cutting views, with no Threat Modeling item (it lives in the project tree)', () => {
-    const root = render(false);
-    const labels = [...root.querySelectorAll('.sidenav__item-label')].map(e => e.textContent?.trim());
-    expect(labels).toEqual(['Test Cases', 'Coverage', 'Traceability', 'AI Proposals', 'Settings']);
-    expect(root.querySelector('a[href="/threat-modeling"]')).toBeNull();
+    const root: HTMLElement = render().nativeElement;
+    expect(items(root).map(e => e.getAttribute('aria-label'))).toEqual(
+      ['Test Cases', 'Coverage', 'Traceability', 'AI Proposals', 'Settings']);
+    expect(items(root).at(-1)?.getAttribute('slot')).toBe('bottom');
+    expect(root.querySelector('[aria-label="Threat Modeling"]')).toBeNull();
   });
 
-  it('keeps the accessible names when collapsed to icons', () => {
-    const root = render(true);
-    expect(root.querySelector('a[aria-label="Traceability"] .sidenav__item-label')).toBeNull();
-    expect(root.querySelector('a[aria-label="Traceability"]')?.getAttribute('title')).toBe('Traceability');
+  it('sits in the application menu slot', () => {
+    expect((render().nativeElement as HTMLElement).getAttribute('slot')).toBe('menu');
+  });
+
+  it('shows the project tree only while the menu is expanded, and keeps the accessible names', () => {
+    const f = render();
+    const root: HTMLElement = f.nativeElement;
+    expect(root.querySelector('tm-explorer-tree')).not.toBeNull();
+
+    root.querySelector('ix-menu')!.dispatchEvent(new CustomEvent('expandChange', { detail: false }));
+    f.detectChanges();
+
+    expect(root.querySelector('tm-explorer-tree')).toBeNull();
+    expect(root.querySelector('ix-menu-item[aria-label="Traceability"]')).not.toBeNull();
   });
 });

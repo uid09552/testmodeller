@@ -1,20 +1,20 @@
-.tt__message { color: var(--clr-text-600); }
+.tt__message { color: var(--si-sys-color-text-secondary); }
 
 .tt__candidate {
-  background: var(--clr-brand-50);
+  background: var(--si-sys-color-background-selected);
   padding: 8px 10px;
   border-radius: 6px;
-  font-size: var(--text-sm);
+  font-size: 0.875rem;
 }
 
 .tt__why {
-  border: 1px dashed var(--clr-surface-200);
+  border: 1px dashed var(--si-sys-color-border-3);
   border-radius: 6px;
   padding: 8px 12px;
-  font-size: var(--text-sm);
+  font-size: 0.875rem;
 
-  h3 { font-size: var(--text-sm); margin: 0 0 4px; }
-  h4 { font-size: var(--text-xs); margin: 8px 0 2px; color: var(--clr-text-600); }
+  h3 { font-size: 0.875rem; margin: 0 0 4px; }
+  h4 { font-size: 0.75rem; margin: 8px 0 2px; color: var(--si-sys-color-text-secondary); }
   ul { margin: 0; padding-left: 18px; }
   li { margin: 2px 0; }
 }

@@ -1,6 +1,6 @@
 .st__generate {
   margin-bottom: 12px;
-  font-size: var(--text-sm);
+  font-size: 0.875rem;
 
   summary { cursor: pointer; font-weight: 600; }
 }
@@ -25,7 +25,7 @@
   margin-bottom: 6px;
 }
 
-.st__no { color: var(--clr-text-400); font-size: var(--text-xs); }
+.st__no { color: var(--si-sys-color-text-secondary); font-size: 0.75rem; }
 
 .st__outcomes { border: 0; padding: 0; }
 

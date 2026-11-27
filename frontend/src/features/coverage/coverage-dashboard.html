@@ -45,11 +45,11 @@
       </div>
       <div class="stat">
         <div class="stat__label">Fully covered</div>
-        <div class="stat__value" style="color:#16a34a">{{ fullyCovered() }}</div>
+        <div class="stat__value" style="color:var(--si-sys-color-text-success)">{{ fullyCovered() }}</div>
       </div>
       <div class="stat">
         <div class="stat__label">Untested</div>
-        <div class="stat__value" style="color:var(--clr-danger)">{{ uncovered() }}</div>
+        <div class="stat__value" style="color:var(--si-sys-color-text-danger)">{{ uncovered() }}</div>
       </div>
     </div>
   </div>
@@ -69,7 +69,7 @@
         @for (r of rows(); track r.model) {
           <tr>
             <td><strong>{{ r.model }}</strong></td>
-            <td style="color:var(--clr-text-400)">{{ r.component }}</td>
+            <td style="color:var(--si-sys-color-text-secondary)">{{ r.component }}</td>
             <td>
               <div class="bar-cell">
                 <div class="bar">

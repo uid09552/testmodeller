@@ -1,12 +1,12 @@
 :host { display: block; }
 .minimap {
   display: block;
-  background: var(--clr-surface-0);
-  border: 1px solid var(--clr-surface-200);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .08);
+  background: var(--si-sys-color-background-1);
+  border: 1px solid var(--si-sys-color-border-3);
+  border-radius: var(--si-sys-sizing-border-radius-sm);
+  box-shadow: var(--si-sys-color-effects-shadow-40);
   cursor: pointer;
 
-  &__state { fill: var(--clr-text-400); opacity: .55; }
-  &__view { fill: var(--clr-brand-500); fill-opacity: .08; stroke: var(--clr-brand-500); stroke-width: 1.5; }
+  &__state { fill: var(--si-sys-color-background-neutral); opacity: .55; }
+  &__view { fill: var(--si-sys-color-background-accent); fill-opacity: .08; stroke: var(--si-sys-color-border-accent); stroke-width: 1.5; }
 }

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRouteSnapshot, NavigationEnd, Router, RouterLink } from '@angular/router';
+import { IxBreadcrumb, IxBreadcrumbItem } from '@siemens/ix-angular/standalone';
 import { filter, map, startWith } from 'rxjs';
 
 export interface Crumb {
@@ -37,24 +38,18 @@ export function buildCrumbs(root: ActivatedRouteSnapshot | null | undefined): Cr
 /** Reads `data.breadcrumb` from the active route chain. */
 @Component({
   selector: 'tm-breadcrumb',
-  imports: [RouterLink],
+  imports: [RouterLink, IxBreadcrumb, IxBreadcrumbItem],
   template: `
-    <nav class="breadcrumb" aria-label="Breadcrumb">
-      <ol>
-        @for (crumb of crumbs(); track crumb.label; let last = $last) {
-          <li [class.breadcrumb__current]="last" [attr.aria-current]="last ? 'page' : null">
-            @if (!last && crumb.route) {
-              <a [routerLink]="crumb.route">{{ crumb.label }}</a>
-            } @else {
-              <span>{{ crumb.label }}</span>
-            }
-            @if (!last) { <span class="breadcrumb__sep" aria-hidden="true">/</span> }
-          </li>
+    <ix-breadcrumb aria-label="Breadcrumb">
+      @for (crumb of crumbs(); track crumb.label; let last = $last) {
+        @if (!last && crumb.route) {
+          <ix-breadcrumb-item [breadcrumbKey]="crumb.route" [label]="crumb.label" [routerLink]="crumb.route" />
+        } @else {
+          <ix-breadcrumb-item [breadcrumbKey]="crumb.label" [label]="crumb.label" aria-current="page" />
         }
-      </ol>
-    </nav>
+      }
+    </ix-breadcrumb>
   `,
-  styleUrl: './breadcrumb.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BreadcrumbComponent {

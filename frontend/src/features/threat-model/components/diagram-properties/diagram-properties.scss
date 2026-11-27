@@ -1,9 +1,9 @@
 .dp {
   width: 260px;
   flex: 0 0 260px;
-  border: 1px solid var(--clr-surface-200);
+  border: 1px solid var(--si-sys-color-border-3);
   border-radius: 8px;
-  background: var(--clr-surface-0);
+  background: var(--si-sys-color-background-1);
   padding: 12px 14px;
   overflow-y: auto;
   max-height: max(520px, calc(100vh - 290px));
@@ -21,7 +21,7 @@
 
 .dp__title {
   margin: 0;
-  font-size: var(--text-sm);
+  font-size: 0.875rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

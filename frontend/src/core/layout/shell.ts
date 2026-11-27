@@ -1,23 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { IxApplication } from '@siemens/ix-angular/standalone';
 import { SidenavComponent } from './sidenav/sidenav';
 import { TopbarComponent } from './topbar/topbar';
 
-/** Root shell — holds sidenav + topbar + main outlet. */
+/** Root shell: the iX application frame with header, menu and the routed page. */
 @Component({
   selector: 'tm-shell',
-  imports: [RouterOutlet, SidenavComponent, TopbarComponent],
+  imports: [RouterOutlet, IxApplication, SidenavComponent, TopbarComponent],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ShellComponent {
-  /** Whether the left nav is fully expanded or icon-only. */
-  readonly collapsed = signal(false);
-
-  readonly shellClass = computed(() => (this.collapsed() ? 'shell--collapsed' : 'shell--expanded'));
-
-  toggleNav(): void {
-    this.collapsed.update((v) => !v);
-  }
-}
+export class ShellComponent {}

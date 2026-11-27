@@ -9,8 +9,8 @@ export interface ArrowMarker { id: string; kind: 'filled' | 'open' | 'line'; col
 /** Normal sizes of a transition's label and guard text. */
 const LABEL_PX = 11;
 const GUARD_PX = 10;
-const DEFAULT_COLOUR = 'var(--clr-edge)';
-const SELECTED_COLOUR = 'var(--clr-brand-500)';
+const DEFAULT_COLOUR = 'var(--si-sys-color-border-2)';
+const SELECTED_COLOUR = 'var(--si-sys-color-text-accent)';
 
 /** A press on one of a transition's handles, for the canvas to turn into a drag. */
 export type EdgeGrab =

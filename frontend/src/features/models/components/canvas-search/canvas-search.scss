@@ -3,24 +3,24 @@
   align-items: center;
   gap: 4px;
   padding: 4px 6px;
-  background: var(--clr-surface-0);
-  border: 1px solid var(--clr-surface-200);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .08);
+  background: var(--si-sys-color-background-1);
+  border: 1px solid var(--si-sys-color-border-3);
+  border-radius: var(--si-sys-sizing-border-radius-sm);
+  box-shadow: var(--si-sys-color-effects-shadow-40);
 
   &__input {
     width: 220px;
     padding: 4px 8px;
     font: inherit;
-    font-size: var(--text-xs);
-    border: 1px solid var(--clr-surface-200);
-    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    border: 1px solid var(--si-sys-color-border-3);
+    border-radius: var(--si-sys-sizing-border-radius-sm);
   }
-  &__status { min-width: 64px; font-size: var(--text-xs); color: var(--clr-text-400); text-align: center; }
+  &__status { min-width: 64px; font-size: 0.75rem; color: var(--si-sys-color-text-secondary); text-align: center; }
 }
 .tb-btn {
   border: 1px solid transparent; background: none; cursor: pointer; padding: 2px 6px;
-  border-radius: var(--radius-sm); color: var(--clr-text-600);
-  &:hover:not(:disabled) { background: var(--clr-surface-100); }
+  border-radius: var(--si-sys-sizing-border-radius-sm); color: var(--si-sys-color-text-secondary);
+  &:hover:not(:disabled) { background: var(--si-sys-color-background-2); }
   &:disabled { opacity: .4; cursor: default; }
 }

@@ -8,8 +8,8 @@
 .aic__off { overflow-y: auto; }
 .aic__preview { flex-shrink: 0; max-height: 40%; overflow-y: auto; }
 .aic__msg { margin: 0; padding: 6px 8px; border-radius: 6px; }
-.aic__msg--user { background: var(--surface-2, #8881); }
-.aic__msg--error { color: var(--danger, #b00020); }
+.aic__msg--user { background: var(--si-sys-color-background-2); }
+.aic__msg--error { color: var(--si-sys-color-text-danger); }
 .aic__who { font-weight: 600; margin-right: 6px; }
 .aic__card { padding: 10px; }
 .aic__card h3 { margin: 0 0 6px; font-size: 1rem; }

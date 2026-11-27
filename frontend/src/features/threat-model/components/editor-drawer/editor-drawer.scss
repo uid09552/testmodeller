@@ -5,9 +5,9 @@
   right: 0;
   bottom: 0;
   width: min(480px, 100vw);
-  background: var(--clr-surface-0);
-  border-left: 1px solid var(--clr-surface-200);
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08);
+  background: var(--si-sys-color-background-1);
+  border-left: 1px solid var(--si-sys-color-border-3);
+  box-shadow: var(--si-sys-color-effects-shadow-30);
   display: flex;
   flex-direction: column;
   z-index: 40;
@@ -18,12 +18,12 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--clr-surface-200);
+  border-bottom: 1px solid var(--si-sys-color-border-3);
 }
 
 .drawer__title {
   margin: 0;
-  font-size: var(--text-base);
+  font-size: 1rem;
 }
 
 .drawer__body {
@@ -45,7 +45,7 @@
   .field { margin-bottom: 6px; max-width: none; }
   .field__label { margin-bottom: 2px; }
   .field__hint { margin-top: 2px; }
-  .input, .select, .textarea { padding: 4px 8px; font-size: var(--text-xs); }
+  .input, .select, .textarea { padding: 4px 8px; font-size: 0.75rem; }
   .textarea { line-height: 1.4; }
   .toggle-row { margin: 2px 0; justify-content: flex-start; gap: 6px; }
   fieldset.field { border: 0; padding: 0; margin: 0 0 6px; min-width: 0; }
@@ -65,25 +65,25 @@
 
 .drawer__spacer { flex: 1; }
 
-.drawer__error { color: var(--clr-danger); }
+.drawer__error { color: var(--si-sys-color-text-danger); }
 
 .drawer__tabs {
   display: flex;
   gap: 2px;
   padding: 0 16px;
-  border-bottom: 1px solid var(--clr-surface-200);
+  border-bottom: 1px solid var(--si-sys-color-border-3);
 }
 
 .drawer__tab {
   all: unset;
   cursor: pointer;
   padding: 6px 12px;
-  font-size: var(--text-sm);
-  color: var(--clr-text-600);
+  font-size: 0.875rem;
+  color: var(--si-sys-color-text-secondary);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
 
-  &:hover { color: var(--clr-text-900); }
-  &:focus-visible { outline: 2px solid var(--clr-brand-500); outline-offset: -2px; }
-  &--active { color: var(--clr-brand-600); border-bottom-color: var(--clr-brand-500); font-weight: 600; }
+  &:hover { color: var(--si-sys-color-text-primary); }
+  &:focus-visible { outline: 2px solid var(--si-sys-color-border-accent); outline-offset: -2px; }
+  &--active { color: var(--si-sys-color-text-accent-active); border-bottom-color: var(--si-sys-color-border-accent); font-weight: 600; }
 }

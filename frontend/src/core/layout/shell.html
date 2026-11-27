@@ -1,12 +1,9 @@
-<div class="shell" [class]="shellClass()">
-  <!-- Left navigation -->
-  <tm-sidenav [collapsed]="collapsed()" (toggleCollapse)="toggleNav()" />
+<ix-application>
+  <tm-topbar />
+  <tm-sidenav />
 
-  <!-- Right side: topbar + page content -->
-  <div class="shell__body">
-    <tm-topbar (menuClick)="toggleNav()" />
-    <main class="shell__main">
-      <router-outlet />
-    </main>
+  <!-- Every routed page owns its own padding and scrolling. -->
+  <div class="shell__main">
+    <router-outlet />
   </div>
-</div>
+</ix-application>

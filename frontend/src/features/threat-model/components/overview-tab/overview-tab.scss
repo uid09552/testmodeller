@@ -23,9 +23,9 @@
     overflow-x: auto;
   }
 
-  h2 { font-size: var(--text-sm); margin: 0 0 8px; }
+  h2 { font-size: 0.875rem; margin: 0 0 8px; }
   h2:not(:first-child) { margin-top: 16px; }
-  ul { margin: 0; padding-left: 18px; font-size: var(--text-sm); }
+  ul { margin: 0; padding-left: 18px; font-size: 0.875rem; }
 }
 
 .ov__list {
@@ -37,4 +37,4 @@
 
 .ov__scope { padding: 16px; max-width: 720px; }
 
-.ov__error { color: var(--clr-danger); }
+.ov__error { color: var(--si-sys-color-text-danger); }

@@ -1,19 +1,10 @@
-@use 'styles/tokens' as *;
-
-.shell {
-  display: flex;
+:host {
+  display: block;
   height: 100dvh;
-  overflow: hidden;
-  transition: grid-template-columns var(--transition-base);
 }
 
-// ── Body (topbar + main area) ─────────────────────────────────────────────────
-.shell__body {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0; // prevent flex blowout
-  overflow: hidden;
+ix-application {
+  height: 100%;
 }
 
 // Every routed page owns its own padding (.page) and scrolling (page-host
@@ -21,9 +12,9 @@
 .shell__main {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  height: 100%;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: var(--clr-surface-50);
+  background: var(--si-sys-color-background-0);
 }

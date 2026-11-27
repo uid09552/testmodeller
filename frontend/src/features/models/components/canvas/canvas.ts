@@ -124,7 +124,7 @@ function toCanvas(e: MouseEvent, svg: SVGSVGElement, zoom: number, panX: number,
     CanvasMinimapComponent, CanvasHelpComponent,
   ],
   templateUrl: './canvas.html',
-  styleUrl: './canvas.scss',
+  styleUrls: ['./canvas.scss', './canvas-chrome.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '[class.readonly]': 'readonly()' },
 })

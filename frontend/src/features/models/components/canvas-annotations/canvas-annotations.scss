@@ -4,30 +4,30 @@
 .note--fixed { cursor: default; }
 
 .note-bg {
-  fill: #fef9c3;           // pale yellow by default
-  stroke: #eab308;
+  fill: var(--si-sys-color-background-caution-subtle);           // pale yellow by default
+  stroke: var(--si-sys-color-border-caution);
   stroke-width: 1;
 }
-.note-fold { fill: none; stroke: #eab308; stroke-width: 1; pointer-events: none; }
+.note-fold { fill: none; stroke: var(--si-sys-color-border-caution); stroke-width: 1; pointer-events: none; }
 
 .note-box { fill: transparent; stroke: none; }
 .note--text.note--selected .note-box,
-.note--text:focus-visible .note-box { stroke: var(--clr-brand-400); stroke-dasharray: 4 3; }
+.note--text:focus-visible .note-box { stroke: var(--si-sys-color-border-accent-hover); stroke-dasharray: 4 3; }
 
 .note--selected .note-bg, .note:focus-visible .note-bg {
-  filter: drop-shadow(0 0 2px var(--clr-brand-500));
+  filter: drop-shadow(0 0 2px var(--si-sys-color-text-accent));
 }
 
 .note-text {
-  font-family: var(--font-sans);
-  font-size: 13px;
-  fill: var(--clr-text-900);
+  font-family: var(--theme-font-family);
+  font-size: 0.8125rem;
+  fill: var(--si-sys-color-background-inverse);
   pointer-events: none;
 }
 
 .note-handle {
-  fill: var(--clr-surface-0);
-  stroke: var(--clr-brand-500);
+  fill: var(--si-sys-color-background-1);
+  stroke: var(--si-sys-color-border-accent);
   stroke-width: 1.5;
   &--nw, &--se { cursor: nwse-resize; }
   &--ne, &--sw { cursor: nesw-resize; }
@@ -40,16 +40,16 @@
   width: 100%;
   height: 100%;
   padding: 8px 9px;
-  border: 2px solid var(--clr-brand-500);
+  border: 2px solid var(--si-sys-color-border-accent);
   border-radius: 2px;
-  font: 13px var(--font-sans);
+  font: 13px var(--theme-font-family);
   line-height: 16px;
-  background: #fffef0;
+  background: var(--si-sys-color-background-caution-subtle);
   resize: none;
   outline: none;
 }
 .note-edit__msg {
   margin: 2px 0 0;
-  font-size: 11px;
-  color: var(--clr-warning);
+  font-size: 0.6875rem;
+  color: var(--si-sys-color-text-warning);
 }
