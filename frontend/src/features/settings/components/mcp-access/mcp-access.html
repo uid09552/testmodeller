@@ -1,0 +1,112 @@
+<ix-card class="mcp" aria-labelledby="mcp-title">
+  <ix-card-content>
+    <div class="mcp__body">
+    <h2 id="mcp-title" class="typography-h4">MCP access</h2>
+    <p class="typography-body-sm mcp__lead">
+      Connect AI clients such as VS Code to TestModeller through the Model Context Protocol.
+      A key acts as you, in your organisation, with the role you have when you create it.
+      It works only for the MCP endpoint.
+    </p>
+
+    <!-- Quick setup -->
+    <section class="mcp__section" aria-labelledby="mcp-setup-title">
+      <h3 id="mcp-setup-title" class="typography-h6">Quick setup for VS Code</h3>
+      <ol class="typography-body-sm mcp__steps">
+        <li>Create a key below and copy it.</li>
+        <li>Save this as <code class="typography-code-sm">.vscode/mcp.json</code> in your workspace,
+            or add the server to your user MCP configuration.</li>
+        <li>Start the <strong>testmodeller</strong> server in VS Code. It asks for the key once and
+            keeps it in its secret storage, so the file never contains it.</li>
+      </ol>
+      <div class="mcp__code-wrap">
+        <pre class="mcp__code typography-code-sm" tabindex="0"
+             aria-label="VS Code MCP configuration"><code>{{ config() }}</code></pre>
+        <ix-icon-button class="mcp__copy" variant="subtle-tertiary" [icon]="icons.copy"
+                        aria-label="Copy configuration" title="Copy configuration"
+                        (click)="copy(config(), 'Configuration')" />
+      </div>
+      <p class="typography-body-sm mcp__endpoint">
+        Endpoint <code class="typography-code-sm">{{ url() }}</code>
+      </p>
+    </section>
+
+    <!-- Keys -->
+    <section class="mcp__section" aria-labelledby="mcp-keys-title">
+      <h3 id="mcp-keys-title" class="typography-h6">Your API keys</h3>
+
+      @if (created(); as c) {
+        <ix-message-bar type="warning" [persistent]="true" class="mcp__created">
+          <p class="typography-body"><strong>Copy your new key now.</strong> It will not be shown again.</p>
+          <div class="mcp__secret">
+            <code class="typography-code-sm" data-testid="new-key">{{ c.key }}</code>
+            <ix-button variant="secondary" [icon]="icons.copy" (click)="copy(c.key, 'API key')">Copy key</ix-button>
+            <ix-button variant="tertiary" (click)="created.set(null)">Done</ix-button>
+          </div>
+        </ix-message-bar>
+      }
+
+      @if (error(); as e) {
+        <ix-message-bar type="danger" class="mcp__error">{{ e }}</ix-message-bar>
+      }
+
+      <form class="mcp__form" (submit)="$event.preventDefault(); create()">
+        <ix-input class="mcp__name" label="Key name" placeholder="e.g. VS Code on my laptop"
+                  [maxLength]="80"
+                  [value]="name()" (valueChange)="setName($event)" />
+        <ix-select class="mcp__expiry" label="Expires after" [value]="'' + days()"
+                   (valueChange)="setDays($event)">
+          @for (d of expiryDays; track d) {
+            <ix-select-item [value]="'' + d" [label]="d + ' days'" />
+          }
+        </ix-select>
+        <ix-button type="submit" [icon]="icons.add" [loading]="busy()"
+                   [disabled]="!canCreate()">Create key</ix-button>
+      </form>
+
+      @if (loading()) {
+        <p class="typography-body-sm mcp__muted">Loading keys…</p>
+      } @else if (keys().length === 0) {
+        <p class="typography-body-sm mcp__muted">No keys yet.</p>
+      } @else {
+        <table class="ix-table mcp__table">
+          <caption class="mcp__sr">Your active API keys</caption>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Key</th>
+              <th scope="col">Role</th>
+              <th scope="col">Expires</th>
+              <th scope="col">Last used</th>
+              <th scope="col"><span class="mcp__sr">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (k of keys(); track k.id) {
+              <tr>
+                <td>{{ k.name }}</td>
+                <td><code class="typography-code-sm">{{ k.prefix }}…</code></td>
+                <td>
+                  <ix-pill [variant]="k.role === 'Editor' ? 'accent' : 'neutral'" [outline]="k.role !== 'Editor'">
+                    {{ k.role === 'Editor' ? 'Read & write' : 'Read only' }}
+                  </ix-pill>
+                </td>
+                <td>
+                  @if (k.expiresAt) {
+                    {{ k.expiresAt | date: 'mediumDate' }}
+                    <span class="mcp__muted">({{ daysLeft(k.expiresAt) }} days)</span>
+                  } @else { Never }
+                </td>
+                <td>{{ k.lastUsedAt ? (k.lastUsedAt | date: 'medium') : 'Never' }}</td>
+                <td class="mcp__actions">
+                  <ix-button variant="danger-tertiary" [icon]="icons.revoke"
+                             [attr.aria-label]="'Revoke ' + k.name" (click)="revoke(k)">Revoke</ix-button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </section>
+    </div>
+  </ix-card-content>
+</ix-card>

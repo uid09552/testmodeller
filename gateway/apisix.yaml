@@ -8,6 +8,17 @@
 # services. Edit and restart the container to change routing.
 
 routes:
+  # ── MCP ─────────────────────────────────────────────────────────────────────
+  # AI clients (VS Code) cannot do the browser handshake, so this one backend
+  # path skips openid-connect: the backend authenticates the per-user API key
+  # in Authorization itself (ADR 0015). An exact URI outranks the /api/*
+  # prefix below; the priority makes that explicit.
+  - uri: /api/v1/mcp
+    name: backend-mcp
+    priority: 10
+    methods: [POST, GET]
+    upstream_id: backend
+
   # ── API ─────────────────────────────────────────────────────────────────────
   # Authenticated, and the access token is forwarded in Authorization for the
   # backend to validate (FR-041).

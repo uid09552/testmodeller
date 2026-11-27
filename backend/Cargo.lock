@@ -3179,6 +3179,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
+ "sha2",
  "sqlx",
  "testcontainers",
  "testcontainers-modules",
@@ -3186,6 +3187,7 @@ dependencies = [
  "tm-ai",
  "tm-domain",
  "tm-generation",
+ "tm-mcp",
  "tm-storage",
  "tokio",
  "tower",
@@ -3214,6 +3216,16 @@ dependencies = [
  "proptest",
  "thiserror 1.0.69",
  "tm-domain",
+ "uuid",
+]
+
+[[package]]
+name = "tm-mcp"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "tokio",
  "uuid",
 ]
 

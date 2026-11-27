@@ -1,0 +1,94 @@
+:host {
+  display: block;
+  margin-top: var(--si-sys-sizing-spacing-y-80);
+}
+
+// ix-card defaults to a tile width; `--ix-card--width` is its documented knob.
+.mcp {
+  --ix-card--width: 100%;
+}
+
+.mcp__body {
+  width: 100%;
+  padding: var(--si-sys-sizing-spacing-y-70) var(--si-sys-sizing-spacing-x-80);
+}
+
+.mcp__lead,
+.mcp__muted,
+.mcp__endpoint { color: var(--si-sys-color-text-secondary); }
+
+.mcp__lead { margin-top: var(--si-sys-sizing-spacing-y-20); }
+
+.mcp__section {
+  margin-top: var(--si-sys-sizing-spacing-y-80);
+  display: flex;
+  flex-direction: column;
+  gap: var(--si-sys-sizing-spacing-y-40);
+}
+
+.mcp__steps {
+  padding-left: var(--si-sys-sizing-spacing-x-80);
+  list-style: decimal;
+  display: flex;
+  flex-direction: column;
+  gap: var(--si-sys-sizing-spacing-y-20);
+}
+
+.mcp__code-wrap { position: relative; }
+
+.mcp__code {
+  margin: 0;
+  padding: var(--si-sys-sizing-spacing-y-50) var(--si-sys-sizing-spacing-x-60);
+  padding-right: var(--si-sys-sizing-spacing-x-140);
+  overflow-x: auto;
+  border-radius: var(--si-sys-sizing-border-radius-sm);
+  border: var(--si-sys-sizing-border-width-default) solid var(--si-sys-color-border-4);
+  background: var(--si-sys-color-background-2);
+  color: var(--si-sys-color-text-primary);
+
+  &:focus-visible { outline: var(--si-sys-sizing-focus-ring-width) solid var(--si-sys-color-effects-focus); }
+}
+
+.mcp__copy {
+  position: absolute;
+  top: var(--si-sys-sizing-spacing-y-30);
+  right: var(--si-sys-sizing-spacing-x-30);
+}
+
+.mcp__secret {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--si-sys-sizing-spacing-x-40);
+  margin-top: var(--si-sys-sizing-spacing-y-30);
+
+  code { word-break: break-all; user-select: all; }
+}
+
+.mcp__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--si-sys-sizing-spacing-x-50);
+}
+
+.mcp__name { flex: 1 1 16rem; }
+.mcp__expiry { flex: 0 0 10rem; }
+
+.mcp__table {
+  width: 100%;
+
+  td { vertical-align: middle; }
+}
+
+.mcp__actions { text-align: right; }
+
+// Visually hidden, still read by screen readers.
+.mcp__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

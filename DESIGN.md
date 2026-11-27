@@ -233,7 +233,7 @@ The application shell maps onto iX like this (see `06-ui.md` → Layout):
 | Status labels | `ix-pill` (status), `ix-chip` (removable tag), `ix-badge` (count) |
 | Progress | `ix-spinner`, `ix-progress-indicator`, `LoadingService` |
 | Steps (generate wizard) | `ix-workflow-steps` + `ix-workflow-step` |
-| Tables | `ix-pagination`; small tables: iX `table` utility classes; large/sortable: AG Grid with `@siemens/ix-aggrid` theme |
+| Tables | `ix-pagination`; small tables: a semantic `<table class="ix-table">` (`ix-table-striped` for zebra rows); large/sortable: AG Grid with `@siemens/ix-aggrid` theme |
 | File upload (test result import) | `ix-upload` |
 | AI assistant chat | `ix-chat`, `ix-chat-input`, `ix-chat-user-message`, `ix-chat-ai-message` |
 | Divider | `ix-divider` |

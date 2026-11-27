@@ -5,6 +5,7 @@ members = [
   "crates/generation",
   "crates/storage",
   "crates/ai",
+  "crates/mcp",
   "crates/api",
 ]
 
@@ -32,6 +33,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 jsonwebtoken = "10"
 chacha20poly1305 = "0.10"
 base64 = "0.22"
+sha2 = "0.10"
 async-trait = "0.1"
 testcontainers = "0.25"
 testcontainers-modules = { version = "0.13", features = ["postgres"] }

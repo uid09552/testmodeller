@@ -26,6 +26,8 @@ tags:
   - name: AI
   - name: Settings
   - name: ThreatModel
+  - name: ApiKeys
+  - name: Mcp
 
 paths:
   /health:
@@ -633,6 +635,58 @@ paths:
       responses:
         '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/AiSettings' } } } }
 
+  /me/api-keys:
+    get:
+      tags: [ApiKeys]
+      summary: List the caller's API keys (the key itself is never returned again)
+      description: >-
+        Keys belong to the caller's `sub` and tenant. Revoked and expired keys are not listed. `/me/*` is the
+        caller's own account, not project data, so the role rule does not apply: a `User` may manage their keys.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ApiKey' } } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [ApiKeys]
+      summary: Create an API key for the MCP endpoint. The key is returned once, in this response only.
+      description: >-
+        The key carries the caller's tenant and role at creation. At most 10 active keys per user (`422`).
+        A token without `sub` cannot own keys (`403`).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ApiKeyInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ApiKeyCreated' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /me/api-keys/{keyId}:
+    parameters: [ { name: keyId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } } ]
+    delete:
+      tags: [ApiKeys]
+      summary: Revoke one of the caller's API keys
+      responses:
+        '204': { description: Revoked }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /mcp:
+    post:
+      tags: [Mcp]
+      summary: Model Context Protocol endpoint (Streamable HTTP, JSON-RPC 2.0, JSON responses)
+      description: >-
+        Authenticated with `Authorization: Bearer tm_…` (an API key from `/me/api-keys`), not with a JWT; the gateway
+        forwards this path without the OIDC handshake. Supports `initialize`, `ping`, `tools/list` and `tools/call`;
+        a notification is answered `202`. Each tool runs as the key's tenant and role through the same checks as
+        this API. Tools and their arguments are listed in 05-api.md and returned by `tools/list`.
+      security: [ { ApiKey: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/JsonRpcMessage' } } } }
+      responses:
+        '200': { description: JSON-RPC response, content: { application/json: { schema: { $ref: '#/components/schemas/JsonRpcMessage' } } } }
+        '202': { description: Notification accepted }
+        '401': { $ref: '#/components/responses/Problem' }
+    get:
+      tags: [Mcp]
+      summary: Not supported; the server sends no stream
+      responses:
+        '405': { description: Method not allowed }
+
   /projects/{projectId}/threat-model:
     parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
     get:
@@ -1104,6 +1158,9 @@ components:
     Cascade: { name: cascade, in: query, schema: { type: boolean, default: false } }
     ThreatModelId: { name: threatModelId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
     ItemId: { name: itemId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+
+  securitySchemes:
+    ApiKey: { type: http, scheme: bearer, description: 'Per-user API key (`tm_…`) from `/me/api-keys`; MCP only.' }
 
   responses:
     Problem:
@@ -1581,6 +1638,41 @@ components:
         - { $ref: '#/components/schemas/AiSettings' }
         - type: object
           properties: { apiKey: { type: string, writeOnly: true } }
+
+    ApiKey:
+      type: object
+      required: [id, name, prefix, role, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        prefix: { type: string, description: First characters of the key, to recognise it (e.g. `tm_3f9a1c`) }
+        role: { type: string, enum: [User, Editor], description: Role taken from the creator's token }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: [string, 'null'], format: date-time }
+        lastUsedAt: { type: [string, 'null'], format: date-time }
+    ApiKeyInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        expiresInDays: { type: integer, minimum: 1, maximum: 365, default: 90 }
+    ApiKeyCreated:
+      allOf:
+        - { $ref: '#/components/schemas/ApiKey' }
+        - type: object
+          required: [key]
+          properties: { key: { type: string, description: 'The secret, `tm_` + 64 hex characters. Shown once.' } }
+    JsonRpcMessage:
+      type: object
+      description: A JSON-RPC 2.0 request, notification or response (MCP).
+      required: [jsonrpc]
+      properties:
+        jsonrpc: { type: string, enum: ['2.0'] }
+        id: { type: [string, integer, 'null'] }
+        method: { type: string }
+        params: { type: object }
+        result: { type: object }
+        error: { type: object, properties: { code: { type: integer }, message: { type: string } } }
 
     # ---- Enums
     ArchComponentType:

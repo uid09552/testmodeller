@@ -26,3 +26,4 @@ Use [0000-template.md](0000-template.md). Number sequentially.
 | [0012](0012-residual-risk-and-baselines.md) | Residual risk is entered by the analyst, and baselines are immutable snapshots | Accepted |
 | [0013](0013-threat-model-proposals-store.md) | Threat model proposals have their own store and share the job mechanism | Accepted |
 | [0014](0014-siemens-ix-design-system.md) | The UI uses the Siemens iX design system | Accepted |
+| [0015](0015-api-keys-and-mcp.md) | Per-user API keys authenticate an in-process MCP endpoint | Accepted |

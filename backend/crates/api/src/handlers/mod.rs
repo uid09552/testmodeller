@@ -1,6 +1,7 @@
 //! HTTP handlers grouped by resource.
 
 pub mod ai;
+pub mod api_keys;
 pub mod export;
 pub mod models;
 pub mod organization;

@@ -1,0 +1,14 @@
+[package]
+name = "tm-mcp"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+uuid.workspace = true
+async-trait.workspace = true
+tokio = { workspace = true, features = ["time"] }
+
+[dev-dependencies]
+tokio.workspace = true
+uuid.workspace = true

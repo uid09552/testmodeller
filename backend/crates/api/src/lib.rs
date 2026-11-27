@@ -1,12 +1,14 @@
 //! HTTP API for TestModeller. See docs/specification/05-api.md and openapi.yaml.
 
 pub mod ai_service;
+pub mod api_keys;
 pub mod auth;
 pub mod config;
 pub mod dto;
 pub mod error;
 pub mod extract;
 pub mod handlers;
+pub mod mcp_http;
 pub mod results_import;
 pub mod secrets;
 pub mod tenant_guard;
@@ -22,8 +24,8 @@ use tm_storage::Store;
 use crate::ai_service::AiService;
 use crate::auth::{AuthMode, Authenticator};
 use crate::handlers::{
-    ai, export, models, organization as org, test_cases as tc, test_results as results, threat_ai,
-    threat_model as tmh,
+    ai, api_keys as keys, export, models, organization as org, test_cases as tc,
+    test_results as results, threat_ai, threat_model as tmh,
 };
 
 /// Maximum request body size (imports can be large).
@@ -64,10 +66,23 @@ pub fn auth_mode(config: Option<auth::AuthConfig>) -> AuthMode {
 /// Builds the `/api/v1` router.
 ///
 /// `auth` decides whether tokens are validated. Every route except `/health`
-/// runs through authentication and the tenant guard, so a new endpoint is
-/// covered the day it is added (FR-041, FR-044, FR-045).
+/// and `/mcp` runs through authentication and the tenant guard, so a new
+/// endpoint is covered the day it is added (FR-041, FR-044, FR-045). `/mcp`
+/// authenticates API keys itself and runs its tools through a second copy of
+/// this router built with [`AuthMode::Internal`] (ADR 0015).
 pub fn router(state: AppState, auth: AuthMode) -> Router {
+    let mcp = mcp_http::McpState {
+        store: state.store.clone(),
+        dev: matches!(auth, AuthMode::Dev),
+        internal: api(state.clone(), AuthMode::Internal, None),
+    };
+    api(state, auth, Some(mcp))
+}
+
+fn api(state: AppState, auth: AuthMode, mcp: Option<mcp_http::McpState>) -> Router {
     let protected = Router::new()
+        .route("/me/api-keys", get(keys::list).post(keys::create))
+        .route("/me/api-keys/{id}", axum::routing::delete(keys::revoke))
         .route(
             "/projects",
             get(org::list_projects).post(org::create_project),
@@ -342,10 +357,19 @@ pub fn router(state: AppState, auth: AuthMode) -> Router {
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .with_state(state.clone());
 
-    let api = Router::new()
+    let mut api = Router::new()
         // Open, so a load balancer needs no token.
         .route("/health", get(org::health))
         .with_state(state)
         .merge(protected);
+    if let Some(mcp) = mcp {
+        // Outside the JWT layers: it authenticates API keys itself.
+        api = api.merge(
+            Router::new()
+                .route("/mcp", post(mcp_http::post).get(mcp_http::get))
+                .layer(DefaultBodyLimit::max(BODY_LIMIT))
+                .with_state(mcp),
+        );
+    }
     Router::new().nest("/api/v1", api)
 }

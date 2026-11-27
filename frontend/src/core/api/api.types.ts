@@ -172,6 +172,28 @@ export interface ModelInput {
 /** The providers the contract allows. */
 export type AiProvider = 'openai-compatible' | 'anthropic' | 'local' | 'none';
 
+/** A personal API key for the MCP endpoint (tag `ApiKeys`); never holds the secret. */
+export interface ApiKey {
+  id: string;
+  name: string;
+  /** First characters of the key, to recognise it. */
+  prefix: string;
+  role: 'User' | 'Editor';
+  createdAt: string;
+  expiresAt?: string | null;
+  lastUsedAt?: string | null;
+}
+
+export interface ApiKeyInput {
+  name: string;
+  expiresInDays?: number;
+}
+
+/** The response to creating a key: the only time `key` is ever returned. */
+export interface ApiKeyCreated extends ApiKey {
+  key: string;
+}
+
 export interface AiSettings {
   provider?: AiProvider;
   baseUrl?: string;
