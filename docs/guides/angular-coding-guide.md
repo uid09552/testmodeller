@@ -16,7 +16,7 @@ related: [testing-guide.md, workflow.md]
 - Feature routes lazy-loaded.
 - Typed API services in `core/api`; no `any`.
 - Templates: new control flow (`@if`, `@for`), no logic-heavy expressions.
-- Styling: SCSS with design tokens (CSS variables); no inline styles.
+- Styling: Siemens iX per [DESIGN.md](../../DESIGN.md) — iX components, `--si-sys-*` tokens, iX typography classes; no hex/px literals, no inline styles. The legacy `--clr-*` tokens and `_ui.scss` primitives below are being phased out.
 - Accessibility: semantic HTML, labels, focus management, keyboard support.
 - Tests: Jest or Karma per ADR; test components via harnesses; mock API at service level.
 - Lint: ESLint with `@angular-eslint`; Prettier for formatting.

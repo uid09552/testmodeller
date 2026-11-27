@@ -16,6 +16,7 @@ TestModeller: model-based testing tool. See [docs/specification/00-overview.md](
 6. NEVER change the API spec (`openapi.yaml`, `05-api.md`) without explicit user approval. Propose the change, wait for approval, then apply it. Implementation must conform to the spec as written.
 7. Terminology: Project > Component > Feature > Model. "Scenario" refers only to a feature's `scenarioDescription`.
 8. AI-generated output (proposals) is never persisted as accepted data without explicit user approval.
+9. UI uses the Siemens iX design system (https://ix.siemens.io/). Read [DESIGN.md](DESIGN.md) before any change in `frontend/` and follow it: iX components where one exists, `--si-sys-*` tokens and iX typography classes only (no hex/px literals, no new custom tokens), dark and light schema, iX icons. A frontend change that violates DESIGN.md is not done.
 
 ## Where things live
 
@@ -27,6 +28,7 @@ TestModeller: model-based testing tool. See [docs/specification/00-overview.md](
 | Persistence | `backend/crates/storage` |
 | HTTP API (binary) | `backend/crates/api` |
 | Angular app | `frontend/` |
+| Design system (Siemens iX) | `DESIGN.md` |
 
 ## Custom agents and skills
 
@@ -39,3 +41,4 @@ TestModeller: model-based testing tool. See [docs/specification/00-overview.md](
 - Spec and docs updated
 - Tests added/updated and passing
 - `cargo fmt`, `cargo clippy -D warnings`, `ng lint` clean
+- Frontend changes pass the review checklist in `DESIGN.md`

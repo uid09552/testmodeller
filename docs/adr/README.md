@@ -25,3 +25,4 @@ Use [0000-template.md](0000-template.md). Number sequentially.
 | [0011](0011-threat-model-entities-and-security-tests.md) | Threat models have their own entities, and security tests are a separate list | Accepted |
 | [0012](0012-residual-risk-and-baselines.md) | Residual risk is entered by the analyst, and baselines are immutable snapshots | Accepted |
 | [0013](0013-threat-model-proposals-store.md) | Threat model proposals have their own store and share the job mechanism | Accepted |
+| [0014](0014-siemens-ix-design-system.md) | The UI uses the Siemens iX design system | Proposed |
