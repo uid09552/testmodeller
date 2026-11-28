@@ -148,6 +148,36 @@ impl Store {
         Ok(done.rows_affected())
     }
 
+    /// Deletes finished jobs last updated more than `days` ago. Queued and running jobs stay.
+    pub async fn purge_finished_jobs(&self, days: u32) -> Result<u64> {
+        let done = sqlx::query(
+            "DELETE FROM jobs WHERE status IN ('succeeded', 'failed')
+               AND updated_at < now() - make_interval(days => $1)",
+        )
+        .bind(i32::try_from(days).unwrap_or(i32::MAX))
+        .execute(&self.pool)
+        .await?;
+        Ok(done.rows_affected())
+    }
+
+    /// Deletes accepted or rejected proposals (feature and threat model) decided more than
+    /// `days` ago. Pending proposals are never deleted (AGENTS.md rule 8).
+    pub async fn purge_decided_proposals(&self, days: u32) -> Result<u64> {
+        let days = i32::try_from(days).unwrap_or(i32::MAX);
+        let mut total = 0;
+        for table in ["proposals", "tm_proposals"] {
+            let done = sqlx::query(&format!(
+                "DELETE FROM {table} WHERE status <> 'pending'
+                   AND decided_at < now() - make_interval(days => $1)"
+            ))
+            .bind(days)
+            .execute(&self.pool)
+            .await?;
+            total += done.rows_affected();
+        }
+        Ok(total)
+    }
+
     /// Stores pending proposals; returns their ids.
     pub async fn insert_proposals(&self, proposals: &[Proposal]) -> Result<Vec<Uuid>> {
         let mut tx = self.pool.begin().await?;
