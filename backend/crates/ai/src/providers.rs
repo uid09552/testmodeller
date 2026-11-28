@@ -116,23 +116,28 @@ impl AnthropicProvider {
     }
 }
 
-#[async_trait]
-impl LlmProvider for AnthropicProvider {
-    async fn complete(&self, req: &LlmRequest) -> Result<String, AiError> {
+impl AnthropicProvider {
+    /// The Messages API request: builder with headers, and JSON body.
+    fn request(&self, req: &LlmRequest) -> (reqwest::RequestBuilder, Value) {
         let body = json!({
             "model": self.model,
             "max_tokens": req.max_tokens,
             "system": req.system,
             "messages": [{"role": "user", "content": req.user}],
-            // Route refusals to a fallback model server-side instead of failing the job.
-            "fallbacks": "default",
         });
         let builder = self
             .client
             .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("anthropic-beta", "server-side-fallback-2026-07-01");
+            .header("anthropic-version", "2023-06-01");
+        (builder, body)
+    }
+}
+
+#[async_trait]
+impl LlmProvider for AnthropicProvider {
+    async fn complete(&self, req: &LlmRequest) -> Result<String, AiError> {
+        let (builder, body) = self.request(req);
         let resp = post_json(builder, &body).await?;
         if resp["stop_reason"] == "refusal" {
             return Err(AiError::Refused);
@@ -212,6 +217,35 @@ impl LlmProvider for OpenAiCompatibleProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_anthropic_request_uses_only_documented_fields() {
+        let provider = AnthropicProvider::new(
+            reqwest::Client::new(),
+            None,
+            "key".into(),
+            Some("claude-test"),
+        );
+        let req = LlmRequest {
+            system: "sys".into(),
+            user: "hi".into(),
+            max_tokens: 10,
+        };
+        let (builder, body) = provider.request(&req);
+        let sent = builder.json(&body).build().unwrap();
+        assert_eq!(sent.url().as_str(), "https://api.anthropic.com/v1/messages");
+        assert_eq!(sent.headers()["x-api-key"], "key");
+        assert_eq!(sent.headers()["anthropic-version"], "2023-06-01");
+        assert!(sent.headers().get("anthropic-beta").is_none());
+        let mut keys: Vec<&str> = body
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["max_tokens", "messages", "model", "system"]);
+    }
 
     #[test]
     fn recognises_a_web_page() {
