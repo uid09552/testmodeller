@@ -93,6 +93,8 @@ export interface StateTest {
   lastResult?: LastResult;
   /** Threats of the project's threat model it covers (ADR 0016); absent keeps the stored links. */
   threatIds?: string[];
+  /** Variable values per step of a generated test case; kept while the step count is unchanged (ADR 0023). */
+  stepData?: (Record<string, string | number | boolean> | undefined)[];
   /**
    * Where the stored test case is assigned in this model, read-only: the
    * states and transitions it walks, with step numbers when it has them.

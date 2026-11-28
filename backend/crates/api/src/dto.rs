@@ -702,6 +702,9 @@ impl From<&d::ValidationIssue> for ValidationIssueDto {
 pub struct TestStepInput {
     pub action: String,
     pub expected: String,
+    /// Variable values when the step starts; set on generated test cases.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<std::collections::BTreeMap<String, serde_json::Value>>,
 }
 
 /// Test step.
@@ -710,6 +713,8 @@ pub struct TestStepDto {
     pub order: i32,
     pub action: String,
     pub expected: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<std::collections::BTreeMap<String, serde_json::Value>>,
 }
 
 /// Assignment input.
@@ -832,6 +837,7 @@ impl TestCaseInput {
                         order: i as i32 + 1,
                         action: s.action,
                         expected: s.expected,
+                        data: s.data,
                     })
                     .collect(),
                 implementation_url,
@@ -858,6 +864,7 @@ impl TestCaseInput {
                 .map(|s| TestStepInput {
                     action: s.action.clone(),
                     expected: s.expected.clone(),
+                    data: s.data.clone(),
                 })
                 .collect(),
             assignments: None,
@@ -923,6 +930,7 @@ impl From<&d::TestCase> for TestCaseDto {
                     order: s.order,
                     action: s.action.clone(),
                     expected: s.expected.clone(),
+                    data: s.data.clone(),
                 })
                 .collect(),
             assignments: t.assignments.iter().map(Into::into).collect(),
@@ -950,6 +958,7 @@ impl TestCaseDto {
                     order: i as i32 + 1,
                     action: s.action.clone(),
                     expected: s.expected.clone(),
+                    data: s.data.clone(),
                 })
                 .collect(),
             implementation_url: self.implementation_url.clone(),

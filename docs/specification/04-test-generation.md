@@ -109,3 +109,7 @@ in a simulation exactly when generation could take that transition:
   reason, and says whether the state is final.
 - A graph without exactly one initial state, or with an invalid expression,
   is a 422 with the validation issues.
+
+### Step data
+
+When the model has variables, every generated step carries `data`: the values of all variables when the step starts, from replaying the path's actions on the initial values. A sneak-path step carries the values at the end of the path. A step whose action cannot be replayed, and every step of a model without variables, has no `data`. Staleness checks ignore it (ADR 0023).

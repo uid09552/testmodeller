@@ -976,6 +976,20 @@ fn target_label_of(machine: &Machine<'_>, target: Target) -> String {
     machine.target_label(target)
 }
 
+/// An environment as step data: `bool`, integer or string per variable.
+fn env_data(env: &expr::Env) -> std::collections::BTreeMap<String, serde_json::Value> {
+    env.iter()
+        .map(|(k, v)| {
+            let value = match v {
+                expr::Value::Bool(b) => serde_json::Value::Bool(*b),
+                expr::Value::Int(i) => serde_json::Value::from(*i),
+                expr::Value::Str(s) => serde_json::Value::String(s.clone()),
+            };
+            (k.clone(), value)
+        })
+        .collect()
+}
+
 /// Generates paths covering the criterion. Deterministic for graph, options and seed (FR-020, FR-021).
 pub fn generate(
     graph: &ModelGraph,
@@ -1087,6 +1101,9 @@ pub fn path_to_test_case(
     }
 
     let mut steps = Vec::with_capacity(path.transitions.len() + 1);
+    // Variable values at the start of each step, while the model's actions can be replayed.
+    let mut env: Option<expr::Env> =
+        (!graph.variables.is_empty()).then(|| expr::initial_env(&graph.variables));
     let mut targets: Vec<(AssignmentTarget, Option<i32>)> = Vec::new();
     let mut seen = HashSet::new();
     let mut push = |targets: &mut Vec<_>, target: AssignmentTarget, step: Option<i32>| {
@@ -1119,10 +1136,20 @@ pub fn path_to_test_case(
             }
             None => (String::from("?"), String::from("?")),
         };
+        let data = env.as_ref().map(env_data);
         steps.push(TestStep {
             order,
             action,
             expected,
+            data,
+        });
+        env = env.and_then(|e| {
+            let src = graph.transition(tid)?.action.as_deref().unwrap_or_default();
+            if src.trim().is_empty() {
+                return Some(e);
+            }
+            let assigns = expr::check_action(src, &graph.variables).ok()?;
+            expr::apply_action(&assigns, &e).ok()
         });
         // Every step's transition is assigned, even one the path takes again, so
         // the path can be rebuilt from the assignments (stale-test detection).
@@ -1136,6 +1163,7 @@ pub fn path_to_test_case(
             order: steps.len() as i32 + 1,
             action: format!("{event} (not allowed in state '{last}')"),
             expected: format!("The event is rejected; the system stays in state '{last}'"),
+            data: env.as_ref().map(env_data),
         });
     }
 
@@ -1305,6 +1333,39 @@ mod tests {
             .iter()
             .map(|id| g.transition(*id).unwrap().event.clone())
             .collect()
+    }
+
+    #[test]
+    fn steps_carry_the_variable_values_they_start_with() {
+        let mut g = loop_model();
+        g.variables = vec![Variable {
+            name: "count".into(),
+            var_type: VariableType::Integer,
+            initial: None,
+        }];
+        g.transitions[0].action = Some("count = count + 5".into()); // begin
+        g.transitions[3].guard = Some("count > 4".into()); // finish
+        let out = generate(&g, opts(CoverageCriterion::Transition, 1)).unwrap();
+        let path = out
+            .paths
+            .iter()
+            .find(|p| events(&g, p).last().is_some_and(|e| e == "finish"))
+            .expect("a path ending in finish");
+        let (data, _) = path_to_test_case(&g, "M", CoverageCriterion::Transition, 0, path);
+        let counts: Vec<i64> = data
+            .steps
+            .iter()
+            .map(|s| s.data.as_ref().unwrap()["count"].as_i64().unwrap())
+            .collect();
+        // `begin` starts at 0 and sets 5; every later step starts with 5 (and `finish` needs > 4).
+        assert_eq!(counts[0], 0);
+        assert!(counts[1..].iter().all(|&c| c == 5), "{counts:?}");
+        // No variables: no data.
+        let plain = loop_model();
+        let out = generate(&plain, opts(CoverageCriterion::Transition, 1)).unwrap();
+        let (data, _) =
+            path_to_test_case(&plain, "M", CoverageCriterion::Transition, 0, &out.paths[0]);
+        assert!(data.steps.iter().all(|s| s.data.is_none()));
     }
 
     #[test]

@@ -1408,6 +1408,10 @@ components:
       properties:
         action: { type: string }
         expected: { type: string }
+        data:
+          type: object
+          additionalProperties: { type: [string, integer, boolean] }
+          description: Values of the model's variables when the step starts; set on generated test cases when the model has variables (ADR 0023). Kept when a test case is edited.
     TestStep:
       allOf:
         - { $ref: '#/components/schemas/TestStepInput' }

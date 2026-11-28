@@ -165,6 +165,8 @@ export function testToInput(t: StateTest, modelId: string, stateId: string): Tes
   const steps = Array.from({ length: Math.max(when.length, then.length) }, (_, i) => ({
     action: when[i] ?? '',
     expected: then[i] ?? '',
+    // The values a generated step starts with stay with it while the steps are not added or removed.
+    ...(t.stepData?.length === Math.max(when.length, then.length) && t.stepData[i] ? { data: t.stepData[i] } : {}),
   }));
   return {
     name: t.name?.trim() || 'Test case',
@@ -194,6 +196,7 @@ export function testFromApi(tc: TestCase, seq: number, modelId?: string): StateT
     given: tc.preconditions ?? '',
     when: tc.steps.map(s => s.action?.trim()).filter(Boolean).join('\n'),
     then: tc.steps.map(s => s.expected?.trim()).filter(Boolean).join('\n'),
+    ...(tc.steps.some(s => s.data) ? { stepData: tc.steps.map(s => s.data) } : {}),
     implementationUrl: tc.implementationUrl ?? legacy(LEGACY_IMPL),
     backlogUrl: tc.backlogUrl ?? legacy(LEGACY_BACKLOG),
     ...(tc.threatIds?.length ? { threatIds: tc.threatIds } : {}),
