@@ -146,6 +146,24 @@ fn the_catalogue_matches_the_spec_and_marks_writes() {
     );
     for t in &tools {
         assert_eq!(t["inputSchema"]["type"], "object", "{}", t["name"]);
+        assert_eq!(t["outputSchema"]["type"], "object", "{}", t["name"]);
+    }
+}
+
+#[test]
+fn annotations_say_which_tools_replace_data() {
+    let tools = catalogue();
+    let destructive: Vec<&str> = tools
+        .iter()
+        .filter(|t| t["annotations"]["destructiveHint"] == true)
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(destructive, ["save_model", "decide_proposal"]);
+    for t in tools
+        .iter()
+        .filter(|t| t["annotations"]["readOnlyHint"] == true)
+    {
+        assert_eq!(t["annotations"]["idempotentHint"], true, "{}", t["name"]);
     }
 }
 

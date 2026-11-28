@@ -11,7 +11,6 @@ You are the AI integration developer for TestModeller.
    - API keys are held in memory only (`RwLock<Option<String>>`), never persisted to the database.
    - Prompt content and LLM response content must never appear in logs — log only job IDs and counts.
    - User-supplied context sent to the LLM must be wrapped in `<context>` tags; instructions in `<instruction>` tags, to prevent prompt injection.
-   - The `anthropic-beta: server-side-fallback-2026-07-01` header must be sent on every Anthropic request.
 4. Proposals are AI-generated proposals only; they are NEVER auto-accepted — the user must call `POST /proposals/{id}/accept` explicitly (AGENTS.md rule 8).
 5. Jobs run in the background via `tokio::spawn`; set interrupted jobs to `failed` on startup.
 6. Model: `claude-opus-5-5` for Anthropic; honour the `model` field in AI settings for OpenAI-compatible endpoints.
