@@ -22,7 +22,7 @@ REST/JSON under `/api/v1`. Errors use RFC 7807 problem details. Updates of versi
 | States / Transitions | Fine-grained CRUD within a model (transition = model step) |
 | TestCases | CRUD under a feature (manual), move, steps embedded, optional `implementationUrl` and `backlogUrl`, `threatIds` (threats of the project's threat model it covers), read-only `lastResult` |
 | Assignments | Assign test cases to states/transitions; list per test case, state, transition, model |
-| Generation | Generate test cases from a model (optionally saved and assigned); simulate one step of a model |
+| Generation | Generate test cases from a model (optionally saved and assigned) by criterion: `state`, `transition`, `transition-pair`, `bounded-paths`, `prime-paths`, `reach-element` (shortest path to `targetId`) or a seeded weighted `random` walk with stop conditions (`stopAfterTests`, `stopAtCoverage`); simulate one step of a model |
 | Coverage | Per model, feature, component; stale generated test cases of a model |
 | TestResults | Import JUnit XML / Cucumber JSON results for a project, result history per test case |
 | Traceability | Read-only trace of backlog items to test cases, model elements and implementation links, with gaps |
@@ -30,7 +30,7 @@ REST/JSON under `/api/v1`. Errors use RFC 7807 problem details. Updates of versi
 | AI | Async proposal jobs, list/accept/reject proposals |
 | Settings | AI provider settings |
 | ThreatModel | One threat model per project (`/projects/{id}/threat-model`); under `/threat-models/{id}`: scope and risk thresholds, diagram `layout` (opaque, own `layoutVersion`), summary, and CRUD of zones, architecture components, assets, data flows, threats, controls and security tests; suggest threats (STRIDE rules), bulk status, generate security tests, manual results, convert a security test into a feature test case. See [09-threat-modeling.md](09-threat-modeling.md) |
-| ApiKeys | The caller's own API keys for the MCP endpoint: list, create (key shown once), revoke (`/me/api-keys`). See [08-usermanagement.md](08-usermanagement.md#api-keys) |
+| ApiKeys | The caller's own API keys for the MCP endpoint, or upload-only keys for one project's test results (`projectId`): list, create (key shown once), revoke (`/me/api-keys`). See [08-usermanagement.md](08-usermanagement.md#api-keys) |
 | Mcp | Model Context Protocol endpoint for AI clients such as VS Code (`POST /mcp`); see [MCP tools](#mcp-tools) |
 | System | Health |
 

@@ -5,6 +5,7 @@ import { ThreatModelApi } from '../../../core/api/threat-model-api';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
 import { OrgApi } from '../../../core/api/org-api';
 import { MessageService, ToastService } from '@siemens/ix-angular/standalone';
+import { ConfirmService } from '../../../core/ui/confirm';
 import { AiTranscript } from '../state/ai-transcript';
 import { ThreatModelIndex } from '../state/threat-model-index';
 import { ThreatModelStore } from '../state/threat-model.store';
@@ -21,6 +22,8 @@ export interface Harness<T> {
   org: { getTestCase: ReturnType<typeof vi.fn> };
   messages: { information: ReturnType<typeof vi.fn>; answer: string };
   toasts: { show: ReturnType<typeof vi.fn> };
+  /** Answers every destructive confirmation with `answer` (default: yes). */
+  confirm: { danger: ReturnType<typeof vi.fn>; answer: boolean };
   settle(): Promise<void>;
 }
 
@@ -62,6 +65,7 @@ export async function mount<T>(
     })),
   };
   const toasts = { show: vi.fn(async () => undefined) };
+  const confirm = { answer: true, danger: vi.fn(async () => confirm.answer) };
   TestBed.configureTestingModule({
     imports: [type],
     providers: [
@@ -75,6 +79,7 @@ export async function mount<T>(
       { provide: OrgApi, useValue: org },
       { provide: MessageService, useValue: messages },
       { provide: ToastService, useValue: toasts },
+      { provide: ConfirmService, useValue: confirm },
     ],
   });
   const store = TestBed.inject(ThreatModelStore);
@@ -91,7 +96,7 @@ export async function mount<T>(
     }
   };
   await settle();
-  return { fixture, root: fixture.nativeElement, api, store, nav, org, messages, toasts, settle };
+  return { fixture, root: fixture.nativeElement, api, store, nav, org, messages, toasts, confirm, settle };
 }
 
 export function byText<E extends HTMLElement = HTMLButtonElement>(root: HTMLElement, selector: string, text: string): E {

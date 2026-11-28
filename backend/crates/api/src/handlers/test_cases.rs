@@ -245,6 +245,7 @@ pub async fn unassign_transition(
 /// `POST /models/{modelId}/generate` (FR-020, FR-021)
 pub async fn generate(
     State(state): State<AppState>,
+    identity: Identity,
     ApiPath(id): ApiPath<Uuid>,
     ApiJson(req): ApiJson<GenerationRequest>,
 ) -> ApiResult<Json<GenerationResultDto>> {
@@ -257,10 +258,42 @@ pub async fn generate(
         Some(n) => Some(usize::try_from(n).unwrap_or(usize::MAX)),
         None => None,
     };
+    let stop_after_tests = match req.stop_after_tests {
+        Some(n) if !(1..=1000).contains(&n) => {
+            return Err(ApiError::bad_request(
+                "stopAfterTests must be between 1 and 1000",
+            ))
+        }
+        Some(n) => Some(n as usize),
+        None => None,
+    };
+    let stop_at_coverage = match req.stop_at_coverage {
+        Some(n) if !(1..=100).contains(&n) => {
+            return Err(ApiError::bad_request(
+                "stopAtCoverage must be between 1 and 100",
+            ))
+        }
+        Some(n) => Some(n as u8),
+        None => None,
+    };
+    // The target is named in the body, so the guard cannot see it (AGENTS.md rule 10). Whether
+    // it is a state or a transition of this model is decided by generation.
+    if let Some(target) = req.target_id {
+        let in_model = model.graph.states.iter().any(|s| s.id == target);
+        let scope = if in_model {
+            TenantScope::State
+        } else {
+            TenantScope::Transition
+        };
+        require_tenant(&state, &identity, scope, target).await?;
+    }
     let options = GenerationOptions {
         criterion: req.criterion,
         seed: seed as u64,
         max_path_length,
+        target: req.target_id,
+        stop_after_tests,
+        stop_at_coverage,
     };
     let graph = model.graph.clone();
     let output = tokio::task::spawn_blocking(move || tm_generation::generate(&graph, options))
@@ -280,7 +313,9 @@ pub async fn generate(
                             .collect(),
                     )
             }
-            GenerationError::MissingMaxPathLength => ApiError::unprocessable(e.to_string()),
+            GenerationError::MissingMaxPathLength
+            | GenerationError::MissingTarget
+            | GenerationError::UnknownTarget => ApiError::unprocessable(e.to_string()),
         })?;
 
     let cases: Vec<(tm_domain::TestCaseData, Vec<NewAssignment>)> = output

@@ -467,9 +467,15 @@ pub async fn authenticate(
     mut request: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
-    let identity = match &mode {
-        AuthMode::Dev => Identity::dev(),
-        AuthMode::Jwt(auth) => {
+    // An upload key was already checked by `api_keys::upload_layer` (ADR 0018).
+    let uploaded = request
+        .extensions()
+        .get::<crate::api_keys::UploadIdentity>()
+        .map(|u| u.0.clone());
+    let identity = match (&mode, uploaded) {
+        (_, Some(identity)) => identity,
+        (AuthMode::Dev, None) => Identity::dev(),
+        (AuthMode::Jwt(auth), None) => {
             let raw = request
                 .headers()
                 .get(header::AUTHORIZATION)
@@ -477,7 +483,7 @@ pub async fn authenticate(
                 .ok_or_else(|| unauthorized("no \"Authorization\" header"))?;
             auth.authenticate(raw).await?
         }
-        AuthMode::Internal => request
+        (AuthMode::Internal, None) => request
             .extensions()
             .get::<Identity>()
             .cloned()

@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { toApiError } from './api-error';
+import { callApi } from './api-error';
 import {
   ModelInput, ModelLayoutDoc, StateInput, TestCase, TestCaseInput, TransitionInput, Variable,
 } from './api.types';
@@ -55,13 +55,21 @@ export interface SimulationStep {
 
 /** `Coverage` in openapi.yaml. */
 /** `CoverageCriterion` in openapi.yaml. */
-export type CoverageCriterion = 'state' | 'transition' | 'transition-pair' | 'bounded-paths';
+export type CoverageCriterion =
+  | 'state' | 'transition' | 'transition-pair' | 'bounded-paths'
+  | 'prime-paths' | 'reach-element' | 'random';
 /** `GenerationRequest`. */
 export interface GenerationRequest {
   criterion: CoverageCriterion;
   seed?: number;
   /** Required for `bounded-paths`. */
   maxPathLength?: number;
+  /** Required for `reach-element`: a state or transition of the model. */
+  targetId?: string;
+  /** `random`: stop after this many test cases. */
+  stopAfterTests?: number;
+  /** `random`: stop once this percentage of transitions is covered. */
+  stopAtCoverage?: number;
   save?: boolean;
 }
 /** `GenerationResult`. */
@@ -287,11 +295,5 @@ export class OrgApi {
     return items;
   }
 
-  private async call<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-      return await fn();
-    } catch (e) {
-      throw toApiError(e);
-    }
-  }
+  private readonly call = callApi;
 }

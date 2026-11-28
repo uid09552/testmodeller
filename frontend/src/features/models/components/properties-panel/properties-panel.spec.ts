@@ -1,6 +1,65 @@
+import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { IxNumberInput } from '@siemens/ix-angular/standalone';
 import { ModelEditorStore } from '../../state/model-editor.store';
 import { PropertiesPanelComponent } from './properties-panel';
+
+// Importing iX registers its custom elements, which upgrade in jsdom and observe
+// visibility, an API jsdom does not have.
+beforeAll(() => {
+  class NoIntersectionObserver {
+    observe(): void { /* jsdom has no layout */ }
+    unobserve(): void { /* nothing observed */ }
+    disconnect(): void { /* nothing observed */ }
+    takeRecords(): [] { return []; }
+  }
+  (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver ??= NoIntersectionObserver;
+});
+
+describe('PropertiesPanelComponent transition weight (ADR 0017)', () => {
+  let store: ModelEditorStore;
+  let fixture: ReturnType<typeof TestBed.createComponent<PropertiesPanelComponent>>;
+  let edgeId: string;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [PropertiesPanelComponent],
+      providers: [ModelEditorStore],
+    }).compileComponents();
+    // The iX wrapper starts a real web component; here it is an inert element.
+    TestBed.overrideComponent(PropertiesPanelComponent, {
+      remove: { imports: [IxNumberInput] },
+      add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+    });
+    fixture = TestBed.createComponent(PropertiesPanelComponent);
+    store = TestBed.inject(ModelEditorStore);
+    const a = store.addNode('regular', 0, 0);
+    const b = store.addNode('regular', 400, 0);
+    edgeId = store.addEdge(a.id, b.id).id;
+    store.select(edgeId, 'edge');
+    fixture.detectChanges();
+  });
+
+  const send = (detail: unknown) =>
+    fixture.componentInstance.setEdgeWeight(store.edgeById(edgeId)!, new CustomEvent('valueChange', { detail }));
+
+  it('stores a weight, and clears it back to the default when empty or out of range', () => {
+    send(7);
+    expect(store.edgeById(edgeId)!.weight).toBe(7);
+    send(0);
+    expect(store.edgeById(edgeId)!.weight).toBe(0);
+    for (const bad of ['', null, 1001, -1, 2.5]) {
+      send(3);
+      send(bad);
+      expect(store.edgeById(edgeId)!.weight, String(bad)).toBeUndefined();
+    }
+  });
+
+  it('offers the field with the default weight shown', () => {
+    const field = fixture.nativeElement.querySelector('ix-number-input.props__weight') as HTMLElement;
+    expect(field.getAttribute('label')).toBe('Weight');
+  });
+});
 
 describe('PropertiesPanelComponent transition routing', () => {
   let store: ModelEditorStore;
@@ -13,6 +72,10 @@ describe('PropertiesPanelComponent transition routing', () => {
       imports: [PropertiesPanelComponent],
       providers: [ModelEditorStore],
     }).compileComponents();
+    TestBed.overrideComponent(PropertiesPanelComponent, {
+      remove: { imports: [IxNumberInput] },
+      add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+    });
     fixture = TestBed.createComponent(PropertiesPanelComponent);
     store = TestBed.inject(ModelEditorStore);
     const a = store.addNode('regular', 0, 0);

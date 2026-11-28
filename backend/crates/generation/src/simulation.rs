@@ -144,6 +144,7 @@ mod tests {
             guard: None,
             action: None,
             expected: None,
+            weight: None,
         }
     }
 
@@ -270,7 +271,7 @@ mod tests {
         fn generated_paths_replay(seed in any::<u64>(), crit in 0usize..3) {
             let g = model();
             let criterion = [CoverageCriterion::State, CoverageCriterion::Transition, CoverageCriterion::TransitionPair][crit];
-            let out = generate(&g, GenerationOptions { criterion, seed, max_path_length: None }).unwrap();
+            let out = generate(&g, GenerationOptions::new(criterion, seed)).unwrap();
             for path in out.paths {
                 let mut s = simulate(&g, None, None, None).unwrap();
                 for t in &path.transitions {

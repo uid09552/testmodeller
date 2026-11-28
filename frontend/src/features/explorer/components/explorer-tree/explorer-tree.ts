@@ -5,6 +5,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import { filter, map } from 'rxjs';
 import { AutofocusDirective } from '../../../../shared/components/autofocus';
+import { ConfirmService } from '../../../../core/ui/confirm';
 import { ThreatModelIndex } from '../../../threat-model/state/threat-model-index';
 import { errorMessage } from '../../../threat-model/state/threat-model.store';
 import {
@@ -38,6 +39,7 @@ export class ExplorerTreeComponent {
   readonly store = inject(ExplorerStore);
   private readonly router = inject(Router);
   readonly threatModels = inject(ThreatModelIndex);
+  private readonly confirmer = inject(ConfirmService);
 
   /** The current URL, to show which project's threat model is open. */
   private readonly url = toSignal(
@@ -103,7 +105,7 @@ export class ExplorerTreeComponent {
 
   private async deleteThreatModel(project: ExplorerProject): Promise<void> {
     const name = this.threatModels.of(project.id)?.name ?? 'threat model';
-    if (!confirm(`Delete "${name}"? Its components, threats, risks, controls and security tests are deleted with it.`)) return;
+    if (!(await this.confirmer.danger('Delete threat model?', `"${name}" is deleted with its components, threats, risks, controls and security tests.`))) return;
     try {
       await this.threatModels.remove(project.id);
       if (this.isThreatModelOpen(project.id)) void this.router.navigate(['/explorer']);

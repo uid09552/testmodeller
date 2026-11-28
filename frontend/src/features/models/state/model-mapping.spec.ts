@@ -121,6 +121,25 @@ describe('toModelInput', () => {
   });
 });
 
+describe('transition weight (ADR 0017)', () => {
+  it('survives a load and a save, and is absent when not set', () => {
+    const a = crypto.randomUUID();
+    const b = crypto.randomUUID();
+    const remote = {
+      name: 'M', states: [{ id: a, name: 'A', kind: 'initial' as const }, { id: b, name: 'B', kind: 'final' as const }],
+      transitions: [
+        { id: crypto.randomUUID(), from: a, to: b, event: 'heavy', weight: 5 },
+        { id: crypto.randomUUID(), from: a, to: b, event: 'never', weight: 0 },
+        { id: crypto.randomUUID(), from: a, to: b, event: 'default' },
+      ],
+    };
+    const loaded = fromRemote(remote as never, [], 'm1', '', null);
+    expect(loaded.edges.map(e => e.weight)).toEqual([5, 0, undefined]);
+    const saved = toModelInput(loaded).transitions!;
+    expect(saved.map(t => t.weight)).toEqual([5, 0, undefined]);
+  });
+});
+
 describe('test cases', () => {
   it('carries category, polarity and links through a save and a load', () => {
     const original = test();

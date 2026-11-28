@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { IxNumberInput } from '@siemens/ix-angular/standalone';
 import { singleLine } from '../../state/node-fit';
 import { ALL_SHAPES, shapeIcon } from '../../state/node-shapes';
 import { StyleChange, StyleSectionComponent, StyleTarget } from '../style-section/style-section';
@@ -10,7 +11,7 @@ import {
 
 @Component({
   selector: 'tm-properties-panel',
-  imports: [FormsModule, StyleSectionComponent],
+  imports: [FormsModule, IxNumberInput, StyleSectionComponent],
   templateUrl: './properties-panel.html',
   styleUrl: './properties-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -60,6 +61,14 @@ export class PropertiesPanelComponent {
 
   getEdgeAction(e: CanvasEdge): string { return e.action ?? ''; }
   setEdgeExpected(e: CanvasEdge, v: string): void { this.store.updateEdge(e.id, { expected: v || undefined }); }
+  /** From `ix-number-input`'s `valueChange`; empty goes back to the default weight. */
+  setEdgeWeight(e: CanvasEdge, ev: Event): void {
+    const raw = (ev as CustomEvent<number | string | null>).detail;
+    const n = raw === null || raw === '' || raw === undefined ? NaN : Number(raw);
+    this.store.updateEdge(e.id, {
+      weight: Number.isInteger(n) && n >= 0 && n <= 1000 ? n : undefined,
+    });
+  }
   setEdgeAction(e: CanvasEdge, v: string): void { this.store.updateEdge(e.id, { action: v || undefined }); }
 
   nodeName(id: string): string { return singleLine(this.store.nodeById(id)?.label ?? id.slice(0, 8)); }

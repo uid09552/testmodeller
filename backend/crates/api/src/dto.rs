@@ -324,12 +324,24 @@ pub struct TransitionInput {
     pub action: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected: Option<String>,
+    /// Relative likelihood in a random walk (0..=1000, default 1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight: Option<u32>,
 }
 
 impl TransitionInput {
     /// Validates and converts, assigning a new id if absent.
     pub fn into_transition(self) -> Result<d::Transition, ApiError> {
         check_len("event", &self.event, 1, 500)?;
+        if self
+            .weight
+            .is_some_and(|w| w > tm_domain::graph::MAX_WEIGHT)
+        {
+            return Err(ApiError::bad_request(format!(
+                "weight must be between 0 and {}",
+                tm_domain::graph::MAX_WEIGHT
+            )));
+        }
         Ok(d::Transition {
             id: self.id.unwrap_or_else(Uuid::new_v4),
             from: self.from,
@@ -338,6 +350,7 @@ impl TransitionInput {
             guard: self.guard,
             action: self.action,
             expected: self.expected,
+            weight: self.weight,
         })
     }
 }
@@ -352,6 +365,7 @@ impl From<&d::Transition> for TransitionInput {
             guard: t.guard.clone(),
             action: t.action.clone(),
             expected: t.expected.clone(),
+            weight: t.weight,
         }
     }
 }
@@ -916,6 +930,15 @@ pub struct GenerationRequest {
     pub criterion: d::CoverageCriterion,
     pub seed: Option<i64>,
     pub max_path_length: Option<i64>,
+    /// `reach-element`: a state or transition of the model.
+    #[serde(default)]
+    pub target_id: Option<Uuid>,
+    /// `random`: stop after this many test cases.
+    #[serde(default)]
+    pub stop_after_tests: Option<i64>,
+    /// `random`: stop once this percentage of transitions is covered.
+    #[serde(default)]
+    pub stop_at_coverage: Option<i64>,
     #[serde(default)]
     pub save: bool,
 }

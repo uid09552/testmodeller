@@ -1,14 +1,20 @@
 //! Shared setup for HTTP-level tests: a real PostgreSQL (Docker) behind the router in dev mode,
 //! where the caller's tenant is `dev`.
+//!
+//! One container serves a whole test binary; each test gets a database of its own on it, so
+//! tests stay isolated without paying for a container start each.
 #![allow(dead_code)]
 
 use std::sync::Arc;
+
+use tokio::sync::OnceCell;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::Router;
 use http_body_util::BodyExt;
 use serde_json::Value;
+use sqlx::Connection;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ImageExt};
 use testcontainers_modules::postgres::Postgres;
@@ -19,8 +25,42 @@ use tm_storage::{FeatureFields, ModelMeta, NamedFields, Store};
 use tower::ServiceExt;
 use uuid::Uuid;
 
+/// The container of this test binary and its admin connection URL. It is never dropped, so it
+/// lives until the process exits and Docker's reaper removes it.
+static SERVER: OnceCell<(ContainerAsync<Postgres>, String)> = OnceCell::const_new();
+
+async fn server() -> &'static str {
+    let (_, url) = SERVER
+        .get_or_init(|| async {
+            let db = Postgres::default()
+                .with_tag("17-alpine")
+                .start()
+                .await
+                .expect("start PostgreSQL; is Docker running?");
+            let host = db.get_host().await.unwrap();
+            let port = db.get_host_port_ipv4(5432).await.unwrap();
+            let url = format!("postgres://postgres:postgres@{host}:{port}");
+            (db, url)
+        })
+        .await;
+    url
+}
+
+/// A fresh, empty database on the shared server; returns its connection URL.
+pub async fn fresh_database() -> String {
+    let base = server().await;
+    let name = format!("t_{}", Uuid::new_v4().simple());
+    let mut admin = sqlx::PgConnection::connect(&format!("{base}/postgres"))
+        .await
+        .unwrap();
+    sqlx::query(&format!("CREATE DATABASE {name}"))
+        .execute(&mut admin)
+        .await
+        .unwrap();
+    format!("{base}/{name}")
+}
+
 pub struct App {
-    _db: ContainerAsync<Postgres>,
     pub store: Store,
     pub router: Router,
     pub url: String,
@@ -32,19 +72,11 @@ pub async fn app() -> App {
 
 /// Like [`app`], with a provider key as if from `TM_AI_API_KEY`.
 pub async fn app_with_ai_key(ai_key: Option<&str>) -> App {
-    let db = Postgres::default()
-        .with_tag("17-alpine")
-        .start()
-        .await
-        .expect("start PostgreSQL; is Docker running?");
-    let host = db.get_host().await.unwrap();
-    let port = db.get_host_port_ipv4(5432).await.unwrap();
-    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+    let url = fresh_database().await;
     let store = Store::connect(&url, 4).await.unwrap();
     let secrets = Arc::new(SecretStore::from_bytes(&[7u8; 32], KeySource::Configured).unwrap());
     let state = AppState::new(store.clone(), ai_key.map(str::to_owned), secrets);
     App {
-        _db: db,
         store,
         router: router(state, auth_mode(None)),
         url,
@@ -154,6 +186,7 @@ fn tr(from: &State, to: &State, event: &str) -> Transition {
         guard: None,
         action: None,
         expected: None,
+        weight: None,
     }
 }
 

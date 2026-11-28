@@ -92,7 +92,13 @@ pub struct Transition {
     /// Optional expected result.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected: Option<String>,
+    /// Relative likelihood in a `random` walk (default 1; 0 is never taken).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight: Option<u32>,
 }
+
+/// Largest transition weight.
+pub const MAX_WEIGHT: u32 = 1000;
 
 /// Type of a model variable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

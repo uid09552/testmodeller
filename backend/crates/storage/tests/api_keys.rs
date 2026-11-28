@@ -19,6 +19,7 @@ fn key<'a>(tenant: &'a str, subject: &'a str, hash: &'a [u8]) -> NewApiKey<'a> {
         prefix: "tm_abc123",
         hash,
         role: "Editor",
+        project_id: None,
         expires_at: Some(Utc::now() + Duration::days(90)),
     }
 }

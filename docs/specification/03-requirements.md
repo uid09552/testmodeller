@@ -101,6 +101,7 @@ See [08-usermanagement.md](08-usermanagement.md).
 - FR-090 Let a user create, list and revoke personal API keys in Settings; show a key once and store only its hash.
 - FR-091 Offer an MCP endpoint, authenticated by API key, whose tools run as the key's tenant and role through the API's own checks.
 - FR-092 Show a copyable VS Code MCP configuration in Settings.
+- FR-095 Let a user create a key that can only upload the test results of one project, so a CI pipeline can post results without a user session.
 
 ## Non-functional
 - NFR-001 Generate tests for a 200-state model in under 2 s.

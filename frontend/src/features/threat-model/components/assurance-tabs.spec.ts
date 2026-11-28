@@ -127,7 +127,6 @@ describe('assurance', () => {
       expect(cmp).toContain('high → low');
       expect(cmp).toContain('CTL-1: Planned → Verified');
 
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
       byText(h.root, 'table button', 'Delete').click();
       await h.settle();
       expect(h.api.writes('deleteBaseline')).toHaveLength(1);

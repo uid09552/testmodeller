@@ -165,6 +165,7 @@ fn build_transitions(
                 guard: t.guard.filter(|g| !g.trim().is_empty()),
                 action: t.action.filter(|a| !a.trim().is_empty()),
                 expected: t.expected,
+                weight: None,
             })
         })
         .collect()

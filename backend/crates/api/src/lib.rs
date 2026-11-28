@@ -372,6 +372,11 @@ fn api(state: AppState, auth: AuthMode, mcp: Option<mcp_http::McpState>) -> Rout
             auth,
             auth::authenticate,
         ))
+        // In front of authentication: lets an upload key reach its one route (ADR 0018).
+        .layer(axum::middleware::from_fn_with_state(
+            state.store.clone(),
+            api_keys::upload_layer,
+        ))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .with_state(state.clone());
 

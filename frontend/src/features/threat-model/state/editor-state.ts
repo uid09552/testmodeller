@@ -1,4 +1,5 @@
-import { signal } from '@angular/core';
+import { inject, signal } from '@angular/core';
+import { ConfirmService } from '../../../core/ui/confirm';
 import { errorMessage } from './threat-model.store';
 
 /**
@@ -10,6 +11,7 @@ export class EditorState<T extends { id: string; version: number }, D> {
   readonly editing = signal<{ item: T | null; draft: D } | null>(null);
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
+  private readonly confirmer = inject(ConfirmService);
 
   constructor(
     private readonly persist: (draft: D, item: T | null) => Promise<unknown>,
@@ -46,7 +48,7 @@ export class EditorState<T extends { id: string; version: number }, D> {
   /** Deletes the open item after `confirmText` is confirmed. */
   async remove(confirmText: string): Promise<void> {
     const item = this.editing()?.item;
-    if (!item || !confirm(confirmText)) return;
+    if (!item || !(await this.confirmer.danger('Delete?', confirmText))) return;
     this.busy.set(true);
     try {
       await this.destroy(item);

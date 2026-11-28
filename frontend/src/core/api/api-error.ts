@@ -38,3 +38,12 @@ export function toApiError(e: unknown): ApiError {
     .join(' — ');
   return new ApiError(message, e.status, problem);
 }
+
+/** Runs an HTTP call and reports any failure as an `ApiError`. Shared by the API clients. */
+export async function callApi<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    throw toApiError(e);
+  }
+}

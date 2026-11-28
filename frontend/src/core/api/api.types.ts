@@ -106,6 +106,8 @@ export interface TransitionInput {
   guard?: string;
   action?: string;
   expected?: string;
+  /** Relative likelihood in a `random` walk (0..1000, default 1). */
+  weight?: number;
 }
 
 /** The contract's model status; the editor has more (see model-mapping). */
@@ -185,6 +187,8 @@ export interface ApiKey {
   /** First characters of the key, to recognise it. */
   prefix: string;
   role: 'User' | 'Editor';
+  /** Set for an upload key: the one project whose test results it may post (ADR 0018). */
+  projectId?: string | null;
   createdAt: string;
   expiresAt?: string | null;
   lastUsedAt?: string | null;
@@ -193,6 +197,8 @@ export interface ApiKey {
 export interface ApiKeyInput {
   name: string;
   expiresInDays?: number;
+  /** Makes an upload key for this project; needs the Editor role. */
+  projectId?: string;
 }
 
 /** The response to creating a key: the only time `key` is ever returned. */

@@ -1,0 +1,1 @@
+ALTER TABLE transitions DROP COLUMN IF EXISTS weight;

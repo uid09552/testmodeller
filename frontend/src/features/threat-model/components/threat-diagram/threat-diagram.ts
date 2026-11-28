@@ -27,6 +27,7 @@ import {
   freeSpot, highestLevel, label, layerOf, LEVEL_TEXT, openThreatsOn, Rect, TYPE_GROUPS,
 } from '../../state/threat-model-view';
 import { WorkspaceNav } from '../../state/workspace-nav';
+import { ConfirmService } from '../../../../core/ui/confirm';
 import { ComponentsTabComponent } from '../components-tab/components-tab';
 import { DiagramPropertiesComponent, SingleInfo } from '../diagram-properties/diagram-properties';
 import { FlowsTabComponent } from '../flows-tab/flows-tab';
@@ -84,6 +85,7 @@ interface Marker { id: string; kind: 'filled' | 'open' | 'line'; colour: string 
 })
 export class ThreatDiagramComponent {
   readonly store = inject(ThreatModelStore);
+  private readonly confirmer = inject(ConfirmService);
   private readonly nav = inject(WorkspaceNav);
   private readonly svg = viewChild.required<ElementRef<SVGSVGElement>>('svg');
   private readonly menuEl = viewChild<ElementRef<HTMLElement>>('menuEl');
@@ -778,7 +780,7 @@ export class ThreatDiagramComponent {
       : sel[0].kind === 'node'
         ? this.componentsEditor().deleteText(this.store.components().find(c => c.id === sel[0].id) ?? null)
         : sel[0].kind === 'edge' ? 'Delete this data flow?' : `Delete zone "${this.zoneLabel(sel[0].id)}"? Its components will have no zone.`;
-    if (!confirm(text)) return;
+    if (!(await this.confirmer.danger('Delete from the diagram?', text))) return;
     try {
       // Flows first: deleting a component deletes its flows on the server.
       for (const kind of ['edge', 'node', 'zone'] as const) {

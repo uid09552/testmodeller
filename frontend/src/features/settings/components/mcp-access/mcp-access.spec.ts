@@ -4,6 +4,8 @@ import {
   IxButton, IxCard, IxCardContent, IxIconButton, IxInput, IxMessageBar, IxPill, IxSelect,
   IxSelectItem, MessageService, ToastService,
 } from '@siemens/ix-angular/standalone';
+import { signal } from '@angular/core';
+import { ExplorerStore } from '../../../explorer/state/explorer.store';
 import { ApiKeysApi } from '../../../../core/api/api-keys-api';
 import { ApiKey, ApiKeyCreated } from '../../../../core/api/api.types';
 import { McpAccessComponent } from './mcp-access';
@@ -49,6 +51,7 @@ describe('McpAccessComponent', () => {
         { provide: ApiKeysApi, useValue: api },
         { provide: ToastService, useValue: toasts },
         { provide: MessageService, useValue: {} },
+        { provide: ExplorerStore, useValue: { projects: signal([{ id: 'p1', name: 'Shop', components: [], expanded: true }, { id: 'p2', name: 'Blog', components: [], expanded: true }]) } },
       ],
     });
     TestBed.overrideComponent(McpAccessComponent, INERT);
@@ -100,6 +103,35 @@ describe('McpAccessComponent', () => {
     expect(f.nativeElement.querySelector('[data-testid="new-key"]')).toBeNull();
   });
 
+  it('creates an upload key for one project and offers the GitHub Action step', async () => {
+    const f = await render([]);
+    const c = f.componentInstance;
+    const created: ApiKeyCreated = { ...KEY, id: 'k3', name: 'CI', projectId: 'p1', key: 'tm_' + 'b'.repeat(64) };
+    api.create.mockResolvedValue(created);
+    c.setName(new CustomEvent('valueChange', { detail: 'CI' }));
+    c.setFor(new CustomEvent('valueChange', { detail: 'p1' }));
+    await c.create();
+    f.detectChanges();
+    expect(api.create).toHaveBeenCalledWith({ name: 'CI', expiresInDays: 90, projectId: 'p1' });
+    const step = f.nativeElement.querySelector('pre[aria-label="GitHub Actions step"]')?.textContent ?? '';
+    expect(step).toContain('project-id: p1');
+    expect(step).toContain('secrets.TESTMODELLER_UPLOAD_KEY');
+    expect(step).not.toContain(created.key);
+    expect((f.nativeElement as HTMLElement).textContent).toContain('Uploads results: Shop');
+  });
+
+  it('creates an MCP key by default and ignores a project that is not listed', async () => {
+    const f = await render([]);
+    const c = f.componentInstance;
+    c.setFor(new CustomEvent('valueChange', { detail: 'nope' }));
+    expect(c.forWhat()).toBe('mcp');
+    api.create.mockResolvedValue({ ...KEY, key: 'tm_' + 'c'.repeat(64) });
+    c.setName(new CustomEvent('valueChange', { detail: 'VS Code' }));
+    await c.create();
+    expect(api.create).toHaveBeenCalledWith({ name: 'VS Code', expiresInDays: 90 });
+    expect(c.actionSnippet()).toBeNull();
+  });
+
   it('ignores an expiry the API would reject', async () => {
     const f = await render([]);
     f.componentInstance.setDays(new CustomEvent('valueChange', { detail: '9999' }));
@@ -130,6 +162,7 @@ describe('McpAccessComponent', () => {
         { provide: ApiKeysApi, useValue: { ...api, list: vi.fn().mockRejectedValue(new Error('x')) } },
         { provide: ToastService, useValue: { show: vi.fn() } },
         { provide: MessageService, useValue: {} },
+        { provide: ExplorerStore, useValue: { projects: signal([{ id: 'p1', name: 'Shop', components: [], expanded: true }, { id: 'p2', name: 'Blog', components: [], expanded: true }]) } },
       ],
     });
     TestBed.overrideComponent(McpAccessComponent, INERT);
