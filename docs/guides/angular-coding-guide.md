@@ -18,7 +18,7 @@ related: [testing-guide.md, workflow.md]
 - Templates: new control flow (`@if`, `@for`), no logic-heavy expressions.
 - Styling: Siemens iX per [DESIGN.md](../../DESIGN.md) — iX components, `--si-sys-*` tokens, iX typography classes; no hex/px literals, no inline styles. The legacy `--clr-*` tokens and `_ui.scss` primitives below are being phased out.
 - Accessibility: semantic HTML, labels, focus management, keyboard support.
-- Tests: Jest or Karma per ADR; test components via harnesses; mock API at service level.
+- Tests: Vitest (`ng test`, jsdom); test components via harnesses; mock API at service level.
 - Lint: ESLint with `@angular-eslint`; Prettier for formatting.
 
 ## Bundle budgets

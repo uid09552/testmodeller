@@ -1,5 +1,5 @@
 //! PostgreSQL persistence (sqlx). Migrations live in `migrations/` and are embedded at compile time.
-//! See docs/adr/0002-postgresql-storage.md.
+//! See docs/adr/0001-tech-stack.md and docs/adr/0002-container-deployment.md.
 
 mod ai;
 mod api_keys;

@@ -12,7 +12,7 @@ related: [rust-coding-guide.md, angular-coding-guide.md]
 | --- | --- | --- |
 | Unit | `cargo test` in-module | component/service tests |
 | Property | `proptest` for generation (coverage achieved, determinism) | n/a |
-| Integration | `backend/crates/api/tests` with in-memory SQLite | HTTP mocked |
+| Integration | `backend/crates/api/tests` and `backend/crates/storage/tests` against PostgreSQL in Docker (testcontainers) | HTTP mocked |
 | E2E | Playwright against running stack | `frontend/e2e` |
 
 - Every requirement (`FR-*`) maps to at least one test; reference the ID in the test name or comment.
