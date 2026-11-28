@@ -154,6 +154,7 @@ fn tr(from: &State, to: &State, event: &str) -> Transition {
         guard: None,
         action: None,
         expected: None,
+        weight: None,
     }
 }
 

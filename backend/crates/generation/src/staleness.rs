@@ -210,6 +210,7 @@ mod tests {
             guard: None,
             action: None,
             expected: None,
+            weight: None,
         }
     }
 
@@ -265,11 +266,7 @@ mod tests {
     #[test]
     fn every_generated_test_fits_its_unchanged_model() {
         let g = model();
-        let opts = GenerationOptions {
-            criterion: CoverageCriterion::TransitionPair,
-            seed: 7,
-            max_path_length: None,
-        };
+        let opts = GenerationOptions::new(CoverageCriterion::TransitionPair, 7);
         for path in generate(&g, opts).unwrap().paths {
             let (tc, a) = path_to_test_case(&g, "M", CoverageCriterion::TransitionPair, 0, &path);
             assert!(check_path(&g, tc.steps.len(), &a).is_empty());

@@ -109,6 +109,9 @@ string_enum!(
         Transition => "transition",
         TransitionPair => "transition-pair",
         BoundedPaths => "bounded-paths",
+        PrimePaths => "prime-paths",
+        ReachElement => "reach-element",
+        Random => "random",
     }
 );
 

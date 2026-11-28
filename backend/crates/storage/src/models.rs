@@ -121,6 +121,9 @@ fn transition(row: &PgRow) -> Result<Transition, sqlx::Error> {
         guard: row.try_get("guard")?,
         action: row.try_get("action")?,
         expected: row.try_get("expected")?,
+        weight: row
+            .try_get::<Option<i32>, _>("weight")?
+            .and_then(|w| u32::try_from(w).ok()),
     })
 }
 
@@ -348,17 +351,21 @@ async fn upsert_transitions(
     let guards: Vec<Option<&str>> = transitions.iter().map(|t| t.guard.as_deref()).collect();
     let actions: Vec<Option<&str>> = transitions.iter().map(|t| t.action.as_deref()).collect();
     let expected: Vec<Option<&str>> = transitions.iter().map(|t| t.expected.as_deref()).collect();
+    let weights: Vec<Option<i32>> = transitions
+        .iter()
+        .map(|t| t.weight.map(|w| w as i32))
+        .collect();
     let orders: Vec<i32> = (0..transitions.len() as i32)
         .map(|i| first_order + i)
         .collect();
     sqlx::query(
-        "INSERT INTO transitions (id, model_id, from_state, to_state, event, guard, action, expected, sort_order)
-         SELECT u.id, $1, u.f, u.t, u.event, u.guard, u.action, u.expected, u.ord
-         FROM UNNEST($2::uuid[], $3::uuid[], $4::uuid[], $5::text[], $6::text[], $7::text[], $8::text[], $9::int4[])
-             AS u(id, f, t, event, guard, action, expected, ord)
+        "INSERT INTO transitions (id, model_id, from_state, to_state, event, guard, action, expected, weight, sort_order)
+         SELECT u.id, $1, u.f, u.t, u.event, u.guard, u.action, u.expected, u.weight, u.ord
+         FROM UNNEST($2::uuid[], $3::uuid[], $4::uuid[], $5::text[], $6::text[], $7::text[], $8::text[], $9::int4[], $10::int4[])
+             AS u(id, f, t, event, guard, action, expected, weight, ord)
          ON CONFLICT (id) DO UPDATE SET from_state = EXCLUDED.from_state, to_state = EXCLUDED.to_state,
              event = EXCLUDED.event, guard = EXCLUDED.guard, action = EXCLUDED.action,
-             expected = EXCLUDED.expected, sort_order = EXCLUDED.sort_order",
+             expected = EXCLUDED.expected, weight = EXCLUDED.weight, sort_order = EXCLUDED.sort_order",
     )
     .bind(model_id)
     .bind(&ids)
@@ -368,6 +375,7 @@ async fn upsert_transitions(
     .bind(&guards)
     .bind(&actions)
     .bind(&expected)
+    .bind(&weights)
     .bind(&orders)
     .execute(&mut *conn)
     .await?;
@@ -860,7 +868,7 @@ impl Store {
         sqlx::query(
             "UPDATE transitions SET from_state = $2, to_state = $3, event = $4,
                  guard = COALESCE($5, guard), action = COALESCE($6, action),
-                 expected = COALESCE($7, expected)
+                 expected = COALESCE($7, expected), weight = COALESCE($8, weight)
              WHERE id = $1",
         )
         .bind(id)
@@ -870,6 +878,7 @@ impl Store {
         .bind(&t.guard)
         .bind(&t.action)
         .bind(&t.expected)
+        .bind(t.weight.map(|w| w as i32))
         .execute(&mut *tx)
         .await?;
         bump_and_record(

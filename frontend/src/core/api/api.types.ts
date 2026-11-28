@@ -106,6 +106,8 @@ export interface TransitionInput {
   guard?: string;
   action?: string;
   expected?: string;
+  /** Relative likelihood in a `random` walk (0..1000, default 1). */
+  weight?: number;
 }
 
 /** The contract's model status; the editor has more (see model-mapping). */

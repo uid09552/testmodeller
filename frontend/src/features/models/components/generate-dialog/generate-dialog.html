@@ -13,6 +13,22 @@
                        (valueChange)="setMaxPathLength($event)" />
     }
 
+    @if (criterion() === 'reach-element') {
+      <ix-select label="Element to reach" [value]="targetId() ?? ''"
+                 [invalidText]="targetMissing() ? 'Choose a state or transition.' : ''"
+                 [class.ix-invalid]="targetMissing()" (valueChange)="setTarget($event)">
+        @for (x of elements(); track x.id) { <ix-select-item [value]="x.id" [label]="x.label" /> }
+      </ix-select>
+    }
+
+    @if (criterion() === 'random') {
+      <ix-number-input label="Stop after test cases" [min]="1" [max]="1000" [value]="stopAfterTests()"
+                       (valueChange)="setStopAfter($event)" />
+      <ix-number-input label="Or stop at transition coverage (%)" [min]="1" [max]="100"
+                       helperText="Optional. Whichever condition is met first ends the run."
+                       (valueChange)="setStopCoverage($event)" />
+    }
+
     <ix-input label="Seed" helperText="Optional. The same model, criterion and seed always give the same test cases."
               [value]="seed()" [invalidText]="seedInvalid() ? 'A whole number, or leave it empty.' : ''"
               [class.ix-invalid]="seedInvalid()" (valueChange)="setSeed($event)" />

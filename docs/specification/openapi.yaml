@@ -1309,6 +1309,7 @@ components:
         guard: { type: string }
         action: { type: string }
         expected: { type: string }
+        weight: { type: integer, minimum: 0, maximum: 1000, default: 1, description: 'Relative likelihood of taking this transition in a `random` walk; 0 never takes it' }
     Transition:
       allOf:
         - { $ref: '#/components/schemas/TransitionInput' }
@@ -1494,7 +1495,7 @@ components:
           required: [testCaseId]
           properties: { testCaseId: { $ref: '#/components/schemas/Id' } }
 
-    CoverageCriterion: { type: string, enum: [state, transition, transition-pair, bounded-paths] }
+    CoverageCriterion: { type: string, enum: [state, transition, transition-pair, bounded-paths, prime-paths, reach-element, random] }
     GenerationRequest:
       type: object
       required: [criterion]
@@ -1502,6 +1503,9 @@ components:
         criterion: { $ref: '#/components/schemas/CoverageCriterion' }
         seed: { type: integer }
         maxPathLength: { type: integer, minimum: 1, description: Required for bounded-paths }
+        targetId: { $ref: '#/components/schemas/Id', description: 'Required for reach-element: a state or transition of the model' }
+        stopAfterTests: { type: integer, minimum: 1, maximum: 1000, description: 'random: stop after this many test cases (default 10 when no other stop condition is given)' }
+        stopAtCoverage: { type: integer, minimum: 1, maximum: 100, description: 'random: stop once this percentage of transitions is covered' }
         save: { type: boolean, default: false, description: Persist generated test cases and assign them to the model }
     GenerationResult:
       type: object

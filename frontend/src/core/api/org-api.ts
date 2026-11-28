@@ -55,13 +55,21 @@ export interface SimulationStep {
 
 /** `Coverage` in openapi.yaml. */
 /** `CoverageCriterion` in openapi.yaml. */
-export type CoverageCriterion = 'state' | 'transition' | 'transition-pair' | 'bounded-paths';
+export type CoverageCriterion =
+  | 'state' | 'transition' | 'transition-pair' | 'bounded-paths'
+  | 'prime-paths' | 'reach-element' | 'random';
 /** `GenerationRequest`. */
 export interface GenerationRequest {
   criterion: CoverageCriterion;
   seed?: number;
   /** Required for `bounded-paths`. */
   maxPathLength?: number;
+  /** Required for `reach-element`: a state or transition of the model. */
+  targetId?: string;
+  /** `random`: stop after this many test cases. */
+  stopAfterTests?: number;
+  /** `random`: stop once this percentage of transitions is covered. */
+  stopAtCoverage?: number;
   save?: boolean;
 }
 /** `GenerationResult`. */

@@ -15,6 +15,36 @@ related: [02-domain-model.md, 03-requirements.md]
 | `transition` | Every transition taken |
 | `transition-pair` | Every pair of consecutive transitions |
 | `bounded-paths` | All paths up to length N |
+| `prime-paths` | Every prime path: a maximal simple path of the state graph (no state repeats, except that a cycle may return to where it started) that is not part of a longer one |
+| `reach-element` | The shortest path to one state or transition (`targetId`) |
+| `random` | Seeded random walks from the initial state, each step chosen by transition weight; stops by test count or coverage |
+
+### Prime paths
+Prime paths are found on the state graph ignoring guards, at most 1 000 of them
+(a note reports a cut-off). Each one becomes a path of its own: the shortest
+path from the initial state to its first state, then the prime path itself,
+then, if it does not end there, the shortest path to a final state or dead
+end. A prime path whose guards cannot be satisfied in that order is skipped and
+reported; no other route to it is searched. Prime paths are the usual way to
+cover loops without enumerating every path.
+
+### Reach element
+`targetId` names a state or a transition of the model (`422` if it is neither).
+Output is the shortest path that reaches it, followed by the shortest path to
+an end, exactly as for the coverage criteria. An unreachable target is reported
+as skipped.
+
+### Random walks
+Each walk starts at the initial state and takes, at every step, one of the
+transitions whose guard holds, chosen with probability proportional to its
+`weight` (default 1; weight 0 is never chosen). It ends at a final state, at a
+state without an enabled transition, or after `maxPathLength` steps (default as
+for the other criteria). Walks are repeated until a stop condition holds:
+`stopAfterTests` walks, or `stopAtCoverage` percent of transitions covered,
+whichever comes first; with neither, 10 walks. At most 1 000 walks are tried;
+a walk identical to an earlier one is not counted twice. The same model, seed
+and options always give the same walks. Random walks are not minimized:
+every walk is a test case.
 
 ## Algorithm outline
 1. Validate model; abort on errors.

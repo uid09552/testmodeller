@@ -224,6 +224,11 @@
              (input)="setEdgeExpected(edge, $any($event.target).value)"
              placeholder="e.g. the home screen is shown" />
 
+      <ix-number-input class="props__weight" label="Weight" [min]="0" [max]="1000"
+                       helperText="How likely a random walk takes this step; default 1, 0 never"
+                       [value]="edge.weight ?? 1"
+                       (valueChange)="setEdgeWeight(edge, $event)" />
+
       <!-- Routing: everything the canvas handles do, without a mouse. -->
       @if (edge.fromId !== edge.toId) {
         <label class="props__label" for="edge-routing">Routing</label>

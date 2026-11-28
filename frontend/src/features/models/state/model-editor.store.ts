@@ -320,6 +320,8 @@ export interface CanvasEdge {
   action?: string;
   /** Expected result of taking the transition (used as a generated step's "Then"). */
   expected?: string;
+  /** Relative likelihood in a random walk (0..1000, default 1); carried through saves. */
+  weight?: number;
   curve: number; // perpendicular bezier offset (0 = straight)
   /** Connector dots this transition joins. Absent on edges stored before
    *  anchors existed, which fall back to centre-to-centre geometry. */

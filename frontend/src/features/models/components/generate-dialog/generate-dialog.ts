@@ -26,7 +26,13 @@ export const CRITERIA: { value: CoverageCriterion; label: string; hint: string }
   { value: 'state', label: 'All states', hint: 'Every state at least once — the fewest test cases.' },
   { value: 'transition-pair', label: 'Transition pairs', hint: 'Every pair of consecutive transitions — catches ordering faults.' },
   { value: 'bounded-paths', label: 'All paths up to a length', hint: 'Every path up to the maximum length — thorough, can be many.' },
+  { value: 'prime-paths', label: 'Prime paths', hint: 'Every longest loop-free path — covers loops without listing every path.' },
+  { value: 'reach-element', label: 'Path to one element', hint: 'The shortest path to one state or transition — a single scenario.' },
+  { value: 'random', label: 'Random walks', hint: 'Seeded random walks; transition weights set how likely each step is.' },
 ];
+
+/** A state or transition the generator can aim at. */
+export interface Element { id: string; label: string }
 
 /**
  * "Generate test cases" (06-ui.md, FR-010): choose a criterion, preview what
@@ -53,6 +59,12 @@ export class GenerateDialogComponent implements OnInit {
   readonly maxPathLength = signal(8);
   /** Empty: let the server choose, and show the seed it used. */
   readonly seed = signal('');
+  /** `reach-element`: the chosen state or transition. */
+  readonly targetId = signal<string | null>(null);
+  readonly elements = signal<Element[]>([]);
+  /** `random`: stop conditions. */
+  readonly stopAfterTests = signal(10);
+  readonly stopAtCoverage = signal<number | null>(null);
 
   readonly existing = signal<TestCase[]>([]);
   readonly result = signal<GenerationResult | null>(null);
@@ -63,7 +75,12 @@ export class GenerateDialogComponent implements OnInit {
   readonly seedInvalid = computed(() => this.seed().trim() !== '' && !/^-?\d+$/.test(this.seed().trim()));
   readonly lengthInvalid = computed(() =>
     this.criterion() === 'bounded-paths' && !(this.maxPathLength() >= 1 && this.maxPathLength() <= 50));
-  readonly canRun = computed(() => !this.seedInvalid() && !this.lengthInvalid() && !this.busy());
+  readonly targetMissing = computed(() => this.criterion() === 'reach-element' && !this.targetId());
+  readonly stopInvalid = computed(() => this.criterion() === 'random'
+    && (!(this.stopAfterTests() >= 1 && this.stopAfterTests() <= 1000)
+      || (this.stopAtCoverage() !== null && !(this.stopAtCoverage()! >= 1 && this.stopAtCoverage()! <= 100))));
+  readonly canRun = computed(() => !this.seedInvalid() && !this.lengthInvalid()
+    && !this.targetMissing() && !this.stopInvalid() && !this.busy());
   readonly diff = computed(() => {
     const r = this.result();
     return r ? diffGeneration(this.existing(), r.testCases) : null;
@@ -76,6 +93,37 @@ export class GenerateDialogComponent implements OnInit {
     } catch {
       // The diff is a convenience; generation still works without it.
     }
+    try {
+      const model = await this.api.getModel(this.data.modelId);
+      const names = new Map(model.states.map(s => [s.id, s.name] as const));
+      this.elements.set([
+        ...model.states.filter(s => s.id).map(s => ({ id: s.id!, label: `State: ${s.name}` })),
+        ...model.transitions.filter(t => t.id).map(t => ({
+          id: t.id!,
+          label: `Transition: ${names.get(t.from) ?? '?'} → ${names.get(t.to) ?? '?'} on "${t.event}"`,
+        })),
+      ]);
+    } catch {
+      // Only the element picker of reach-element needs it; the dialog reports a missing target.
+    }
+  }
+
+  setTarget(e: Event): void {
+    const v = (e as CustomEvent<string | string[]>).detail;
+    const id = Array.isArray(v) ? v[0] : v;
+    this.targetId.set(this.elements().some(x => x.id === id) ? id : null);
+    this.result.set(null);
+  }
+
+  setStopAfter(e: Event): void {
+    this.stopAfterTests.set(Number((e as CustomEvent<number>).detail));
+    this.result.set(null);
+  }
+
+  setStopCoverage(e: Event): void {
+    const v = (e as CustomEvent<string | number>).detail;
+    this.stopAtCoverage.set(v === '' || v === null || v === undefined ? null : Number(v));
+    this.result.set(null);
   }
 
   setCriterion(e: Event): void {
@@ -115,6 +163,11 @@ export class GenerateDialogComponent implements OnInit {
       criterion: this.criterion(),
       ...(seed !== undefined ? { seed } : {}),
       ...(this.criterion() === 'bounded-paths' ? { maxPathLength: this.maxPathLength() } : {}),
+      ...(this.criterion() === 'reach-element' ? { targetId: this.targetId()! } : {}),
+      ...(this.criterion() === 'random' ? {
+        stopAfterTests: this.stopAfterTests(),
+        ...(this.stopAtCoverage() !== null ? { stopAtCoverage: this.stopAtCoverage()! } : {}),
+      } : {}),
       save,
     };
   }

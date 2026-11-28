@@ -122,6 +122,7 @@ export function toModelInput(m: PersistedModel): ModelInput {
       guard: e.guard?.trim() || undefined,
       action: e.action?.trim() || undefined,
       expected: e.expected?.trim() || undefined,
+      weight: e.weight,
     }));
   return {
     name: m.name?.trim() || 'Model',
@@ -302,6 +303,7 @@ export function fromRemote(
       guard: t.guard,
       action: t.action,
       ...(t.expected ? { expected: t.expected } : {}),
+      ...(t.weight !== undefined && t.weight !== null ? { weight: t.weight } : {}),
       curve: prior?.curve ?? 0,
       fromAnchor: prior?.fromAnchor,
       toAnchor: prior?.toAnchor,

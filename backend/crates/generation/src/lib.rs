@@ -25,6 +25,14 @@ const MAX_SEARCH_NODES: usize = 200_000;
 pub const MAX_BOUNDED_PATHS: usize = 1_000;
 /// Upper bound on reported skipped paths.
 const MAX_SKIPPED_REPORTS: usize = 100;
+/// Upper bound on prime paths produced for `prime-paths`.
+pub const MAX_PRIME_PATHS: usize = 1_000;
+/// Upper bound on simple paths examined while looking for prime paths.
+const MAX_SIMPLE_PATHS: usize = 3_000;
+/// Upper bound on random walks tried for `random`.
+pub const MAX_RANDOM_WALKS: usize = 1_000;
+/// Walks made by `random` when no stop condition is given.
+pub const DEFAULT_RANDOM_WALKS: usize = 10;
 /// Maximum length of a generated test case name.
 const MAX_NAME_CHARS: usize = 300;
 
@@ -37,6 +45,12 @@ pub enum GenerationError {
     /// `bounded-paths` requires `maxPathLength`.
     #[error("maxPathLength is required for bounded-paths")]
     MissingMaxPathLength,
+    /// `reach-element` requires `targetId`.
+    #[error("targetId is required for reach-element")]
+    MissingTarget,
+    /// `targetId` is neither a state nor a transition of the model.
+    #[error("targetId is not a state or transition of this model")]
+    UnknownTarget,
 }
 
 /// Generation parameters.
@@ -48,6 +62,26 @@ pub struct GenerationOptions {
     pub seed: u64,
     /// Maximum path length (required for bounded-paths, optional bound otherwise).
     pub max_path_length: Option<usize>,
+    /// State or transition to reach (`reach-element`).
+    pub target: Option<Uuid>,
+    /// Stop a `random` run after this many walks.
+    pub stop_after_tests: Option<usize>,
+    /// Stop a `random` run once this percentage of transitions is covered.
+    pub stop_at_coverage: Option<u8>,
+}
+
+impl GenerationOptions {
+    /// Options for `criterion` with only a seed; the rest at their defaults.
+    pub fn new(criterion: CoverageCriterion, seed: u64) -> Self {
+        Self {
+            criterion,
+            seed,
+            max_path_length: None,
+            target: None,
+            stop_after_tests: None,
+            stop_at_coverage: None,
+        }
+    }
 }
 
 /// A path from the initial state.
@@ -346,7 +380,11 @@ impl<'a> Machine<'a> {
             CoverageCriterion::TransitionPair => {
                 set.extend(path.windows(2).map(|w| Target::Pair(w[0], w[1])));
             }
-            CoverageCriterion::BoundedPaths => {}
+            // These do not minimize by element targets.
+            CoverageCriterion::BoundedPaths
+            | CoverageCriterion::PrimePaths
+            | CoverageCriterion::ReachElement
+            | CoverageCriterion::Random => {}
         }
         set
     }
@@ -368,7 +406,10 @@ impl<'a> Machine<'a> {
                 }
                 v
             }
-            CoverageCriterion::BoundedPaths => Vec::new(),
+            CoverageCriterion::BoundedPaths
+            | CoverageCriterion::PrimePaths
+            | CoverageCriterion::ReachElement
+            | CoverageCriterion::Random => Vec::new(),
         }
     }
 
@@ -414,27 +455,36 @@ impl<'a> Machine<'a> {
             if covered.contains(&target) {
                 continue;
             }
-            let found = self.search(&self.start(), max_depth, |prev, n| {
-                self.target_reached(target, n, prev)
-            });
-            let Some((mut path, end)) = found else {
-                skipped.push(SkippedPath {
-                    transition_ids: self.target_transition_ids(target),
-                    reason: format!(
-                        "{} is unreachable or infeasible within {max_depth} steps",
-                        self.target_label(target)
-                    ),
-                });
-                continue;
-            };
-            let remaining = max_depth.saturating_sub(path.len());
-            if let Some((tail, _)) = self.search(&end, remaining, |_, n| self.is_terminal(n)) {
-                path.extend(tail);
+            match self.path_through(target, max_depth) {
+                Ok(path) => {
+                    covered.extend(self.targets_of(criterion, &path));
+                    paths.push(path);
+                }
+                Err(skip) => skipped.push(skip),
             }
-            covered.extend(self.targets_of(criterion, &path));
-            paths.push(path);
         }
         (self.minimize(criterion, paths), skipped)
+    }
+
+    /// The shortest path that reaches `target`, continued to a final state or dead end.
+    fn path_through(&self, target: Target, max_depth: usize) -> Result<Vec<usize>, SkippedPath> {
+        let found = self.search(&self.start(), max_depth, |prev, n| {
+            self.target_reached(target, n, prev)
+        });
+        let Some((mut path, end)) = found else {
+            return Err(SkippedPath {
+                transition_ids: self.target_transition_ids(target),
+                reason: format!(
+                    "{} is unreachable or infeasible within {max_depth} steps",
+                    self.target_label(target)
+                ),
+            });
+        };
+        let remaining = max_depth.saturating_sub(path.len());
+        if let Some((tail, _)) = self.search(&end, remaining, |_, n| self.is_terminal(n)) {
+            path.extend(tail);
+        }
+        Ok(path)
     }
 
     /// Drops paths whose targets are all covered by other kept paths.
@@ -463,6 +513,241 @@ impl<'a> Machine<'a> {
             .zip(keep)
             .filter_map(|(p, k)| k.then_some(p))
             .collect()
+    }
+
+    /// Prime paths of the state graph (guards ignored): maximal simple paths, where a cycle
+    /// may return to its start. Returns them, longest first, and whether the search was cut off.
+    fn prime_paths(&self) -> (Vec<Vec<usize>>, bool) {
+        let mut simple: Vec<Vec<usize>> = Vec::new();
+        let mut cut = false;
+        for start in 0..self.graph.states.len() {
+            let mut visited = vec![false; self.graph.states.len()];
+            visited[start] = true;
+            // Depth-first, in the seeded order of outgoing transitions.
+            let mut stack: Vec<(Vec<usize>, usize)> = self.out[start]
+                .iter()
+                .rev()
+                .map(|&t| (vec![t], self.transitions[t].to))
+                .collect();
+            // `visited` is per path, so rebuild it from the path on each pop.
+            while let Some((path, last)) = stack.pop() {
+                if simple.len() >= MAX_SIMPLE_PATHS {
+                    cut = true;
+                    break;
+                }
+                simple.push(path.clone());
+                if last == start {
+                    continue; // a cycle ends where it began
+                }
+                let on_path: HashSet<usize> = std::iter::once(start)
+                    .chain(path.iter().map(|&t| self.transitions[t].to))
+                    .collect();
+                for &t in self.out[last].iter().rev() {
+                    let to = self.transitions[t].to;
+                    if to == start || !on_path.contains(&to) {
+                        let mut next = path.clone();
+                        next.push(t);
+                        stack.push((next, to));
+                    }
+                }
+            }
+            if cut {
+                break;
+            }
+        }
+        // A path is prime when no longer simple path contains it; checking against the
+        // maximal ones found so far is enough, as containment is transitive.
+        let mut order: Vec<usize> = (0..simple.len()).collect();
+        order.sort_by_key(|&i| std::cmp::Reverse(simple[i].len()));
+        let mut prime: Vec<Vec<usize>> = Vec::new();
+        for i in order {
+            let p = &simple[i];
+            let inside = prime
+                .iter()
+                .any(|q| q.len() > p.len() && q.windows(p.len()).any(|w| w == p.as_slice()));
+            if !inside {
+                prime.push(p.clone());
+            }
+        }
+        (prime, cut)
+    }
+
+    /// One test path per prime path: the shortest route to its first state, the prime path,
+    /// then the shortest route to an end. Prime paths already inside a produced path are not
+    /// repeated.
+    fn cover_prime_paths(&self, max_depth: usize) -> (Vec<Vec<usize>>, Vec<SkippedPath>) {
+        let (prime, cut) = self.prime_paths();
+        let mut paths: Vec<Vec<usize>> = Vec::new();
+        let mut skipped = Vec::new();
+        let total = prime.len();
+        for (n, p) in prime.into_iter().enumerate() {
+            if n >= MAX_PRIME_PATHS {
+                skipped.push(SkippedPath {
+                    transition_ids: Vec::new(),
+                    reason: format!(
+                        "prime path limit of {MAX_PRIME_PATHS} reached; {} more omitted",
+                        total - n
+                    ),
+                });
+                break;
+            }
+            if paths
+                .iter()
+                .any(|q| q.len() >= p.len() && q.windows(p.len()).any(|w| w == p.as_slice()))
+            {
+                continue;
+            }
+            let first_state = self.transitions[p[0]].from;
+            let label = || {
+                p.iter()
+                    .map(|&t| self.graph.transitions[t].event.as_str())
+                    .collect::<Vec<_>>()
+                    .join("' -> '")
+            };
+            let ids = || p.iter().map(|&t| self.graph.transitions[t].id).collect();
+            let Some((mut path, mut node)) =
+                self.search(&self.start(), max_depth, |_, n| n.state == first_state)
+            else {
+                skipped.push(SkippedPath {
+                    transition_ids: ids(),
+                    reason: format!(
+                        "prime path '{}' is unreachable from the initial state",
+                        label()
+                    ),
+                });
+                continue;
+            };
+            let mut blocked = None;
+            for &t in &p {
+                match self.step(&node.env, t) {
+                    Step::Taken(env) => {
+                        node = Node {
+                            state: self.transitions[t].to,
+                            env,
+                            last: Some(t),
+                        };
+                        path.push(t);
+                    }
+                    Step::Blocked(why) => {
+                        blocked = Some(why);
+                        break;
+                    }
+                }
+            }
+            if let Some(why) = blocked {
+                skipped.push(SkippedPath {
+                    transition_ids: ids(),
+                    reason: format!(
+                        "prime path '{}' is infeasible after the shortest route: {why}",
+                        label()
+                    ),
+                });
+                continue;
+            }
+            let remaining = max_depth.saturating_sub(path.len());
+            if let Some((tail, _)) = self.search(&node, remaining, |_, n| self.is_terminal(n)) {
+                path.extend(tail);
+            }
+            paths.push(path);
+        }
+        if cut {
+            skipped.push(SkippedPath {
+                transition_ids: Vec::new(),
+                reason: format!(
+                    "search for prime paths stopped after {MAX_SIMPLE_PATHS} simple paths; the model has too many"
+                ),
+            });
+        }
+        (paths, skipped)
+    }
+
+    /// Seeded random walks from the initial state, each step chosen by transition weight.
+    fn random_walks(
+        &self,
+        seed: u64,
+        max_len: usize,
+        stop_after: Option<usize>,
+        stop_at_coverage: Option<u8>,
+    ) -> (Vec<Vec<usize>>, Vec<SkippedPath>) {
+        let mut rng = SplitMix64(seed ^ 0xA076_1D64_78BD_642F);
+        let want_tests = match (stop_after, stop_at_coverage) {
+            (None, None) => Some(DEFAULT_RANDOM_WALKS),
+            (n, _) => n,
+        };
+        let total = self.transitions.len();
+        let mut covered: HashSet<usize> = HashSet::new();
+        let mut paths: Vec<Vec<usize>> = Vec::new();
+        let mut seen: HashSet<Vec<usize>> = HashSet::new();
+        let mut skipped = Vec::new();
+        let done = |paths: &Vec<Vec<usize>>, covered: &HashSet<usize>| {
+            want_tests.is_some_and(|n| paths.len() >= n)
+                || stop_at_coverage
+                    .is_some_and(|c| total > 0 && covered.len() * 100 >= usize::from(c) * total)
+        };
+        for _ in 0..MAX_RANDOM_WALKS {
+            if done(&paths, &covered) {
+                return (paths, skipped);
+            }
+            let mut node = self.start();
+            let mut path: Vec<usize> = Vec::new();
+            while path.len() < max_len && self.graph.states[node.state].kind != StateKind::Final {
+                let moves: Vec<(usize, Env, u32)> = self.out[node.state]
+                    .iter()
+                    .filter_map(|&t| match self.step(&node.env, t) {
+                        Step::Taken(env) => {
+                            Some((t, env, self.graph.transitions[t].weight.unwrap_or(1)))
+                        }
+                        Step::Blocked(_) => None,
+                    })
+                    .collect();
+                let sum: u64 = moves.iter().map(|m| u64::from(m.2)).sum();
+                if sum == 0 {
+                    break;
+                }
+                let mut pick = rng.next() % sum;
+                let (t, env, _) = moves
+                    .into_iter()
+                    .find(|m| {
+                        let w = u64::from(m.2);
+                        if pick < w {
+                            true
+                        } else {
+                            pick -= w;
+                            false
+                        }
+                    })
+                    .expect("a pick below the sum lands on a move");
+                node = Node {
+                    state: self.transitions[t].to,
+                    env,
+                    last: Some(t),
+                };
+                path.push(t);
+            }
+            if path.is_empty() {
+                skipped.push(SkippedPath {
+                    transition_ids: Vec::new(),
+                    reason: "no transition can be taken from the initial state (guards or weights)"
+                        .into(),
+                });
+                return (paths, skipped);
+            }
+            if seen.insert(path.clone()) {
+                covered.extend(path.iter().copied());
+                paths.push(path);
+            }
+        }
+        if !done(&paths, &covered) {
+            skipped.push(SkippedPath {
+                transition_ids: Vec::new(),
+                reason: format!(
+                    "stopped after {MAX_RANDOM_WALKS} walks with {} distinct test case(s) covering {} of {total} transitions",
+                    paths.len(),
+                    covered.len()
+                ),
+            });
+        }
+        (paths, skipped)
     }
 
     fn enumerate_bounded(&self, max_len: usize) -> (Vec<Vec<usize>>, Vec<SkippedPath>) {
@@ -546,6 +831,29 @@ pub fn generate(
                 .ok_or(GenerationError::MissingMaxPathLength)?;
             machine.enumerate_bounded(n)
         }
+        CoverageCriterion::PrimePaths => {
+            machine.cover_prime_paths(options.max_path_length.unwrap_or(default_depth))
+        }
+        CoverageCriterion::ReachElement => {
+            let id = options.target.ok_or(GenerationError::MissingTarget)?;
+            let target = if let Some(i) = graph.states.iter().position(|s| s.id == id) {
+                Target::State(i)
+            } else if let Some(i) = graph.transitions.iter().position(|t| t.id == id) {
+                Target::Transition(i)
+            } else {
+                return Err(GenerationError::UnknownTarget);
+            };
+            match machine.path_through(target, options.max_path_length.unwrap_or(default_depth)) {
+                Ok(path) => (vec![path], Vec::new()),
+                Err(skip) => (Vec::new(), vec![skip]),
+            }
+        }
+        CoverageCriterion::Random => machine.random_walks(
+            options.seed,
+            options.max_path_length.unwrap_or(default_depth),
+            options.stop_after_tests,
+            options.stop_at_coverage,
+        ),
         criterion => {
             machine.cover_greedily(criterion, options.max_path_length.unwrap_or(default_depth))
         }
@@ -679,6 +987,7 @@ mod tests {
             guard: None,
             action: None,
             expected: None,
+            weight: None,
         }
     }
 
@@ -713,11 +1022,7 @@ mod tests {
     }
 
     fn opts(criterion: CoverageCriterion, seed: u64) -> GenerationOptions {
-        GenerationOptions {
-            criterion,
-            seed,
-            max_path_length: None,
-        }
+        GenerationOptions::new(criterion, seed)
     }
 
     #[test]
@@ -779,6 +1084,189 @@ mod tests {
         .unwrap();
         assert!(out.paths.iter().all(|p| p.transitions.len() <= 3));
         assert!(out.paths.len() >= 3);
+    }
+
+    /// Start -> A <-> B, A -> End: a loop between A and B.
+    fn loop_model() -> ModelGraph {
+        let start = state("Start", StateKind::Initial);
+        let a = state("A", StateKind::Normal);
+        let b = state("B", StateKind::Normal);
+        let end = state("End", StateKind::Final);
+        ModelGraph {
+            variables: vec![],
+            transitions: vec![
+                tr(&start, &a, "begin"),
+                tr(&a, &b, "ab"),
+                tr(&b, &a, "ba"),
+                tr(&a, &end, "finish"),
+            ],
+            states: vec![start, a, b, end],
+        }
+    }
+
+    fn events(g: &ModelGraph, p: &GeneratedPath) -> Vec<String> {
+        p.transitions
+            .iter()
+            .map(|id| g.transition(*id).unwrap().event.clone())
+            .collect()
+    }
+
+    #[test]
+    fn prime_paths_cover_the_loop_once_each() {
+        let g = loop_model();
+        let (prime, cut) = Machine::new(&g, 0).unwrap().prime_paths();
+        assert!(!cut);
+        // Maximal simple paths: begin-ab, begin-finish... and the two cycles.
+        let named: HashSet<String> = prime
+            .iter()
+            .map(|p| {
+                p.iter()
+                    .map(|&t| g.transitions[t].event.as_str())
+                    .collect::<Vec<_>>()
+                    .join(">")
+            })
+            .collect();
+        assert!(named.contains("begin>ab"), "{named:?}");
+        assert!(named.contains("begin>finish"), "{named:?}");
+        assert!(named.contains("ab>ba"), "{named:?}");
+        assert!(named.contains("ba>ab"), "{named:?}");
+        assert!(named.contains("ba>finish"), "{named:?}");
+        // A prime path is never part of a longer one.
+        for p in &prime {
+            assert!(!prime
+                .iter()
+                .any(|q| q.len() > p.len() && q.windows(p.len()).any(|w| w == p.as_slice())));
+        }
+        let out = generate(&g, opts(CoverageCriterion::PrimePaths, 1)).unwrap();
+        assert!(out.skipped.is_empty(), "{:?}", out.skipped);
+        assert_eq!(out.coverage.transitions_covered, 4);
+        // Every prime path appears inside some generated test path.
+        for p in &prime {
+            let ids: Vec<Uuid> = p.iter().map(|&t| g.transitions[t].id).collect();
+            assert!(
+                out.paths.iter().any(|q| q
+                    .transitions
+                    .windows(ids.len())
+                    .any(|w| w == ids.as_slice())),
+                "prime path {ids:?} not covered"
+            );
+        }
+        // Same seed, same result.
+        assert_eq!(
+            out,
+            generate(&g, opts(CoverageCriterion::PrimePaths, 1)).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_prime_path_with_an_unsatisfiable_guard_is_skipped_and_reported() {
+        let mut g = loop_model();
+        g.transitions[1].guard = Some("flag".into());
+        g.variables = vec![Variable {
+            name: "flag".into(),
+            var_type: VariableType::Boolean,
+            initial: None,
+        }];
+        let out = generate(&g, opts(CoverageCriterion::PrimePaths, 0)).unwrap();
+        assert!(
+            out.skipped.iter().any(|s| s.reason.contains("infeasible")),
+            "{:?}",
+            out.skipped
+        );
+        assert!(!out.paths.is_empty());
+    }
+
+    #[test]
+    fn reach_element_finds_the_shortest_path_to_a_state_or_transition() {
+        let g = loop_model();
+        let mut o = opts(CoverageCriterion::ReachElement, 0);
+        assert_eq!(generate(&g, o), Err(GenerationError::MissingTarget));
+        o.target = Some(Uuid::new_v4());
+        assert_eq!(generate(&g, o), Err(GenerationError::UnknownTarget));
+        // The state B: Start -> A -> B.
+        o.target = Some(g.states[2].id);
+        let out = generate(&g, o).unwrap();
+        assert_eq!(out.paths.len(), 1);
+        assert_eq!(&events(&g, &out.paths[0])[..2], ["begin", "ab"]);
+        // The transition `finish`.
+        o.target = Some(g.transitions[3].id);
+        let out = generate(&g, o).unwrap();
+        assert_eq!(events(&g, &out.paths[0]), ["begin", "finish"]);
+    }
+
+    #[test]
+    fn reach_element_reports_an_unreachable_target() {
+        let mut g = loop_model();
+        g.transitions[1].guard = Some("flag".into());
+        g.variables = vec![Variable {
+            name: "flag".into(),
+            var_type: VariableType::Boolean,
+            initial: None,
+        }];
+        let mut o = opts(CoverageCriterion::ReachElement, 0);
+        o.target = Some(g.states[2].id);
+        let out = generate(&g, o).unwrap();
+        assert!(out.paths.is_empty());
+        assert_eq!(out.skipped.len(), 1);
+    }
+
+    #[test]
+    fn random_walks_are_deterministic_and_stop_by_count() {
+        let g = loop_model();
+        let mut o = opts(CoverageCriterion::Random, 42);
+        o.stop_after_tests = Some(4);
+        let a = generate(&g, o).unwrap();
+        assert_eq!(a, generate(&g, o).unwrap());
+        assert!(a.paths.len() <= 4 && !a.paths.is_empty());
+        // Each walk starts at the initial state and ends in a final state or at the length cap.
+        for p in &a.paths {
+            assert_eq!(p.states[0], g.states[0].id);
+        }
+        // Without a stop condition: the default number of walks, or all distinct ones.
+        let d = generate(&g, opts(CoverageCriterion::Random, 1)).unwrap();
+        assert!(d.paths.len() <= DEFAULT_RANDOM_WALKS);
+    }
+
+    #[test]
+    fn random_walks_follow_the_weights() {
+        let mut g = loop_model();
+        // From A: never loop back (ab weight 0), always finish.
+        g.transitions[1].weight = Some(0);
+        let mut o = opts(CoverageCriterion::Random, 7);
+        o.stop_after_tests = Some(5);
+        let out = generate(&g, o).unwrap();
+        assert_eq!(
+            out.paths.len(),
+            1,
+            "only one distinct walk exists: {:?}",
+            out.paths
+        );
+        assert_eq!(events(&g, &out.paths[0]), ["begin", "finish"]);
+        // Mostly finish: a heavy `finish` shows up in the first walk.
+        let mut g = loop_model();
+        g.transitions[3].weight = Some(1000);
+        let out = generate(&g, o).unwrap();
+        assert!(events(&g, &out.paths[0]).contains(&"finish".to_string()));
+    }
+
+    #[test]
+    fn random_walks_stop_at_a_coverage_target() {
+        let g = loop_model();
+        let mut o = opts(CoverageCriterion::Random, 3);
+        o.stop_at_coverage = Some(100);
+        let out = generate(&g, o).unwrap();
+        assert_eq!(out.coverage.transitions_covered, 4, "{:?}", out.skipped);
+        // Reaching it stops the run early, rather than making 1 000 walks.
+        assert!(out.paths.len() < 50);
+    }
+
+    #[test]
+    fn random_walks_say_when_no_transition_can_be_taken() {
+        let mut g = loop_model();
+        g.transitions[0].weight = Some(0);
+        let out = generate(&g, opts(CoverageCriterion::Random, 0)).unwrap();
+        assert!(out.paths.is_empty());
+        assert_eq!(out.skipped.len(), 1);
     }
 
     #[test]

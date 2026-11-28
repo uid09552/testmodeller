@@ -44,6 +44,7 @@ describe('GenerateDialogComponent', () => {
   async function render(existing: TestCase[] = []) {
     const api = {
       modelTestCases: vi.fn(async () => existing),
+      getModel: vi.fn(async () => ({ states: [], transitions: [] })),
       generate: vi.fn(async (_: string, req: { save?: boolean }) => ({
         seed: 42, testCases: [tc('Path 1'), tc('Path 2')], coverage: COVERAGE,
         ...(req.save ? {} : {}),
@@ -91,6 +92,39 @@ describe('GenerateDialogComponent', () => {
     c.setSeed(new CustomEvent('valueChange', { detail: '7' }));
     await c.preview();
     expect(api.generate).toHaveBeenLastCalledWith('m1', { criterion: 'bounded-paths', seed: 7, maxPathLength: 5, save: false });
+  });
+
+  it('sends the options of prime paths, reach-element and random walks', async () => {
+    const { c, api } = await render();
+    api.getModel = vi.fn(async () => ({
+      states: [{ id: 's1', name: 'Start', kind: 'initial' }, { id: 's2', name: 'Done', kind: 'final' }],
+      transitions: [{ id: 't1', from: 's1', to: 's2', event: 'finish' }],
+    })) as never;
+    await c.ngOnInit();
+    expect(c.elements().map(e => e.label)).toEqual(['State: Start', 'State: Done', 'Transition: Start → Done on "finish"']);
+
+    c.setCriterion(new CustomEvent('valueChange', { detail: 'prime-paths' }));
+    await c.preview();
+    expect(api.generate.mock.calls.at(-1)![1]).toMatchObject({ criterion: 'prime-paths', save: false });
+
+    c.setCriterion(new CustomEvent('valueChange', { detail: 'reach-element' }));
+    expect(c.canRun()).toBe(false); // an element has to be chosen
+    c.setTarget(new CustomEvent('valueChange', { detail: 'nope' }));
+    expect(c.canRun()).toBe(false);
+    c.setTarget(new CustomEvent('valueChange', { detail: 't1' }));
+    await c.preview();
+    expect(api.generate.mock.calls.at(-1)![1]).toMatchObject({ criterion: 'reach-element', targetId: 't1' });
+
+    c.setCriterion(new CustomEvent('valueChange', { detail: 'random' }));
+    c.setStopAfter(new CustomEvent('valueChange', { detail: 4 }));
+    c.setStopCoverage(new CustomEvent('valueChange', { detail: 80 }));
+    await c.preview();
+    expect(api.generate.mock.calls.at(-1)![1]).toMatchObject({ criterion: 'random', stopAfterTests: 4, stopAtCoverage: 80 });
+    c.setStopCoverage(new CustomEvent('valueChange', { detail: '' }));
+    await c.preview();
+    expect('stopAtCoverage' in (api.generate.mock.calls.at(-1)![1] as object)).toBe(false);
+    c.setStopAfter(new CustomEvent('valueChange', { detail: 0 }));
+    expect(c.canRun()).toBe(false);
   });
 
   it('compares with the existing generated test cases and warns about duplicates', async () => {

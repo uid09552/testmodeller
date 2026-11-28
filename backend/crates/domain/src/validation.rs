@@ -241,6 +241,7 @@ mod tests {
             guard: None,
             action: None,
             expected: None,
+            weight: None,
         }
     }
 
