@@ -109,6 +109,8 @@ export function toModelInput(m: PersistedModel): ModelInput {
     description: n.description?.trim() || undefined,
     kind: toApiKind(n.kind),
     position: { x: Math.round(n.x), y: Math.round(n.y) },
+    // Always sent: a save replaces the whole model, so leaving tags out would delete them.
+    requirements: n.requirements ?? [],
   }));
   const transitions: TransitionInput[] = m.edges
     // An edge to a state that is gone would make the whole save fail as a
@@ -123,6 +125,7 @@ export function toModelInput(m: PersistedModel): ModelInput {
       action: e.action?.trim() || undefined,
       expected: e.expected?.trim() || undefined,
       weight: e.weight,
+      requirements: e.requirements ?? [],
     }));
   return {
     name: m.name?.trim() || 'Model',
@@ -288,6 +291,7 @@ export function fromRemote(
       shape,
       ...(prior?.style ? { style: prior.style } : {}),
       description: s.description,
+      ...(s.requirements?.length ? { requirements: s.requirements } : {}),
       tests: (testsByState.get(id) ?? []).sort((a, b) => a.seq - b.seq),
     };
   });
@@ -304,6 +308,7 @@ export function fromRemote(
       action: t.action,
       ...(t.expected ? { expected: t.expected } : {}),
       ...(t.weight !== undefined && t.weight !== null ? { weight: t.weight } : {}),
+      ...(t.requirements?.length ? { requirements: t.requirements } : {}),
       curve: prior?.curve ?? 0,
       fromAnchor: prior?.fromAnchor,
       toAnchor: prior?.toAnchor,

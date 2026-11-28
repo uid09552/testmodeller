@@ -83,6 +83,17 @@ impl TraceItem {
     }
 }
 
+/// A requirement tag (ADR 0021): the elements carrying it and the test cases covering it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceRequirement {
+    /// The tag: a backlog URL or a short key, as entered.
+    pub requirement: String,
+    /// States and transitions tagged with it, in model order.
+    pub elements: Vec<TraceElement>,
+    /// Test cases in scope assigned to one of those elements, or whose backlog link is the tag.
+    pub test_cases: Vec<Uuid>,
+}
+
 /// Counts over the scoped test cases, before any gap narrowing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TraceSummary {
@@ -96,6 +107,8 @@ pub struct TraceSummary {
     pub unimplemented: i64,
     /// Backlog items covering no model element.
     pub no_elements: i64,
+    /// Requirement tags no test case in scope covers.
+    pub untested_requirements: i64,
 }
 
 /// Result of a traceability query.
@@ -105,6 +118,8 @@ pub struct Traceability {
     pub items: Vec<TraceItem>,
     /// Test cases without a backlog link.
     pub untraced: Vec<TraceTestCase>,
+    /// Requirement tags of model elements.
+    pub requirements: Vec<TraceRequirement>,
     /// Counts.
     pub summary: TraceSummary,
 }
@@ -192,7 +207,14 @@ impl Store {
             }
         }
 
+        let requirements = self
+            .trace_requirements(project_id, &items, &untraced)
+            .await?;
         let summary = TraceSummary {
+            untested_requirements: requirements
+                .iter()
+                .filter(|r| r.test_cases.is_empty())
+                .count() as i64,
             backlog_items: items.len() as i64,
             test_cases: rows.len() as i64,
             untraced: untraced.len() as i64,
@@ -218,7 +240,71 @@ impl Store {
         Ok(Traceability {
             items,
             untraced,
+            requirements,
             summary,
         })
+    }
+
+    /// Requirement tags of the project's states and transitions, with covering test cases.
+    async fn trace_requirements(
+        &self,
+        project_id: Uuid,
+        items: &[TraceItem],
+        untraced: &[TraceTestCase],
+    ) -> Result<Vec<TraceRequirement>> {
+        let rows = sqlx::query(
+            "SELECT m.id AS model_id, e.id, e.kind, e.requirements FROM (
+                 SELECT id, model_id, 'state' AS kind, requirements, sort_order FROM states
+                 UNION ALL
+                 SELECT id, model_id, 'transition', requirements, sort_order FROM transitions
+             ) e
+             JOIN models m ON m.id = e.model_id
+             JOIN features f ON f.id = m.feature_id
+             JOIN components c ON c.id = f.component_id
+             WHERE c.project_id = $1 AND e.requirements <> '[]'::jsonb
+             ORDER BY m.created_at, m.id, e.kind DESC, e.sort_order, e.id",
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut out: Vec<TraceRequirement> = Vec::new();
+        for row in &rows {
+            let id: Uuid = row.try_get("id")?;
+            let target = if row.try_get::<String, _>("kind")? == "state" {
+                AssignmentTarget::State(id)
+            } else {
+                AssignmentTarget::Transition(id)
+            };
+            let element = TraceElement {
+                model_id: row.try_get("model_id")?,
+                target,
+            };
+            let tags: Vec<String> =
+                serde_json::from_value(row.try_get("requirements")?).unwrap_or_default();
+            for tag in tags {
+                match out.iter_mut().find(|r| r.requirement == tag) {
+                    Some(r) => r.elements.push(element),
+                    None => out.push(TraceRequirement {
+                        requirement: tag,
+                        elements: vec![element],
+                        test_cases: Vec::new(),
+                    }),
+                }
+            }
+        }
+        let cases = items
+            .iter()
+            .flat_map(|i| i.test_cases.iter().map(move |t| (Some(&i.backlog_url), t)))
+            .chain(untraced.iter().map(|t| (None, t)));
+        for (backlog, tc) in cases {
+            for r in &mut out {
+                let by_element = tc.elements.iter().any(|e| r.elements.contains(e));
+                let by_link = backlog.is_some_and(|b| *b == r.requirement);
+                if (by_element || by_link) && !r.test_cases.contains(&tc.id) {
+                    r.test_cases.push(tc.id);
+                }
+            }
+        }
+        Ok(out)
     }
 }

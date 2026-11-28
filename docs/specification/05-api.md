@@ -22,11 +22,11 @@ REST/JSON under `/api/v1`. Errors use RFC 7807 problem details. Updates of versi
 | States / Transitions | Fine-grained CRUD within a model (transition = model step) |
 | TestCases | CRUD under a feature (manual), move, steps embedded, optional `implementationUrl` and `backlogUrl`, `threatIds` (threats of the project's threat model it covers), read-only `lastResult` |
 | Assignments | Assign test cases to states/transitions; list per test case, state, transition, model |
-| Generation | Generate test cases from a model (optionally saved and assigned) by criterion: `state`, `transition`, `transition-pair`, `bounded-paths`, `prime-paths`, `reach-element` (shortest path to `targetId`) or a seeded weighted `random` walk with stop conditions (`stopAfterTests`, `stopAtCoverage`); simulate one step of a model |
-| Coverage | Per model, feature, component; stale generated test cases of a model |
+| Generation | Generate test cases from a model (optionally saved and assigned) by criterion: `state`, `transition`, `transition-pair`, `bounded-paths`, `prime-paths`, `reach-element` (shortest path to `targetId`), `requirement` (one path per requirement tag of the model's elements) or a seeded weighted `random` walk with stop conditions (`stopAfterTests`, `stopAtCoverage`); simulate one step of a model |
+| Coverage | Per model, feature, component (states, transitions and requirement tags); stale generated test cases of a model |
 | TestResults | Import JUnit XML / Cucumber JSON results for a project, result history per test case |
-| Traceability | Read-only trace of backlog items to test cases, model elements and implementation links, with gaps |
-| Export | JSON/CSV/Gherkin export, JSON import |
+| Traceability | Read-only trace of backlog items and of requirement tags on model elements to test cases, model elements and implementation links, with gaps |
+| Export | JSON/CSV/Gherkin/Playwright export, JSON import |
 | AI | Async proposal jobs, list/accept/reject proposals |
 | Settings | AI provider settings |
 | ThreatModel | One threat model per project (`/projects/{id}/threat-model`); under `/threat-models/{id}`: scope and risk thresholds, diagram `layout` (opaque, own `layoutVersion`), summary, and CRUD of zones, architecture components, assets, data flows, threats, controls and security tests; suggest threats (STRIDE rules), bulk status, generate security tests, manual results, convert a security test into a feature test case. See [09-threat-modeling.md](09-threat-modeling.md) |
@@ -51,9 +51,9 @@ error. Tools that write (marked ✎) need a key with the `Editor` role.
 | `tm_search` | `projectId`, `query`, `types?`, `limit?` | `GET /projects/{id}/search` |
 | `tm_get_model` | `modelId` | `GET /models/{id}`, `POST /models/{id}/validate`, `GET /models/{id}/coverage` |
 | `tm_save_model` ✎ | `featureId` (create) or `modelId` (replace), `name`, `states`, `transitions`, `description?` | `POST /features/{id}/models`, or `GET` + `PUT /models/{id}` with the current version |
-| `tm_generate_test_cases` ✎ | `modelId`, `criterion?` (default `transition`), `seed?`, `maxPathLength?`, `save?` | `POST /models/{id}/generate` |
+| `tm_generate_test_cases` ✎ | `modelId`, `criterion?` (default `transition`; also `requirement`), `seed?`, `maxPathLength?`, `save?` | `POST /models/{id}/generate` |
 | `tm_list_test_cases` | `featureId` or `modelId`, `limit?`, `detail?` | `GET /features/{id}/test-cases` or `GET /models/{id}/test-cases` |
-| `tm_export` | `projectId`, `format` (`gherkin`, `csv`, `json`), `featureId?`, `componentId?` | `GET /projects/{id}/export` |
+| `tm_export` | `projectId`, `format` (`gherkin`, `csv`, `json`, `playwright`), `featureId?`, `componentId?` | `GET /projects/{id}/export` |
 | `tm_import_test_results` ✎ | `projectId`, `format` (`junit`, `cucumber`), `content`, `dryRun?` | `POST /projects/{id}/test-results` |
 | `tm_get_coverage` | one of `modelId`, `featureId`, `componentId` | `GET /{models,features,components}/{id}/coverage` |
 | `tm_get_traceability` | `projectId` | `GET /projects/{id}/traceability` |
@@ -62,6 +62,10 @@ error. Tools that write (marked ✎) need a key with the `Editor` role.
 | `tm_get_ai_job` | `jobId` | `GET /jobs/{id}`, and `GET /proposals/{id}` for each proposal of a succeeded job |
 | `tm_list_proposals` | `projectId`, `status?`, `limit?`, `detail?` | `GET /projects/{id}/proposals` |
 | `tm_decide_proposal` ✎ | `proposalId`, `decision` (`accept`, `reject`), `payload?` | `POST /proposals/{id}/accept` or `/reject` |
+| `tm_get_project_status` | `projectId` | `GET /projects/{id}/tree`, per model `GET /models/{id}`, `POST /models/{id}/validate` and `GET /models/{id}/coverage` (at most 50 models), `GET /projects/{id}/traceability` and `GET /projects/{id}/proposals?status=pending` |
+| `tm_triage_failures` | `projectId`, `limit?` | `GET /projects/{id}/traceability` and `GET /models/{id}`: failed or errored last results grouped by the state or transition their test case is assigned to, most failures first; failures with no assignment are listed apart |
+| `tm_update_test_case` ✎ | `testCaseId`, any of `name`, `description`, `preconditions`, `priority`, `status`, `tags`, `implementationUrl`, `backlogUrl`, `steps` | `GET` + `PUT /test-cases/{id}` with the current version; omitted fields, assignments and threat links are kept |
+| `tm_patch_model` ✎ | `modelId`, `name?`, `description?`, `addStates?`, `addTransitions?`, `removeStateIds?`, `removeTransitionIds?` | `GET` + `PUT /models/{id}` with the current version; removing a state removes its transitions |
 
 Names carry the `tm_` prefix so they do not collide with other servers' tools
 (`search`, `export`). Listings take `limit` (1–500, default 100) and report

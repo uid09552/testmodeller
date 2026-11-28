@@ -163,6 +163,10 @@ fn the_catalogue_matches_the_spec_and_marks_writes() {
             "tm_get_ai_job",
             "tm_list_proposals",
             "tm_decide_proposal",
+            "tm_get_project_status",
+            "tm_triage_failures",
+            "tm_update_test_case",
+            "tm_patch_model",
         ]
     );
     let writes: Vec<&str> = tools
@@ -177,7 +181,9 @@ fn the_catalogue_matches_the_spec_and_marks_writes() {
             "tm_generate_test_cases",
             "tm_import_test_results",
             "tm_request_ai_proposals",
-            "tm_decide_proposal"
+            "tm_decide_proposal",
+            "tm_update_test_case",
+            "tm_patch_model"
         ]
     );
     let destructive: Vec<&str> = tools
@@ -185,14 +191,25 @@ fn the_catalogue_matches_the_spec_and_marks_writes() {
         .filter(|t| t["annotations"]["destructiveHint"] == true)
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    assert_eq!(destructive, ["tm_save_model", "tm_decide_proposal"]);
+    assert_eq!(
+        destructive,
+        [
+            "tm_save_model",
+            "tm_decide_proposal",
+            "tm_update_test_case",
+            "tm_patch_model"
+        ]
+    );
     let repeatable_writes: Vec<&str> = tools
         .iter()
         .filter(|t| t["annotations"]["readOnlyHint"] == false)
         .filter(|t| t["annotations"]["idempotentHint"] == true)
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    assert_eq!(repeatable_writes, ["tm_import_test_results"]);
+    assert_eq!(
+        repeatable_writes,
+        ["tm_import_test_results", "tm_update_test_case"]
+    );
     for t in &tools {
         assert_eq!(t["inputSchema"]["type"], "object", "{}", t["name"]);
         assert_eq!(t["outputSchema"]["type"], "object", "{}", t["name"]);
@@ -534,4 +551,160 @@ async fn an_ai_job_can_be_followed_up_and_never_accepts() {
     let r = call(&fake, "tm_get_ai_job", json!({ "jobId": "nope" })).await;
     assert_eq!(r["isError"], true);
     assert!(fake.calls().iter().all(|c| c.method == Method::Get));
+}
+
+const T1: &str = "44444444-4444-4444-8444-444444444441";
+const T2: &str = "44444444-4444-4444-8444-444444444442";
+const TR: &str = "55555555-5555-4555-8555-555555555551";
+const S1: &str = "66666666-6666-4666-8666-666666666661";
+const S2: &str = "66666666-6666-4666-8666-666666666662";
+
+fn trace_answer(r: &ApiRequest) -> ApiResponse {
+    if r.path.ends_with("/traceability") {
+        let failed = |id: &str, name: &str| {
+            json!({ "id": id, "name": name, "featureId": F, "componentId": F,
+                "lastResult": { "status": "failed", "message": "boom", "runId": "r1" },
+                "elements": [{ "modelId": M, "transitionId": TR }] })
+        };
+        return ok(json!({
+            "items": [{ "backlogUrl": "https://x/1", "testCases": [
+                failed(T1, "Lockout"),
+                { "id": T2, "name": "Fine", "featureId": F, "componentId": F,
+                  "lastResult": { "status": "passed" }, "elements": [] } ] }],
+            "untraced": [{ "id": "44444444-4444-4444-8444-444444444443", "name": "Loose",
+                "featureId": F, "componentId": F,
+                "lastResult": { "status": "error" }, "elements": [] }],
+            "summary": { "backlogItems": 1, "testCases": 3, "untraced": 1, "unimplemented": 0, "noElements": 0 }
+        }));
+    }
+    if r.path.ends_with("/tree") {
+        return ok(
+            json!({ "components": [{ "features": [{ "models": [{ "id": M, "name": "Login" }] }] }] }),
+        );
+    }
+    if r.path.ends_with("/proposals") {
+        return ok(json!({ "items": [{ "id": T1 }], "nextCursor": null }));
+    }
+    if r.path.starts_with("/models/") && r.path.ends_with("/validate") {
+        return ok(json!([]));
+    }
+    if r.path.starts_with("/models/") && r.path.ends_with("/coverage") {
+        return ok(json!({ "transitions": { "covered": 1, "total": 2 } }));
+    }
+    if r.path.starts_with("/models/") {
+        return ok(json!({ "id": M, "name": "Login", "version": 3,
+            "states": [{ "id": S1, "name": "Start", "kind": "initial" }, { "id": S2, "name": "Locked", "kind": "final" }],
+            "transitions": [{ "id": TR, "from": S1, "to": S2, "event": "3 bad passwords" }] }));
+    }
+    ok(json!({}))
+}
+
+#[tokio::test]
+async fn project_status_gathers_models_gaps_proposals_and_failures() {
+    let fake = Fake::new(trace_answer);
+    let r = call(&fake, "tm_get_project_status", json!({ "projectId": P })).await;
+    assert_eq!(r["isError"], false, "{r}");
+    let c = &r["structuredContent"];
+    assert_eq!(c["models"][0]["name"], "Login");
+    assert_eq!(c["models"][0]["validation"], json!([]));
+    assert_eq!(c["traceability"]["testCases"], 3);
+    assert_eq!(c["pendingProposals"], 1);
+    let failed: Vec<&str> = c["failedTestCases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(failed, ["Lockout", "Loose"]);
+    assert!(fake.calls().iter().all(|c| c.method != Method::Put));
+}
+
+#[tokio::test]
+async fn triage_maps_failures_onto_transitions_and_lists_unassigned() {
+    let fake = Fake::new(trace_answer);
+    let r = call(&fake, "tm_triage_failures", json!({ "projectId": P })).await;
+    assert_eq!(r["isError"], false, "{r}");
+    let c = &r["structuredContent"];
+    let e = &c["elements"][0];
+    assert_eq!(e["type"], "transition");
+    assert_eq!(e["id"], TR);
+    assert_eq!(e["label"], "Start -> Locked on \"3 bad passwords\"");
+    assert_eq!(e["failures"][0]["message"], "boom");
+    assert_eq!(c["elements"].as_array().unwrap().len(), 1);
+    assert_eq!(c["unassigned"][0]["name"], "Loose");
+}
+
+#[tokio::test]
+async fn update_test_case_changes_only_the_given_fields() {
+    let fake = Fake::new(|r| match r.method {
+        Method::Get => ok(
+            json!({ "id": T1, "version": 4, "name": "Old", "priority": "high",
+            "tags": ["smoke"], "threatIds": [S1],
+            "steps": [{ "order": 1, "action": "a", "expected": "b" }] }),
+        ),
+        _ => ok(json!({ "id": T1 })),
+    });
+    let r = call(
+        &fake,
+        "tm_update_test_case",
+        json!({ "testCaseId": T1, "name": "New" }),
+    )
+    .await;
+    assert_eq!(r["isError"], false, "{r}");
+    let put = &fake.calls()[1];
+    assert_eq!(put.method, Method::Put);
+    assert_eq!(put.if_match, Some(4));
+    let Body::Json(body) = &put.body else {
+        panic!()
+    };
+    assert_eq!(body["name"], "New");
+    assert_eq!(body["priority"], "high");
+    assert_eq!(body["tags"], json!(["smoke"]));
+    assert_eq!(body["threatIds"], json!([S1]));
+    assert_eq!(body["steps"], json!([{ "action": "a", "expected": "b" }]));
+}
+
+#[tokio::test]
+async fn patch_model_adds_and_removes_and_drops_dangling_transitions() {
+    let fake = Fake::new(trace_answer);
+    let r = call(
+        &fake,
+        "tm_patch_model",
+        json!({
+            "modelId": M,
+            "removeStateIds": [S2],
+            "addStates": [{ "id": "ok", "name": "Done", "kind": "final" }],
+            "addTransitions": [{ "from": S1, "to": "ok", "event": "login" }]
+        }),
+    )
+    .await;
+    assert_eq!(r["isError"], false, "{r}");
+    assert_eq!(r["structuredContent"]["removedTransitions"], 1);
+    let put = fake
+        .calls()
+        .into_iter()
+        .find(|c| c.method == Method::Put)
+        .unwrap();
+    assert_eq!(put.if_match, Some(3));
+    let Body::Json(body) = &put.body else {
+        panic!()
+    };
+    let states = body["states"].as_array().unwrap();
+    assert_eq!(states.len(), 2);
+    assert!(states.iter().all(|s| s["id"] != S2));
+    let t = &body["transitions"].as_array().unwrap();
+    assert_eq!(t.len(), 1);
+    assert_eq!(t[0]["event"], "login");
+    assert_eq!(t[0]["from"], S1);
+
+    // A transition to an unknown state is refused before any write.
+    let fake = Fake::new(trace_answer);
+    let r = call(
+        &fake,
+        "tm_patch_model",
+        json!({ "modelId": M, "addTransitions": [{ "from": S1, "to": "nope", "event": "x" }] }),
+    )
+    .await;
+    assert_eq!(r["isError"], true);
+    assert!(fake.calls().iter().all(|c| c.method != Method::Put));
 }

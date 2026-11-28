@@ -129,3 +129,20 @@ pending proposals in `tm_proposals`.
 - **Validation:** taxonomy values, ranges, unique names, at least one existing target, every id in this threat model. One retry with the validation error, then the job fails. Accept validates again against the current state.
 - **Budgets:** the token budget of the provider settings and the per-project rate limit of the editor assistant apply. Logs carry kind, prompt version, model id, sizes and outcome, never content.
 - **Provenance:** `origin = ai` and `source` = model id on created entities; pending proposals are not counted anywhere.
+
+## Jobs and retention
+
+Both kinds of job (feature proposals and threat model proposals) run through
+the same code path: rate limit and per-tenant slot first, then the job record,
+then the provider call, then the stored result. Logs carry kind, model id,
+sizes and outcome, never the failure text (it can quote user content); the
+text is returned to the user through the job.
+
+Finished jobs (`succeeded`, `failed`) are deleted `TM_AI_JOB_RETENTION_DAYS`
+(default 7) after their last update, and accepted or rejected proposals
+`TM_AI_PROPOSAL_RETENTION_DAYS` (default 90) after the decision; `0` keeps
+them. Pending proposals and queued or running jobs are never deleted (AGENTS.md
+rule 8). Accepted entities are unaffected: only the proposal record goes.
+A deleted job reads as `404` on `GET /jobs/{id}`. See
+[ADR 0019](../adr/0019-ai-history-retention.md).
+

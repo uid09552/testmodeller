@@ -174,6 +174,7 @@ fn state(name: &str, kind: StateKind) -> State {
         description: None,
         kind,
         position: None,
+        requirements: Vec::new(),
     }
 }
 
@@ -187,6 +188,7 @@ fn tr(from: &State, to: &State, event: &str) -> Transition {
         action: None,
         expected: None,
         weight: None,
+        requirements: Vec::new(),
     }
 }
 

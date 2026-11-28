@@ -99,6 +99,7 @@ async fn fixture(store: &Store, tenant: &str) -> Fixture {
             description: None,
             kind: StateKind::Initial,
             position: None,
+            requirements: Vec::new(),
         }],
         transitions: vec![],
     };

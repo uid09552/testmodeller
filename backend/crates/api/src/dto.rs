@@ -251,6 +251,31 @@ pub struct PositionDto {
     pub y: f64,
 }
 
+/// Trims, drops empty and duplicate tags, and checks the limits (ADR 0021).
+fn clean_requirements(tags: Vec<String>) -> Result<Vec<String>, ApiError> {
+    let mut out: Vec<String> = Vec::with_capacity(tags.len());
+    for t in tags {
+        let t = t.trim().to_owned();
+        if t.is_empty() || out.contains(&t) {
+            continue;
+        }
+        if t.chars().count() > d::graph::MAX_REQUIREMENT_LEN {
+            return Err(ApiError::bad_request(format!(
+                "a requirement must have at most {} characters",
+                d::graph::MAX_REQUIREMENT_LEN
+            )));
+        }
+        out.push(t);
+    }
+    if out.len() > d::graph::MAX_REQUIREMENTS {
+        return Err(ApiError::bad_request(format!(
+            "at most {} requirements per element",
+            d::graph::MAX_REQUIREMENTS
+        )));
+    }
+    Ok(out)
+}
+
 /// State input.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateInput {
@@ -262,18 +287,23 @@ pub struct StateInput {
     pub kind: d::StateKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<PositionDto>,
+    /// Requirements covered: backlog URLs or short keys (at most 50).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requirements: Vec<String>,
 }
 
 impl StateInput {
     /// Validates and converts, assigning a new id if absent.
     pub fn into_state(self) -> Result<d::State, ApiError> {
         check_len("name", &self.name, 1, 500)?;
+        let requirements = clean_requirements(self.requirements)?;
         Ok(d::State {
             id: self.id.unwrap_or_else(Uuid::new_v4),
             name: self.name,
             description: self.description,
             kind: self.kind,
             position: self.position.map(|p| d::Position { x: p.x, y: p.y }),
+            requirements,
         })
     }
 }
@@ -286,6 +316,7 @@ impl From<&d::State> for StateInput {
             description: s.description.clone(),
             kind: s.kind,
             position: s.position.map(|p| PositionDto { x: p.x, y: p.y }),
+            requirements: s.requirements.clone(),
         }
     }
 }
@@ -327,6 +358,9 @@ pub struct TransitionInput {
     /// Relative likelihood in a random walk (0..=1000, default 1).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weight: Option<u32>,
+    /// Requirements covered: backlog URLs or short keys (at most 50).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requirements: Vec<String>,
 }
 
 impl TransitionInput {
@@ -342,6 +376,7 @@ impl TransitionInput {
                 tm_domain::graph::MAX_WEIGHT
             )));
         }
+        let requirements = clean_requirements(self.requirements)?;
         Ok(d::Transition {
             id: self.id.unwrap_or_else(Uuid::new_v4),
             from: self.from,
@@ -351,6 +386,7 @@ impl TransitionInput {
             action: self.action,
             expected: self.expected,
             weight: self.weight,
+            requirements,
         })
     }
 }
@@ -366,6 +402,7 @@ impl From<&d::Transition> for TransitionInput {
             action: t.action.clone(),
             expected: t.expected.clone(),
             weight: t.weight,
+            requirements: t.requirements.clone(),
         }
     }
 }
@@ -961,6 +998,12 @@ pub struct CoverageDto {
     pub transitions: CoverageCount,
     pub uncovered_state_ids: Vec<Uuid>,
     pub uncovered_transition_ids: Vec<Uuid>,
+    /// Requirement tags of the model's elements; absent when nothing is tagged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirements: Option<CoverageCount>,
+    /// Tags no covered element carries.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub uncovered_requirements: Vec<String>,
 }
 
 impl From<&tm_generation::CoverageReport> for CoverageDto {
@@ -978,6 +1021,12 @@ impl From<&tm_generation::CoverageReport> for CoverageDto {
             },
             uncovered_state_ids: c.uncovered_state_ids.clone(),
             uncovered_transition_ids: c.uncovered_transition_ids.clone(),
+            requirements: (c.requirements_total > 0).then_some(CoverageCount {
+                covered: c.requirements_covered,
+                total: c.requirements_total,
+                passing: None,
+            }),
+            uncovered_requirements: c.uncovered_requirements.clone(),
         }
     }
 }
@@ -1440,6 +1489,15 @@ pub struct TraceItemDto {
     pub test_cases: Vec<TraceTestCaseDto>,
 }
 
+/// A requirement tag with its tagged elements and covering test cases.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceRequirementDto {
+    pub requirement: String,
+    pub tagged_elements: Vec<TraceElementDto>,
+    pub test_case_ids: Vec<Uuid>,
+}
+
 /// Counts of a trace.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1449,6 +1507,7 @@ pub struct TraceSummaryDto {
     pub untraced: i64,
     pub unimplemented: i64,
     pub no_elements: i64,
+    pub untested_requirements: i64,
 }
 
 /// `GET /projects/{projectId}/traceability` response.
@@ -1457,6 +1516,7 @@ pub struct TraceSummaryDto {
 pub struct TraceabilityDto {
     pub items: Vec<TraceItemDto>,
     pub untraced: Vec<TraceTestCaseDto>,
+    pub requirements: Vec<TraceRequirementDto>,
     pub summary: TraceSummaryDto,
 }
 
@@ -1472,12 +1532,36 @@ impl From<&tm_storage::Traceability> for TraceabilityDto {
                 })
                 .collect(),
             untraced: t.untraced.iter().map(Into::into).collect(),
+            requirements: t
+                .requirements
+                .iter()
+                .map(|r| TraceRequirementDto {
+                    requirement: r.requirement.clone(),
+                    tagged_elements: r
+                        .elements
+                        .iter()
+                        .map(|e| {
+                            let (state_id, transition_id) = match e.target {
+                                d::AssignmentTarget::State(s) => (Some(s), None),
+                                d::AssignmentTarget::Transition(t) => (None, Some(t)),
+                            };
+                            TraceElementDto {
+                                model_id: e.model_id,
+                                state_id,
+                                transition_id,
+                            }
+                        })
+                        .collect(),
+                    test_case_ids: r.test_cases.clone(),
+                })
+                .collect(),
             summary: TraceSummaryDto {
                 backlog_items: t.summary.backlog_items,
                 test_cases: t.summary.test_cases,
                 untraced: t.summary.untraced,
                 unimplemented: t.summary.unimplemented,
                 no_elements: t.summary.no_elements,
+                untested_requirements: t.summary.untested_requirements,
             },
         }
     }

@@ -55,6 +55,15 @@ pub struct Config {
     #[arg(long, env = "TM_AI_MAX_TOKENS")]
     pub ai_max_tokens: Option<String>,
 
+    /// Days to keep finished AI jobs before they are deleted; 0 keeps them forever.
+    #[arg(long, env = "TM_AI_JOB_RETENTION_DAYS", default_value_t = 7)]
+    pub ai_job_retention_days: u32,
+
+    /// Days to keep accepted and rejected AI proposals; 0 keeps them forever. Pending
+    /// proposals are never deleted.
+    #[arg(long, env = "TM_AI_PROPOSAL_RETENTION_DAYS", default_value_t = 90)]
+    pub ai_proposal_retention_days: u32,
+
     /// API key for the configured LLM provider. Never logged. Not needed for
     /// a local Ollama.
     #[arg(long, env = "TM_AI_API_KEY", hide_env_values = true)]

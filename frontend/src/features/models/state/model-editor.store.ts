@@ -190,6 +190,8 @@ export interface CanvasNode {
   w: number;
   h: number;
   description?: string;
+  /** Requirement tags (backlog URLs or short keys); carried through saves. */
+  requirements?: string[];
   tests: StateTest[];
   shape: NodeShape;
   /** The user's styling; absent keys keep the kind's default look. */
@@ -322,6 +324,8 @@ export interface CanvasEdge {
   expected?: string;
   /** Relative likelihood in a random walk (0..1000, default 1); carried through saves. */
   weight?: number;
+  /** Requirement tags (backlog URLs or short keys); carried through saves. */
+  requirements?: string[];
   curve: number; // perpendicular bezier offset (0 = straight)
   /** Connector dots this transition joins. Absent on edges stored before
    *  anchors existed, which fall back to centre-to-centre geometry. */

@@ -113,7 +113,7 @@ async fn api_keys_drive_the_mcp_endpoint_within_their_tenant_and_role() {
         json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
     )
     .await;
-    assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 15);
+    assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 19);
 
     // ── Tools run through the real API ──────────────────────────────────────
     let projects = tool(&app, &key, "tm_list_projects", json!({})).await;
@@ -258,4 +258,79 @@ async fn api_keys_drive_the_mcp_endpoint_within_their_tenant_and_role() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+#[tokio::test]
+async fn new_tools_respect_tenant_and_role() {
+    let app = common::app().await;
+    let mine = common::tree(&app.store, "dev").await;
+    let theirs = common::tree(&app.store, "other").await;
+    let editor = stored_key(&app, "dev", "Editor").await;
+    let viewer = stored_key(&app, "dev", "User").await;
+    let (_, tc) = app
+        .send(
+            "POST",
+            &format!("/features/{}/test-cases", mine.feature),
+            Some(json!({ "name": "Case", "steps": [{ "action": "a", "expected": "b" }] })),
+        )
+        .await;
+    let id = tc["id"].as_str().unwrap();
+
+    // An editor changes one field; the steps are kept.
+    let r = tool(
+        &app,
+        &editor,
+        "tm_update_test_case",
+        json!({ "testCaseId": id, "name": "Renamed" }),
+    )
+    .await;
+    assert_eq!(r["isError"], false, "{r}");
+    let (_, now) = app.send("GET", &format!("/test-cases/{id}"), None).await;
+    assert_eq!(now["name"], "Renamed");
+    assert_eq!(now["steps"].as_array().unwrap().len(), 1);
+
+    // A viewer may not write.
+    let r = tool(
+        &app,
+        &viewer,
+        "tm_update_test_case",
+        json!({ "testCaseId": id, "name": "Nope" }),
+    )
+    .await;
+    assert_eq!(r["isError"], true);
+
+    // Another tenant's test case, model and project are not found.
+    let other_tc = uuid::Uuid::new_v4();
+    for (name, args) in [
+        (
+            "tm_update_test_case",
+            json!({ "testCaseId": other_tc, "name": "x" }),
+        ),
+        (
+            "tm_patch_model",
+            json!({ "modelId": theirs.model, "name": "x" }),
+        ),
+        (
+            "tm_get_project_status",
+            json!({ "projectId": theirs.project }),
+        ),
+        ("tm_triage_failures", json!({ "projectId": theirs.project })),
+    ] {
+        let r = tool(&app, &editor, name, args).await;
+        assert_eq!(r["isError"], true, "{name}: {r}");
+    }
+
+    // The status of my own project works end to end.
+    let r = tool(
+        &app,
+        &viewer,
+        "tm_get_project_status",
+        json!({ "projectId": mine.project }),
+    )
+    .await;
+    assert_eq!(r["isError"], false, "{r}");
+    assert_eq!(
+        r["structuredContent"]["models"].as_array().unwrap().len(),
+        1
+    );
 }

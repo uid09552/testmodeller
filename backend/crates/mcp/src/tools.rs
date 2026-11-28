@@ -148,7 +148,8 @@ const TOOLS: &[Tool] = &[
                             "id": { "type": "string", "description": "UUID or a short key" },
                             "name": { "type": "string" },
                             "kind": { "enum": ["initial", "normal", "final"] },
-                            "description": { "type": "string" }
+                            "description": { "type": "string" },
+                            "requirements": { "type": "array", "items": { "type": "string" }, "description": "Backlog URLs or short keys the state covers" }
                         }
                     } },
                     "transitions": { "type": "array", "items": {
@@ -156,7 +157,8 @@ const TOOLS: &[Tool] = &[
                         "properties": {
                             "from": { "type": "string" }, "to": { "type": "string" },
                             "event": { "type": "string" }, "guard": { "type": "string" },
-                            "action": { "type": "string" }, "expected": { "type": "string" }
+                            "action": { "type": "string" }, "expected": { "type": "string" },
+                            "requirements": { "type": "array", "items": { "type": "string" }, "description": "Backlog URLs or short keys the transition covers" }
                         }
                     } }
                 }
@@ -182,7 +184,7 @@ const TOOLS: &[Tool] = &[
                 "required": ["modelId"],
                 "properties": {
                     "modelId": id_prop("Model"),
-                    "criterion": { "enum": ["state", "transition", "transition-pair", "bounded-paths"], "default": "transition" },
+                    "criterion": { "enum": ["state", "transition", "transition-pair", "bounded-paths", "requirement"], "default": "transition" },
                     "seed": { "type": "integer" },
                     "maxPathLength": { "type": "integer", "minimum": 1, "description": "Required for bounded-paths" },
                     "save": { "type": "boolean", "default": false }
@@ -214,7 +216,7 @@ const TOOLS: &[Tool] = &[
     Tool {
         name: "tm_export",
         title: "Export test cases",
-        description: "Export a project (or one feature or component) as Gherkin, CSV or JSON.",
+        description: "Export a project (or one feature or component) as Gherkin, CSV, JSON or a Playwright test skeleton.",
         read_only: true,
         destructive: false,
         idempotent: true,
@@ -224,7 +226,7 @@ const TOOLS: &[Tool] = &[
                 "required": ["projectId", "format"],
                 "properties": {
                     "projectId": id_prop("Project"),
-                    "format": { "enum": ["gherkin", "csv", "json"] },
+                    "format": { "enum": ["gherkin", "csv", "json", "playwright"] },
                     "featureId": id_prop("Only this feature"),
                     "componentId": id_prop("Only this component")
                 }
@@ -397,6 +399,105 @@ const TOOLS: &[Tool] = &[
             json!({ "type": "object", "description": "The decided proposal" })
         },
     },
+    Tool {
+        name: "tm_get_project_status",
+        title: "Project status",
+        description: "One call for the state of a project: validation issues and coverage per model, \
+                      traceability gaps, pending AI proposals and the test cases whose last result \
+                      failed. Validation is left out for a read-only key.",
+        read_only: true,
+        destructive: false,
+        idempotent: true,
+        schema: || {
+            json!({ "type": "object", "required": ["projectId"], "properties": {
+                "projectId": id_prop("Project") } })
+        },
+        output: || {
+            json!({ "type": "object", "required": ["models", "traceability", "pendingProposals", "failedTestCases"],
+            "properties": {
+                "models": { "type": "array", "description": "Per model: id, name, validation, coverage" },
+                "modelsTruncated": { "type": "boolean" },
+                "traceability": { "type": "object", "description": "The traceability summary" },
+                "pendingProposals": { "type": "integer" },
+                "failedTestCases": { "type": "array" } } })
+        },
+    },
+    Tool {
+        name: "tm_triage_failures",
+        title: "Triage failed tests",
+        description: "Maps test cases whose last result failed or errored onto the states and \
+                      transitions they are assigned to, most failures first, so you can see which \
+                      part of a model is failing. Deterministic; nothing is guessed.",
+        read_only: true,
+        destructive: false,
+        idempotent: true,
+        schema: || {
+            json!({ "type": "object", "required": ["projectId"], "properties": {
+                "projectId": id_prop("Project"), "limit": limit_prop() } })
+        },
+        output: || {
+            json!({ "type": "object", "required": ["elements", "unassigned", "truncated"], "properties": {
+                "elements": { "type": "array", "description": "Model elements with their failing test cases" },
+                "unassigned": { "type": "array", "description": "Failing test cases assigned to no element" },
+                "truncated": { "type": "boolean" } } })
+        },
+    },
+    Tool {
+        name: "tm_update_test_case",
+        title: "Update a test case",
+        description: "Change only the fields you give; the rest, including assignments and threat \
+                      links, is kept. `steps` replaces all steps.",
+        read_only: false,
+        destructive: true,
+        idempotent: true,
+        schema: || {
+            json!({ "type": "object", "required": ["testCaseId"], "properties": {
+                "testCaseId": id_prop("Test case"),
+                "name": { "type": "string" }, "description": { "type": "string" },
+                "preconditions": { "type": "string" },
+                "priority": { "enum": ["low", "medium", "high", "critical"] },
+                "status": { "enum": ["draft", "ready", "obsolete"] },
+                "tags": { "type": "array", "items": { "type": "string" } },
+                "implementationUrl": { "type": "string" }, "backlogUrl": { "type": "string" },
+                "steps": { "type": "array", "items": { "type": "object", "required": ["action", "expected"],
+                    "properties": { "action": { "type": "string" }, "expected": { "type": "string" } } } }
+            } })
+        },
+        output: || {
+            json!({ "type": "object", "required": ["testCase"], "properties": { "testCase": { "type": "object" } } })
+        },
+    },
+    Tool {
+        name: "tm_patch_model",
+        title: "Patch a model",
+        description: "Add or remove states and transitions of an existing model without resending \
+                      it. New states use short keys; transitions may refer to existing state ids or \
+                      to new keys. Removing a state also removes its transitions.",
+        read_only: false,
+        destructive: true,
+        idempotent: false,
+        schema: || {
+            json!({ "type": "object", "required": ["modelId"], "properties": {
+                "modelId": id_prop("Model"),
+                "name": { "type": "string" }, "description": { "type": "string" },
+                "addStates": { "type": "array", "items": { "type": "object", "required": ["id", "name", "kind"],
+                    "properties": { "id": { "type": "string", "description": "A short key" },
+                        "name": { "type": "string" }, "kind": { "enum": ["normal", "final"] },
+                        "description": { "type": "string" } } } },
+                "addTransitions": { "type": "array", "items": { "type": "object", "required": ["from", "to", "event"],
+                    "properties": { "from": { "type": "string" }, "to": { "type": "string" },
+                        "event": { "type": "string" }, "guard": { "type": "string" },
+                        "action": { "type": "string" }, "expected": { "type": "string" } } } },
+                "removeStateIds": { "type": "array", "items": id_prop("State") },
+                "removeTransitionIds": { "type": "array", "items": id_prop("Transition") }
+            } })
+        },
+        output: || {
+            json!({ "type": "object", "required": ["model", "removedTransitions"], "properties": {
+                "model": { "type": "object" },
+                "removedTransitions": { "type": "integer", "description": "Transitions dropped with their states" } } })
+        },
+    },
 ];
 
 /// The `tools/list` entries.
@@ -445,6 +546,10 @@ pub(crate) async fn run(backend: &dyn Backend, name: &str, args: &Args) -> ToolO
         "tm_get_ai_job" => get_ai_job(backend, args).await,
         "tm_list_proposals" => list_proposals(backend, args).await,
         "tm_decide_proposal" => decide(backend, args).await,
+        "tm_get_project_status" => project_status(backend, args).await,
+        "tm_triage_failures" => triage_failures(backend, args).await,
+        "tm_update_test_case" => update_test_case(backend, args).await,
+        "tm_patch_model" => patch_model(backend, args).await,
         _ => return ToolOutcome::Unknown,
     };
     match out {
@@ -735,7 +840,7 @@ fn graph(args: &Args) -> Result<(Vec<Value>, Vec<Value>), Fail> {
             "name": s.get("name").cloned().unwrap_or(Value::Null),
             "kind": s.get("kind").cloned().unwrap_or(Value::Null),
         });
-        for field in ["description", "position"] {
+        for field in ["description", "position", "requirements"] {
             if let Some(v) = s.get(field) {
                 state[field] = v.clone();
             }
@@ -767,7 +872,7 @@ fn graph(args: &Args) -> Result<(Vec<Value>, Vec<Value>), Fail> {
         {
             transition["id"] = json!(tid);
         }
-        for field in ["guard", "action", "expected"] {
+        for field in ["guard", "action", "expected", "requirements"] {
             if let Some(v) = t.get(field) {
                 transition[field] = v.clone();
             }
@@ -841,7 +946,13 @@ async fn generate(backend: &dyn Backend, args: &Args) -> Out {
     let criterion = choice(
         args,
         "criterion",
-        &["state", "transition", "transition-pair", "bounded-paths"],
+        &[
+            "state",
+            "transition",
+            "transition-pair",
+            "bounded-paths",
+            "requirement",
+        ],
         Some("transition"),
     )?;
     let mut body =
@@ -885,7 +996,12 @@ async fn list_test_cases(backend: &dyn Backend, args: &Args) -> Out {
 
 async fn export(backend: &dyn Backend, args: &Args) -> Out {
     let pid = id(args, "projectId")?;
-    let format = choice(args, "format", &["gherkin", "csv", "json"], None)?;
+    let format = choice(
+        args,
+        "format",
+        &["gherkin", "csv", "json", "playwright"],
+        None,
+    )?;
     let mut request =
         ApiRequest::new(Method::Get, format!("/projects/{pid}/export")).query("format", format);
     if let Some(f) = opt_id(args, "featureId")? {
@@ -1081,4 +1197,380 @@ async fn decide(backend: &dyn Backend, args: &Args) -> Out {
         Some(_) => return Err(Fail("\"payload\" must be an object".into())),
     }
     send(backend, request).await
+}
+
+// ── project status, triage, partial updates ─────────────────────────────────
+
+/// Most models `tm_get_project_status` and `tm_triage_failures` look into.
+const MAX_STATUS_MODELS: usize = 50;
+
+/// Ids of every model in a project tree, in tree order.
+fn model_ids(tree: &Value, out: &mut Vec<Uuid>) {
+    match tree {
+        Value::Object(map) => {
+            if let Some(models) = map.get("models").and_then(Value::as_array) {
+                out.extend(
+                    models
+                        .iter()
+                        .filter_map(|m| m.get("id")?.as_str()?.parse::<Uuid>().ok()),
+                );
+            }
+            map.iter()
+                .filter(|(k, _)| k.as_str() != "models")
+                .for_each(|(_, v)| model_ids(v, out));
+        }
+        Value::Array(items) => items.iter().for_each(|v| model_ids(v, out)),
+        _ => {}
+    }
+}
+
+/// Every test case of a traceability answer, linked or not.
+fn trace_cases(trace: &Value) -> Vec<&Value> {
+    let linked = trace
+        .get("items")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .flat_map(|i| {
+            i.get("testCases")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+        });
+    let untraced = trace
+        .get("untraced")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten();
+    linked.chain(untraced).collect()
+}
+
+fn has_failed(tc: &Value) -> bool {
+    matches!(
+        tc.pointer("/lastResult/status").and_then(Value::as_str),
+        Some("failed" | "error")
+    )
+}
+
+fn failure_of(tc: &Value) -> Value {
+    json!({
+        "id": tc.get("id"),
+        "name": tc.get("name"),
+        "status": tc.pointer("/lastResult/status"),
+        "message": tc.pointer("/lastResult/message"),
+        "runId": tc.pointer("/lastResult/runId"),
+    })
+}
+
+async fn project_status(backend: &dyn Backend, args: &Args) -> Out {
+    let pid = id(args, "projectId")?;
+    let tree = get(backend, format!("/projects/{pid}/tree")).await?;
+    let mut ids = Vec::new();
+    model_ids(&tree, &mut ids);
+    let models_truncated = ids.len() > MAX_STATUS_MODELS;
+    ids.truncate(MAX_STATUS_MODELS);
+    let mut models = Vec::with_capacity(ids.len());
+    for mid in ids {
+        let model = get(backend, format!("/models/{mid}")).await?;
+        let mut entry = json!({ "id": mid, "name": model.get("name") });
+        // Validation is a POST: a read-only key gets the model without it.
+        if let Ok(v) = send(
+            backend,
+            ApiRequest::new(Method::Post, format!("/models/{mid}/validate")),
+        )
+        .await
+        {
+            entry["validation"] = v;
+        }
+        if let Ok(c) = get(backend, format!("/models/{mid}/coverage")).await {
+            entry["coverage"] = c;
+        }
+        models.push(entry);
+    }
+    let trace = get(backend, format!("/projects/{pid}/traceability")).await?;
+    let (pending, _) = all_pages(
+        backend,
+        ApiRequest::new(Method::Get, format!("/projects/{pid}/proposals"))
+            .query("status", "pending"),
+        MAX_LIMIT,
+    )
+    .await?;
+    let failed: Vec<Value> = trace_cases(&trace)
+        .into_iter()
+        .filter(|tc| has_failed(tc))
+        .map(failure_of)
+        .collect();
+    let (failed, _) = capped(failed, DEFAULT_LIMIT);
+    Ok(json!({
+        "models": models,
+        "modelsTruncated": models_truncated,
+        "traceability": trace.get("summary").cloned().unwrap_or(Value::Null),
+        "pendingProposals": pending.len(),
+        "failedTestCases": failed,
+    }))
+}
+
+/// A readable name of a state or transition of `model`.
+fn element_label(model: &Value, kind: &str, element: &str) -> Option<String> {
+    let states = model.get("states")?.as_array()?;
+    let name_of = |sid: &str| {
+        states
+            .iter()
+            .find(|s| s.get("id").and_then(Value::as_str) == Some(sid))
+            .and_then(|s| s.get("name")?.as_str())
+            .unwrap_or("?")
+            .to_owned()
+    };
+    if kind == "state" {
+        return Some(name_of(element));
+    }
+    let t = model
+        .get("transitions")?
+        .as_array()?
+        .iter()
+        .find(|t| t.get("id").and_then(Value::as_str) == Some(element))?;
+    let end = |f: &str| name_of(t.get(f).and_then(Value::as_str).unwrap_or_default());
+    Some(format!(
+        "{} -> {} on \"{}\"",
+        end("from"),
+        end("to"),
+        t.get("event").and_then(Value::as_str).unwrap_or_default()
+    ))
+}
+
+async fn triage_failures(backend: &dyn Backend, args: &Args) -> Out {
+    let pid = id(args, "projectId")?;
+    let cap = limit(args)?;
+    let trace = get(backend, format!("/projects/{pid}/traceability")).await?;
+    // (modelId, kind, elementId) -> failing test cases.
+    let mut groups: std::collections::BTreeMap<(String, &'static str, String), Vec<Value>> =
+        std::collections::BTreeMap::new();
+    let mut unassigned = Vec::new();
+    for tc in trace_cases(&trace).into_iter().filter(|tc| has_failed(tc)) {
+        let elements = tc.get("elements").and_then(Value::as_array);
+        let mut mapped = false;
+        for e in elements.into_iter().flatten() {
+            let Some(model) = e.get("modelId").and_then(Value::as_str) else {
+                continue;
+            };
+            let (kind, element) = match (
+                e.get("stateId").and_then(Value::as_str),
+                e.get("transitionId").and_then(Value::as_str),
+            ) {
+                (_, Some(t)) => ("transition", t),
+                (Some(s), None) => ("state", s),
+                _ => continue,
+            };
+            groups
+                .entry((model.to_owned(), kind, element.to_owned()))
+                .or_default()
+                .push(failure_of(tc));
+            mapped = true;
+        }
+        if !mapped {
+            unassigned.push(failure_of(tc));
+        }
+    }
+    let mut ranked: Vec<_> = groups.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
+    let truncated = ranked.len() > cap;
+    ranked.truncate(cap);
+    let mut models: HashMap<String, Value> = HashMap::new();
+    let mut elements = Vec::with_capacity(ranked.len());
+    for ((model, kind, element), failures) in ranked {
+        if !models.contains_key(&model) && models.len() < MAX_STATUS_MODELS {
+            if let Ok(m) = get(backend, format!("/models/{}", uuid_str(&model)?)).await {
+                models.insert(model.clone(), m);
+            }
+        }
+        let m = models.get(&model);
+        elements.push(json!({
+            "modelId": model,
+            "modelName": m.and_then(|m| m.get("name")),
+            "type": kind,
+            "id": element,
+            "label": m.and_then(|m| element_label(m, kind, &element)),
+            "failures": failures,
+        }));
+    }
+    Ok(json!({ "elements": elements, "unassigned": unassigned, "truncated": truncated }))
+}
+
+/// Re-parses an id the API itself returned, so it is safe in a path.
+fn uuid_str(s: &str) -> Result<Uuid, Fail> {
+    s.parse()
+        .map_err(|_| Fail("the API answered with an invalid id".into()))
+}
+
+async fn update_test_case(backend: &dyn Backend, args: &Args) -> Out {
+    let tid = id(args, "testCaseId")?;
+    let current = get(backend, format!("/test-cases/{tid}")).await?;
+    let version = current
+        .get("version")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| Fail("the test case has no version".into()))?;
+    let mut body = Map::new();
+    // Start from what is stored, then apply the given fields.
+    for field in [
+        "name",
+        "description",
+        "preconditions",
+        "priority",
+        "status",
+        "tags",
+        "implementationUrl",
+        "backlogUrl",
+        "threatIds",
+    ] {
+        if let Some(v) = current.get(field).filter(|v| !v.is_null()) {
+            body.insert(field.to_owned(), v.clone());
+        }
+    }
+    for field in [
+        "name",
+        "description",
+        "preconditions",
+        "priority",
+        "status",
+        "tags",
+        "implementationUrl",
+        "backlogUrl",
+    ] {
+        if let Some(v) = args.get(field).filter(|v| !v.is_null()) {
+            body.insert(field.to_owned(), v.clone());
+        }
+    }
+    let steps = match args.get("steps") {
+        Some(_) => array(args, "steps")?.clone(),
+        None => current
+            .get("steps")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|s| json!({ "action": s.get("action"), "expected": s.get("expected") }))
+            .collect(),
+    };
+    body.insert("steps".into(), Value::Array(steps));
+    let mut request =
+        ApiRequest::new(Method::Put, format!("/test-cases/{tid}")).json(Value::Object(body));
+    request.if_match = Some(version);
+    let testcase = send(backend, request).await?;
+    Ok(json!({ "testCase": testcase }))
+}
+
+async fn patch_model(backend: &dyn Backend, args: &Args) -> Out {
+    let mid = id(args, "modelId")?;
+    let current = get(backend, format!("/models/{mid}")).await?;
+    let version = current
+        .get("version")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| Fail("the model has no version".into()))?;
+    let removed_states: Vec<String> = id_list(args, "removeStateIds")?;
+    let removed_transitions: Vec<String> = id_list(args, "removeTransitionIds")?;
+    let mut states: Vec<Value> = current
+        .get("states")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut transitions: Vec<Value> = current
+        .get("transitions")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_owned);
+    states.retain(|s| !text(s, "id").is_some_and(|i| removed_states.contains(&i)));
+    let before = transitions.len();
+    transitions.retain(|t| {
+        !text(t, "id").is_some_and(|i| removed_transitions.contains(&i))
+            && !text(t, "from").is_some_and(|i| removed_states.contains(&i))
+            && !text(t, "to").is_some_and(|i| removed_states.contains(&i))
+    });
+    let removed = before - transitions.len();
+
+    // Existing states keep their ids; new ones are named by short keys.
+    let mut keys: HashMap<String, Uuid> = states
+        .iter()
+        .filter_map(|s| {
+            let id = text(s, "id")?;
+            Some((id.clone(), id.parse().ok()?))
+        })
+        .collect();
+    for (i, s) in optional_array(args, "addStates")?.iter().enumerate() {
+        let key = s
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|k| !k.is_empty())
+            .ok_or_else(|| Fail(format!("addStates[{i}].id is required")))?;
+        let uuid = Uuid::new_v4();
+        if keys.insert(key.to_owned(), uuid).is_some() {
+            return Err(Fail(format!("state id \"{key}\" is already in use")));
+        }
+        let mut state = json!({ "id": uuid, "name": s.get("name"), "kind": s.get("kind") });
+        if let Some(d) = s.get("description") {
+            state["description"] = d.clone();
+        }
+        states.push(state);
+    }
+    for (i, t) in optional_array(args, "addTransitions")?.iter().enumerate() {
+        let end = |field: &str| -> Result<Uuid, Fail> {
+            let key = t.get(field).and_then(Value::as_str).unwrap_or_default();
+            keys.get(key).copied().ok_or_else(|| {
+                Fail(format!(
+                    "addTransitions[{i}].{field} \"{key}\" is neither an existing state nor in addStates"
+                ))
+            })
+        };
+        let mut transition = json!({ "id": Uuid::new_v4(), "from": end("from")?, "to": end("to")?, "event": t.get("event") });
+        for field in ["guard", "action", "expected", "requirements"] {
+            if let Some(v) = t.get(field) {
+                transition[field] = v.clone();
+            }
+        }
+        transitions.push(transition);
+    }
+    let name = match opt_str(args, "name")? {
+        Some(n) if !n.trim().is_empty() => json!(n),
+        _ => current.get("name").cloned().unwrap_or(Value::Null),
+    };
+    let mut body = json!({
+        "name": name,
+        "variables": current.get("variables").cloned().unwrap_or(json!([])),
+        "states": states,
+        "transitions": transitions,
+    });
+    match opt_str(args, "description")? {
+        Some(d) => body["description"] = json!(d),
+        None => {
+            if let Some(d) = current.get("description").filter(|d| !d.is_null()) {
+                body["description"] = d.clone();
+            }
+        }
+    }
+    if let Some(s) = current.get("status").filter(|s| !s.is_null()) {
+        body["status"] = s.clone();
+    }
+    let mut request = ApiRequest::new(Method::Put, format!("/models/{mid}")).json(body);
+    request.if_match = Some(version);
+    let model = send(backend, request).await?;
+    Ok(json!({ "model": model, "removedTransitions": removed }))
+}
+
+/// An optional array of UUID strings, each checked.
+fn id_list(args: &Args, key: &str) -> Result<Vec<String>, Fail> {
+    optional_array(args, key)?
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .and_then(|s| s.parse::<Uuid>().ok())
+                .map(|u| u.to_string())
+                .ok_or_else(|| Fail(format!("\"{key}\" must hold UUIDs")))
+        })
+        .collect()
+}
+
+fn optional_array<'a>(args: &'a Args, key: &str) -> Result<&'a [Value], Fail> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(&[]),
+        Some(_) => array(args, key).map(Vec::as_slice),
+    }
 }

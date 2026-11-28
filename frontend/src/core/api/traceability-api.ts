@@ -41,9 +41,17 @@ export interface TraceSummary {
   noElements: number;
 }
 
+/** A requirement tag of model elements with the test cases covering it. */
+export interface TraceRequirement {
+  requirement: string;
+  taggedElements: { modelId: string; stateId?: string; transitionId?: string }[];
+  testCaseIds: string[];
+}
+
 export interface Traceability {
   items: TraceItem[];
   untraced: TraceTestCase[];
+  requirements?: TraceRequirement[];
   summary: TraceSummary;
 }
 

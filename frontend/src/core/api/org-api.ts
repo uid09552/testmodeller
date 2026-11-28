@@ -57,7 +57,7 @@ export interface SimulationStep {
 /** `CoverageCriterion` in openapi.yaml. */
 export type CoverageCriterion =
   | 'state' | 'transition' | 'transition-pair' | 'bounded-paths'
-  | 'prime-paths' | 'reach-element' | 'random';
+  | 'prime-paths' | 'reach-element' | 'random' | 'requirement';
 /** `GenerationRequest`. */
 export interface GenerationRequest {
   criterion: CoverageCriterion;
@@ -85,6 +85,9 @@ export interface Coverage {
   transitions: { covered: number; total: number };
   uncoveredStateIds?: string[];
   uncoveredTransitionIds?: string[];
+  /** Requirement tags on the model's elements; absent when none is tagged. */
+  requirements?: { covered: number; total: number };
+  uncoveredRequirements?: string[];
 }
 export interface Model extends ModelSummary {
   description?: string;

@@ -100,6 +100,19 @@ fn summary(row: &PgRow) -> Result<ModelSummary, sqlx::Error> {
     })
 }
 
+/// The `requirements` column: a JSON array of strings.
+fn requirements(row: &PgRow) -> Result<Vec<String>, sqlx::Error> {
+    let v: serde_json::Value = row.try_get("requirements")?;
+    Ok(serde_json::from_value(v).unwrap_or_default())
+}
+
+/// One JSON array per element, as text for `UNNEST(...)::jsonb`.
+fn requirements_json<'a>(lists: impl Iterator<Item = &'a Vec<String>>) -> Vec<String> {
+    lists
+        .map(|r| serde_json::to_string(r).unwrap_or_else(|_| "[]".into()))
+        .collect()
+}
+
 fn state(row: &PgRow) -> Result<State, sqlx::Error> {
     let x: Option<f64> = row.try_get("pos_x")?;
     let y: Option<f64> = row.try_get("pos_y")?;
@@ -109,6 +122,7 @@ fn state(row: &PgRow) -> Result<State, sqlx::Error> {
         description: row.try_get("description")?,
         kind: parse_col(row, "kind")?,
         position: x.zip(y).map(|(x, y)| Position { x, y }),
+        requirements: requirements(row)?,
     })
 }
 
@@ -124,6 +138,7 @@ fn transition(row: &PgRow) -> Result<Transition, sqlx::Error> {
         weight: row
             .try_get::<Option<i32>, _>("weight")?
             .and_then(|w| u32::try_from(w).ok()),
+        requirements: requirements(row)?,
     })
 }
 
@@ -313,14 +328,15 @@ async fn upsert_states(
     let xs: Vec<Option<f64>> = states.iter().map(|s| s.position.map(|p| p.x)).collect();
     let ys: Vec<Option<f64>> = states.iter().map(|s| s.position.map(|p| p.y)).collect();
     let orders: Vec<i32> = (0..states.len() as i32).map(|i| first_order + i).collect();
+    let reqs = requirements_json(states.iter().map(|s| &s.requirements));
     sqlx::query(
-        "INSERT INTO states (id, model_id, name, description, kind, pos_x, pos_y, sort_order)
-         SELECT u.id, $1, u.name, u.description, u.kind, u.x, u.y, u.ord
-         FROM UNNEST($2::uuid[], $3::text[], $4::text[], $5::text[], $6::float8[], $7::float8[], $8::int4[])
-             AS u(id, name, description, kind, x, y, ord)
+        "INSERT INTO states (id, model_id, name, description, kind, pos_x, pos_y, sort_order, requirements)
+         SELECT u.id, $1, u.name, u.description, u.kind, u.x, u.y, u.ord, u.req::jsonb
+         FROM UNNEST($2::uuid[], $3::text[], $4::text[], $5::text[], $6::float8[], $7::float8[], $8::int4[], $9::text[])
+             AS u(id, name, description, kind, x, y, ord, req)
          ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description,
              kind = EXCLUDED.kind, pos_x = EXCLUDED.pos_x, pos_y = EXCLUDED.pos_y,
-             sort_order = EXCLUDED.sort_order",
+             sort_order = EXCLUDED.sort_order, requirements = EXCLUDED.requirements",
     )
     .bind(model_id)
     .bind(&ids)
@@ -330,6 +346,7 @@ async fn upsert_states(
     .bind(&xs)
     .bind(&ys)
     .bind(&orders)
+    .bind(&reqs)
     .execute(&mut *conn)
     .await?;
     Ok(())
@@ -358,14 +375,16 @@ async fn upsert_transitions(
     let orders: Vec<i32> = (0..transitions.len() as i32)
         .map(|i| first_order + i)
         .collect();
+    let reqs = requirements_json(transitions.iter().map(|t| &t.requirements));
     sqlx::query(
-        "INSERT INTO transitions (id, model_id, from_state, to_state, event, guard, action, expected, weight, sort_order)
-         SELECT u.id, $1, u.f, u.t, u.event, u.guard, u.action, u.expected, u.weight, u.ord
-         FROM UNNEST($2::uuid[], $3::uuid[], $4::uuid[], $5::text[], $6::text[], $7::text[], $8::text[], $9::int4[], $10::int4[])
-             AS u(id, f, t, event, guard, action, expected, weight, ord)
+        "INSERT INTO transitions (id, model_id, from_state, to_state, event, guard, action, expected, weight, sort_order, requirements)
+         SELECT u.id, $1, u.f, u.t, u.event, u.guard, u.action, u.expected, u.weight, u.ord, u.req::jsonb
+         FROM UNNEST($2::uuid[], $3::uuid[], $4::uuid[], $5::text[], $6::text[], $7::text[], $8::text[], $9::int4[], $10::int4[], $11::text[])
+             AS u(id, f, t, event, guard, action, expected, weight, ord, req)
          ON CONFLICT (id) DO UPDATE SET from_state = EXCLUDED.from_state, to_state = EXCLUDED.to_state,
              event = EXCLUDED.event, guard = EXCLUDED.guard, action = EXCLUDED.action,
-             expected = EXCLUDED.expected, weight = EXCLUDED.weight, sort_order = EXCLUDED.sort_order",
+             expected = EXCLUDED.expected, weight = EXCLUDED.weight, sort_order = EXCLUDED.sort_order,
+             requirements = EXCLUDED.requirements",
     )
     .bind(model_id)
     .bind(&ids)
@@ -377,6 +396,7 @@ async fn upsert_transitions(
     .bind(&expected)
     .bind(&weights)
     .bind(&orders)
+    .bind(&reqs)
     .execute(&mut *conn)
     .await?;
     Ok(())
@@ -735,7 +755,8 @@ impl Store {
         lock_model(&mut tx, model_id).await?;
         sqlx::query(
             "UPDATE states SET name = $2, kind = $3, description = COALESCE($4, description),
-                 pos_x = COALESCE($5, pos_x), pos_y = COALESCE($6, pos_y)
+                 pos_x = COALESCE($5, pos_x), pos_y = COALESCE($6, pos_y),
+                 requirements = CASE WHEN $7 <> '[]' THEN $7::jsonb ELSE requirements END
              WHERE id = $1",
         )
         .bind(id)
@@ -744,6 +765,7 @@ impl Store {
         .bind(&update.description)
         .bind(update.position.map(|p| p.x))
         .bind(update.position.map(|p| p.y))
+        .bind(serde_json::to_string(&update.requirements).unwrap_or_else(|_| "[]".into()))
         .execute(&mut *tx)
         .await?;
         bump_and_record(
@@ -868,7 +890,8 @@ impl Store {
         sqlx::query(
             "UPDATE transitions SET from_state = $2, to_state = $3, event = $4,
                  guard = COALESCE($5, guard), action = COALESCE($6, action),
-                 expected = COALESCE($7, expected), weight = COALESCE($8, weight)
+                 expected = COALESCE($7, expected), weight = COALESCE($8, weight),
+                 requirements = CASE WHEN $9 <> '[]' THEN $9::jsonb ELSE requirements END
              WHERE id = $1",
         )
         .bind(id)
@@ -879,6 +902,7 @@ impl Store {
         .bind(&t.action)
         .bind(&t.expected)
         .bind(t.weight.map(|w| w as i32))
+        .bind(serde_json::to_string(&t.requirements).unwrap_or_else(|_| "[]".into()))
         .execute(&mut *tx)
         .await?;
         bump_and_record(

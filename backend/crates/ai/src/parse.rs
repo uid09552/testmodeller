@@ -139,6 +139,7 @@ fn build_states(raw: Vec<RawState>) -> Result<Vec<State>, AiError> {
                 description: s.description,
                 kind: s.kind,
                 position: None,
+                requirements: Vec::new(),
             })
         })
         .collect()
@@ -166,6 +167,7 @@ fn build_transitions(
                 action: t.action.filter(|a| !a.trim().is_empty()),
                 expected: t.expected,
                 weight: None,
+                requirements: Vec::new(),
             })
         })
         .collect()
@@ -359,6 +361,7 @@ mod tests {
             description: None,
             kind: StateKind::Initial,
             position: None,
+            requirements: Vec::new(),
         };
         let graph = ModelGraph {
             states: vec![a.clone()],

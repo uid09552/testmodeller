@@ -548,7 +548,7 @@ paths:
       tags: [Export]
       summary: Export project data
       parameters:
-        - { name: format, in: query, required: true, schema: { type: string, enum: [json, csv, gherkin] } }
+        - { name: format, in: query, required: true, schema: { type: string, enum: [json, csv, gherkin, playwright] } }
         - { name: featureId, in: query, schema: { $ref: '#/components/schemas/Id' } }
         - { name: componentId, in: query, schema: { $ref: '#/components/schemas/Id' } }
       responses:
@@ -558,6 +558,7 @@ paths:
             application/json: { schema: { type: object } }
             text/csv: { schema: { type: string } }
             text/plain: { schema: { type: string } }
+            text/typescript: { schema: { type: string } }
   /projects/{projectId}/import:
     parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
     post:
@@ -1291,6 +1292,12 @@ components:
         description: { type: string }
         kind: { $ref: '#/components/schemas/StateKind' }
         position: { $ref: '#/components/schemas/Position' }
+        requirements: { $ref: '#/components/schemas/RequirementTags' }
+    RequirementTags:
+      type: array
+      maxItems: 50
+      description: Requirements the element covers (ADR 0021). Trimmed; blanks and duplicates are dropped.
+      items: { type: string, minLength: 1, maxLength: 2048, description: A backlog URL or a short key such as REQ-12 }
     State:
       allOf:
         - { $ref: '#/components/schemas/StateInput' }
@@ -1312,6 +1319,7 @@ components:
         action: { type: string }
         expected: { type: string }
         weight: { type: integer, minimum: 0, maximum: 1000, default: 1, description: 'Relative likelihood of taking this transition in a `random` walk; 0 never takes it' }
+        requirements: { $ref: '#/components/schemas/RequirementTags' }
     Transition:
       allOf:
         - { $ref: '#/components/schemas/TransitionInput' }
@@ -1432,8 +1440,18 @@ components:
             threatIds: { type: array, items: { $ref: '#/components/schemas/Id' }, description: Threats this test case covers }
     Traceability:
       type: object
-      required: [items, untraced, summary]
+      required: [items, untraced, requirements, summary]
       properties:
+        requirements:
+          type: array
+          description: Requirement tags of model elements (ADR 0021) with the test cases covering them
+          items:
+            type: object
+            required: [requirement, taggedElements, testCaseIds]
+            properties:
+              requirement: { type: string }
+              taggedElements: { type: array, items: { $ref: '#/components/schemas/TraceElement' } }
+              testCaseIds: { type: array, items: { $ref: '#/components/schemas/Id' }, description: Test cases in scope assigned to a tagged element, or whose backlog link is the tag }
         items:
           type: array
           description: Backlog items, grouped by normalised backlog URL
@@ -1444,13 +1462,14 @@ components:
           items: { $ref: '#/components/schemas/TraceabilityTestCase' }
         summary:
           type: object
-          required: [backlogItems, testCases, untraced, unimplemented, noElements]
+          required: [backlogItems, testCases, untraced, unimplemented, noElements, untestedRequirements]
           properties:
             backlogItems: { type: integer, minimum: 0 }
             testCases: { type: integer, minimum: 0 }
             untraced: { type: integer, minimum: 0 }
             unimplemented: { type: integer, minimum: 0, description: Test cases with a backlog link but no implementation link }
             noElements: { type: integer, minimum: 0, description: Backlog items whose test cases are assigned to no state or transition }
+            untestedRequirements: { type: integer, minimum: 0, description: Requirement tags no test case in scope covers }
     TraceabilityItem:
       type: object
       required: [backlogUrl, testCases]
@@ -1470,13 +1489,14 @@ components:
         elements:
           type: array
           description: Exactly one of stateId or transitionId per element
-          items:
-            type: object
-            required: [modelId]
-            properties:
-              modelId: { $ref: '#/components/schemas/Id' }
-              stateId: { $ref: '#/components/schemas/Id' }
-              transitionId: { $ref: '#/components/schemas/Id' }
+          items: { $ref: '#/components/schemas/TraceElement' }
+    TraceElement:
+      type: object
+      required: [modelId]
+      properties:
+        modelId: { $ref: '#/components/schemas/Id' }
+        stateId: { $ref: '#/components/schemas/Id' }
+        transitionId: { $ref: '#/components/schemas/Id' }
     TestCasePage:
       type: object
       properties: { items: { type: array, items: { $ref: '#/components/schemas/TestCase' } }, nextCursor: { type: [string, 'null'] } }
@@ -1497,7 +1517,7 @@ components:
           required: [testCaseId]
           properties: { testCaseId: { $ref: '#/components/schemas/Id' } }
 
-    CoverageCriterion: { type: string, enum: [state, transition, transition-pair, bounded-paths, prime-paths, reach-element, random] }
+    CoverageCriterion: { type: string, enum: [state, transition, transition-pair, bounded-paths, prime-paths, reach-element, random, requirement] }
     GenerationRequest:
       type: object
       required: [criterion]
@@ -1525,6 +1545,8 @@ components:
         transitions: { $ref: '#/components/schemas/CoverageCount' }
         uncoveredStateIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
         uncoveredTransitionIds: { type: array, items: { $ref: '#/components/schemas/Id' } }
+        requirements: { allOf: [ { $ref: '#/components/schemas/CoverageCount' } ], description: Distinct requirement tags of the elements; absent when none is tagged }
+        uncoveredRequirements: { type: array, items: { type: string }, description: Tags no covered element carries }
     TestResult:
       type: object
       required: [id, testCaseId, runId, status, executedAt, source]

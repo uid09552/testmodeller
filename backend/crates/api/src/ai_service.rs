@@ -356,13 +356,7 @@ impl AiService {
             model_id,
         } = spec;
         tracing::info!(%job_id, kind = kind.as_str(), prompt_version = PROMPT_VERSION, "AI job started");
-        if let Err(e) = self
-            .store
-            .update_job(job_id, JobStatus::Running, &[], None)
-            .await
-        {
-            tracing::error!(%job_id, error = %e, "cannot mark job running");
-        }
+        self.mark_running(job_id).await;
         let outcome =
             tm_ai::generate_proposals(provider.as_ref(), kind, &request, max_tokens).await;
         let result = match outcome {
@@ -390,23 +384,15 @@ impl AiService {
             }
             Err(e) => Err(e.to_string()),
         };
-        let update = match &result {
-            Ok(ids) => {
-                tracing::info!(%job_id, proposals = ids.len(), "AI job succeeded");
-                self.store
-                    .update_job(job_id, JobStatus::Succeeded, ids, None)
-                    .await
-            }
-            Err(msg) => {
-                tracing::warn!(%job_id, error = %msg, "AI job failed");
-                self.store
-                    .update_job(job_id, JobStatus::Failed, &[], Some(msg))
-                    .await
-            }
-        };
-        if let Err(e) = update {
-            tracing::error!(%job_id, error = %e, "cannot record job result");
-        }
+        self.record_outcome(
+            job_id,
+            "AI job",
+            kind.as_str(),
+            &provider.model_id(),
+            None,
+            &result,
+        )
+        .await;
     }
 }
 
@@ -633,13 +619,7 @@ impl AiService {
         provider: Box<dyn LlmProvider>,
     ) {
         tracing::info!(%job_id, kind = req.kind.as_str(), prompt_version = tm_ai::tm::TM_PROMPT_VERSION, "threat model AI job started");
-        if let Err(e) = self
-            .store
-            .update_job(job_id, JobStatus::Running, &[], None)
-            .await
-        {
-            tracing::error!(%job_id, error = %e, "cannot mark job running");
-        }
+        self.mark_running(job_id).await;
         let model_id = provider.model_id();
         let request = tm_ai::tm::TmRequest {
             kind: req.kind,
@@ -675,25 +655,59 @@ impl AiService {
             }
             Err(e) => Err(e.to_string()),
         };
-        // Sizes and outcome only: never prompt, context or answer content.
-        match &result {
+        self.record_outcome(
+            job_id,
+            "threat model AI job",
+            req.kind.as_str(),
+            &model_id,
+            Some((system_len, user_len)),
+            &result,
+        )
+        .await;
+    }
+}
+
+impl AiService {
+    async fn mark_running(&self, job_id: Uuid) {
+        if let Err(e) = self
+            .store
+            .update_job(job_id, JobStatus::Running, &[], None)
+            .await
+        {
+            tracing::error!(%job_id, error = %e, "cannot mark job running");
+        }
+    }
+
+    /// Stores a job's result and logs the outcome, the same way for every kind of job.
+    ///
+    /// Sizes and outcome only: the failure reason goes to the user through the job; it can
+    /// quote names from the model or prompt, so it is never logged (07-ai-integration.md).
+    async fn record_outcome(
+        &self,
+        job_id: Uuid,
+        label: &str,
+        kind: &str,
+        model: &str,
+        sizes: Option<(usize, usize)>,
+        result: &Result<Vec<Uuid>, String>,
+    ) {
+        let (system_len, user_len) = sizes.unwrap_or_default();
+        let update = match result {
             Ok(ids) => {
-                tracing::info!(%job_id, kind = req.kind.as_str(), model = %model_id, system_len, user_len, proposals = ids.len(), "threat model AI job succeeded");
-                let _ = self
-                    .store
+                tracing::info!(%job_id, kind, model, system_len, user_len, proposals = ids.len(), "{label} succeeded");
+                self.store
                     .update_job(job_id, JobStatus::Succeeded, ids, None)
-                    .await;
+                    .await
             }
             Err(msg) => {
-                // The reason goes to the user through the job; it can quote names from the
-                // threat model, so it is not logged.
-                let _ = msg;
-                tracing::warn!(%job_id, kind = req.kind.as_str(), model = %model_id, system_len, user_len, "threat model AI job failed");
-                let _ = self
-                    .store
+                tracing::warn!(%job_id, kind, model, system_len, user_len, "{label} failed");
+                self.store
                     .update_job(job_id, JobStatus::Failed, &[], Some(msg))
-                    .await;
+                    .await
             }
+        };
+        if let Err(e) = update {
+            tracing::error!(%job_id, error = %e, "cannot record job result");
         }
     }
 }

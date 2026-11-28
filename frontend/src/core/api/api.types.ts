@@ -96,6 +96,8 @@ export interface StateInput {
   description?: string;
   kind: ApiStateKind;
   position?: { x: number; y: number };
+  /** Requirements covered: backlog URLs or short keys (at most 50). */
+  requirements?: string[];
 }
 
 export interface TransitionInput {
@@ -108,6 +110,8 @@ export interface TransitionInput {
   expected?: string;
   /** Relative likelihood in a `random` walk (0..1000, default 1). */
   weight?: number;
+  /** Requirements covered: backlog URLs or short keys (at most 50). */
+  requirements?: string[];
 }
 
 /** The contract's model status; the editor has more (see model-mapping). */

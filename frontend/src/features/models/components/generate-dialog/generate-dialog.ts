@@ -28,6 +28,7 @@ export const CRITERIA: { value: CoverageCriterion; label: string; hint: string }
   { value: 'bounded-paths', label: 'All paths up to a length', hint: 'Every path up to the maximum length — thorough, can be many.' },
   { value: 'prime-paths', label: 'Prime paths', hint: 'Every longest loop-free path — covers loops without listing every path.' },
   { value: 'reach-element', label: 'Path to one element', hint: 'The shortest path to one state or transition — a single scenario.' },
+  { value: 'requirement', label: 'Requirements', hint: 'One path per requirement tag on states and transitions — to the nearest tagged element.' },
   { value: 'random', label: 'Random walks', hint: 'Seeded random walks; transition weights set how likely each step is.' },
 ];
 

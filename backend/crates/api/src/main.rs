@@ -123,6 +123,12 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!(count = interrupted, "marked interrupted AI jobs as failed");
     }
 
+    spawn_retention(
+        store.clone(),
+        config.ai_job_retention_days,
+        config.ai_proposal_retention_days,
+    );
+
     // Fails fast when neither --dev-mode nor a JWKS URL is set, rather than
     // starting an unauthenticated server (FR-040).
     let auth = config.auth()?;
@@ -205,4 +211,32 @@ async fn main() -> anyhow::Result<()> {
         remove_dev_database(c).await?;
     }
     Ok(())
+}
+
+/// Deletes old AI history once an hour. Jobs go first so no job outlives the proposals it
+/// lists. Logs counts only.
+fn spawn_retention(store: Store, job_days: u32, proposal_days: u32) {
+    if job_days == 0 && proposal_days == 0 {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(3600));
+        loop {
+            tick.tick().await;
+            if job_days > 0 {
+                match store.purge_finished_jobs(job_days).await {
+                    Ok(n) if n > 0 => tracing::info!(count = n, "purged finished AI jobs"),
+                    Ok(_) => {}
+                    Err(e) => tracing::error!(error = %e, "AI job retention failed"),
+                }
+            }
+            if proposal_days > 0 {
+                match store.purge_decided_proposals(proposal_days).await {
+                    Ok(n) if n > 0 => tracing::info!(count = n, "purged decided AI proposals"),
+                    Ok(_) => {}
+                    Err(e) => tracing::error!(error = %e, "AI proposal retention failed"),
+                }
+            }
+        }
+    });
 }

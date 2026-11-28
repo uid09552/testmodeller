@@ -1,6 +1,6 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { IxNumberInput } from '@siemens/ix-angular/standalone';
+import { IxInput, IxNumberInput } from '@siemens/ix-angular/standalone';
 import { ModelEditorStore } from '../../state/model-editor.store';
 import { PropertiesPanelComponent } from './properties-panel';
 
@@ -254,5 +254,36 @@ describe('PropertiesPanelComponent annotations', () => {
     expect(root.querySelector('[aria-label="Text size"]')).not.toBeNull();
     expect(root.querySelector('[aria-label="Fill colour"]')).toBeNull();
     expect(root.querySelector('[aria-label="Line pattern"]')).toBeNull();
+  });
+});
+
+describe('PropertiesPanelComponent requirement tags (ADR 0021)', () => {
+  it('parses a comma-separated list into trimmed, unique tags and clears when empty', async () => {
+    await TestBed.configureTestingModule({
+      imports: [PropertiesPanelComponent],
+      providers: [ModelEditorStore],
+    }).compileComponents();
+    TestBed.overrideComponent(PropertiesPanelComponent, {
+      remove: { imports: [IxNumberInput, IxInput] },
+      add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+    });
+    const fixture = TestBed.createComponent(PropertiesPanelComponent);
+    const store = TestBed.inject(ModelEditorStore);
+    const a = store.addNode('regular', 0, 0);
+    const b = store.addNode('regular', 400, 0);
+    const edge = store.addEdge(a.id, b.id);
+    store.select(a.id, 'node');
+    fixture.detectChanges();
+    const ev = (detail: string) => new CustomEvent('valueChange', { detail });
+    const panel = fixture.componentInstance;
+
+    panel.setNodeRequirements(store.nodeById(a.id)!, ev(' REQ-1, https://jira/TM-2 ,REQ-1,, '));
+    expect(store.nodeById(a.id)!.requirements).toEqual(['REQ-1', 'https://jira/TM-2']);
+    expect(panel.requirementsText(store.nodeById(a.id)!.requirements)).toBe('REQ-1, https://jira/TM-2');
+    panel.setNodeRequirements(store.nodeById(a.id)!, ev('  '));
+    expect(store.nodeById(a.id)!.requirements).toBeUndefined();
+
+    panel.setEdgeRequirements(store.edgeById(edge.id)!, ev('REQ-9'));
+    expect(store.edgeById(edge.id)!.requirements).toEqual(['REQ-9']);
   });
 });
