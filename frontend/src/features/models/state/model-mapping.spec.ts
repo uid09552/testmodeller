@@ -140,6 +140,29 @@ describe('transition weight (ADR 0017)', () => {
   });
 });
 
+describe('requirement tags (ADR 0021)', () => {
+  it('survive a load and a save; an untagged element saves an empty list', () => {
+    const a = crypto.randomUUID();
+    const b = crypto.randomUUID();
+    const remote = {
+      name: 'M',
+      states: [
+        { id: a, name: 'A', kind: 'initial' as const, requirements: ['REQ-1'] },
+        { id: b, name: 'B', kind: 'final' as const },
+      ],
+      transitions: [
+        { id: crypto.randomUUID(), from: a, to: b, event: 'go', requirements: ['REQ-2', 'https://jira/TM-3'] },
+      ],
+    };
+    const loaded = fromRemote(remote as never, [], 'm1', '', null);
+    expect(loaded.nodes.map(n => n.requirements)).toEqual([['REQ-1'], undefined]);
+    expect(loaded.edges[0].requirements).toEqual(['REQ-2', 'https://jira/TM-3']);
+    const saved = toModelInput(loaded);
+    expect(saved.states!.map(s => s.requirements)).toEqual([['REQ-1'], []]);
+    expect(saved.transitions![0].requirements).toEqual(['REQ-2', 'https://jira/TM-3']);
+  });
+});
+
 describe('test cases', () => {
   it('carries category, polarity and links through a save and a load', () => {
     const original = test();

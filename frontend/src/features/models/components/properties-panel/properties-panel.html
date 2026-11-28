@@ -163,6 +163,11 @@
                 [value]="getNodeDesc(node)"
                 (input)="setNodeDesc(node, $any($event.target).value)"></textarea>
 
+      <ix-input class="props__requirements" label="Requirements"
+                helperText="Backlog URLs or short keys such as REQ-12, separated by commas"
+                [value]="requirementsText(node.requirements)"
+                (valueChange)="setNodeRequirements(node, $event)" />
+
       <div class="props__meta">
         <span class="props__meta-label">ID</span>
         <code class="props__meta-val">{{ node.id.slice(0, 8) }}…</code>
@@ -228,6 +233,11 @@
                        helperText="How likely a random walk takes this step; default 1, 0 never"
                        [value]="edge.weight ?? 1"
                        (valueChange)="setEdgeWeight(edge, $event)" />
+
+      <ix-input class="props__requirements" label="Requirements"
+                helperText="Backlog URLs or short keys such as REQ-12, separated by commas"
+                [value]="requirementsText(edge.requirements)"
+                (valueChange)="setEdgeRequirements(edge, $event)" />
 
       <!-- Routing: everything the canvas handles do, without a mouse. -->
       @if (edge.fromId !== edge.toId) {

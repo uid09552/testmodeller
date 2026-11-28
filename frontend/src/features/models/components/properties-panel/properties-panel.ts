@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { IxNumberInput } from '@siemens/ix-angular/standalone';
+import { IxInput, IxNumberInput } from '@siemens/ix-angular/standalone';
 import { singleLine } from '../../state/node-fit';
 import { ALL_SHAPES, shapeIcon } from '../../state/node-shapes';
 import { StyleChange, StyleSectionComponent, StyleTarget } from '../style-section/style-section';
@@ -11,7 +11,7 @@ import {
 
 @Component({
   selector: 'tm-properties-panel',
-  imports: [FormsModule, IxNumberInput, StyleSectionComponent],
+  imports: [FormsModule, IxInput, IxNumberInput, StyleSectionComponent],
   templateUrl: './properties-panel.html',
   styleUrl: './properties-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -68,6 +68,19 @@ export class PropertiesPanelComponent {
     this.store.updateEdge(e.id, {
       weight: Number.isInteger(n) && n >= 0 && n <= 1000 ? n : undefined,
     });
+  }
+  /** Requirement tags are typed as a comma-separated list. */
+  requirementsText(tags: string[] | undefined): string { return (tags ?? []).join(', '); }
+  private parseRequirements(ev: Event): string[] | undefined {
+    const raw = String((ev as CustomEvent<string>).detail ?? '');
+    const tags = [...new Set(raw.split(',').map(t => t.trim()).filter(Boolean))].slice(0, 50);
+    return tags.length ? tags : undefined;
+  }
+  setNodeRequirements(n: CanvasNode, ev: Event): void {
+    this.store.updateNode(n.id, { requirements: this.parseRequirements(ev) });
+  }
+  setEdgeRequirements(e: CanvasEdge, ev: Event): void {
+    this.store.updateEdge(e.id, { requirements: this.parseRequirements(ev) });
   }
   setEdgeAction(e: CanvasEdge, v: string): void { this.store.updateEdge(e.id, { action: v || undefined }); }
 
