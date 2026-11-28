@@ -130,3 +130,77 @@ async fn another_tenants_target_is_not_found() {
         assert_eq!(st, StatusCode::NOT_FOUND, "{v}");
     }
 }
+
+#[tokio::test]
+async fn sneak_paths_end_with_a_rejected_event_and_stay_fresh_when_saved() {
+    let app = common::app().await;
+    let t = common::tree(&app.store, "dev").await;
+    // Chain Start -open-> Out -login-> In -close-> Done: Start refuses login and close, Out
+    // refuses open and close, In refuses open and login: six sneak tests.
+    let (st, v) = generate(
+        &app,
+        t.model,
+        json!({"criterion": "sneak-path", "save": true}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let cases = v["testCases"].as_array().unwrap();
+    assert_eq!(cases.len(), 6, "{v}");
+    for c in cases {
+        let steps = c["steps"].as_array().unwrap();
+        let last = steps.last().unwrap();
+        assert!(last["action"].as_str().unwrap().contains("not allowed"));
+        assert!(last["expected"].as_str().unwrap().contains("rejected"));
+    }
+    // A saved sneak test is not reported stale: its extra step has no transition.
+    let (st, stale) = app
+        .send("GET", &format!("/models/{}/stale-tests", t.model), None)
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(stale.as_array().unwrap().is_empty(), "{stale}");
+}
+
+#[tokio::test]
+async fn generated_steps_carry_variable_values_and_keep_them_through_an_edit() {
+    let app = common::app().await;
+    let t = common::tree(&app.store, "dev").await;
+    let path = format!("/models/{}", t.model);
+    let (_, m) = app.send("GET", &path, None).await;
+    let mut transitions = m["transitions"].clone();
+    transitions[0]["action"] = json!("tries = tries + 1");
+    let (st, saved) = app
+        .send_if_match(
+            "PUT",
+            &path,
+            m["version"].as_i64().unwrap(),
+            json!({ "name": m["name"], "variables": [{ "name": "tries", "type": "integer", "initial": 2 }],
+                    "states": m["states"], "transitions": transitions }),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{saved}");
+
+    let (st, v) = generate(
+        &app,
+        t.model,
+        json!({"criterion": "transition", "save": true}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let tc = &v["testCases"][0];
+    assert_eq!(tc["steps"][0]["data"], json!({ "tries": 2 }));
+    assert_eq!(tc["steps"][1]["data"], json!({ "tries": 3 }));
+
+    // Editing the test case with the steps as read keeps the data.
+    let id = tc["id"].as_str().unwrap();
+    let (_, read) = app.send("GET", &format!("/test-cases/{id}"), None).await;
+    let (st, edited) = app
+        .send_if_match(
+            "PUT",
+            &format!("/test-cases/{id}"),
+            read["version"].as_i64().unwrap(),
+            json!({ "name": "Renamed", "steps": read["steps"] }),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{edited}");
+    assert_eq!(edited["steps"][1]["data"], json!({ "tries": 3 }));
+}

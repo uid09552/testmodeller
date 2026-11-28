@@ -109,7 +109,9 @@
       <button type="button" class="present-exit" (click)="setMode('edit')">Edit (Esc)</button>
     } @else {
       <!-- AI assistant: a chat window floating over the canvas (06-ui.md). -->
-      <tm-ai-chat-window />
+      @defer (on idle) {
+        <tm-ai-chat-window />
+      }
     }
   </div>
 

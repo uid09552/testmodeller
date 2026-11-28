@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 tm-domain = { path = "../domain" }
+serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 

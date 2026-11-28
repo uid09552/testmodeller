@@ -244,23 +244,29 @@ async fn bump_version(conn: &mut PgConnection, id: Uuid, expected: Option<i32>) 
     }
 }
 
-/// Stores a snapshot of the model's current state under its current version.
-async fn record_version(conn: &mut PgConnection, id: Uuid, summary_text: &str) -> Result<()> {
+/// The model as it is now.
+async fn current_snapshot(conn: &mut PgConnection, id: Uuid) -> Result<ModelSnapshot> {
     let meta = load_summary(conn, id).await?;
     let graph = load_graph(conn, id).await?;
     let layout = load_layout(conn, id).await?;
-    let snapshot = ModelSnapshot {
+    Ok(ModelSnapshot {
         name: meta.name,
         description: meta.description,
         status: meta.status,
         graph,
         layout,
-    };
+    })
+}
+
+/// Stores a snapshot of the model's current state under its current version.
+async fn record_version(conn: &mut PgConnection, id: Uuid, summary_text: &str) -> Result<()> {
+    let version = load_summary(conn, id).await?.audit.version;
+    let snapshot = current_snapshot(conn, id).await?;
     sqlx::query(
         "INSERT INTO model_versions (model_id, version, summary, snapshot) VALUES ($1, $2, $3, $4)",
     )
     .bind(id)
-    .bind(meta.audit.version)
+    .bind(version)
     .bind(summary_text)
     .bind(Json(&snapshot))
     .execute(&mut *conn)
@@ -656,6 +662,25 @@ impl Store {
                 })
             })
             .collect()
+    }
+
+    /// A stored version of a model, or the current state for `None`.
+    pub async fn model_snapshot(&self, id: Uuid, version: Option<i32>) -> Result<ModelSnapshot> {
+        let mut conn = self.pool.acquire().await?;
+        let Some(version) = version else {
+            return current_snapshot(&mut conn, id).await;
+        };
+        // The model must exist (and so be tenant-checkable) before a version is looked up.
+        load_summary(&mut conn, id).await?;
+        let snapshot: Json<ModelSnapshot> = sqlx::query_scalar(
+            "SELECT snapshot FROM model_versions WHERE model_id = $1 AND version = $2",
+        )
+        .bind(id)
+        .bind(version)
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or(StorageError::NotFound("model version"))?;
+        Ok(snapshot.0)
     }
 
     /// Restores a previous version as a new version.

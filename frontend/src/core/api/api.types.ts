@@ -62,6 +62,8 @@ export interface Proposal {
 export interface TestStepInput {
   action: string;
   expected: string;
+  /** Variable values when the step starts; set on generated test cases (ADR 0023). */
+  data?: Record<string, string | number | boolean>;
 }
 
 /** Payload of a `test-cases` proposal: one test case per proposal. */

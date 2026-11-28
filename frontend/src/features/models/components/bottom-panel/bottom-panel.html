@@ -276,7 +276,9 @@
          its canvas markers survive a look at the validation list. -->
     <div class="bp-pane" role="tabpanel" aria-labelledby="tab-simulate"
          [class.bp-pane--hidden]="activeTab() !== 'simulate'">
-      <tm-simulation-panel [modelId]="modelId()" [featureId]="featureId()" />
+      @defer {
+        <tm-simulation-panel [modelId]="modelId()" [featureId]="featureId()" />
+      }
     </div>
 
   </div>

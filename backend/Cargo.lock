@@ -3195,6 +3195,7 @@ name = "tm-generation"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "serde_json",
  "thiserror",
  "tm-domain",
  "uuid",

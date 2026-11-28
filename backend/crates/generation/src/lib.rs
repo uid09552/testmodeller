@@ -29,6 +29,8 @@ const MAX_SKIPPED_REPORTS: usize = 100;
 pub const MAX_PRIME_PATHS: usize = 1_000;
 /// Upper bound on simple paths examined while looking for prime paths.
 const MAX_SIMPLE_PATHS: usize = 3_000;
+/// Most sneak-path tests one run produces.
+const MAX_SNEAK_TESTS: usize = 1_000;
 /// Upper bound on random walks tried for `random`.
 pub const MAX_RANDOM_WALKS: usize = 1_000;
 /// Walks made by `random` when no stop condition is given.
@@ -91,6 +93,8 @@ pub struct GeneratedPath {
     pub transitions: Vec<Uuid>,
     /// States visited, starting with the initial state (`transitions.len() + 1` entries).
     pub states: Vec<Uuid>,
+    /// Sneak path: an event the last state does not allow, tried after the path (ADR 0022).
+    pub sneak_event: Option<String>,
 }
 
 /// A target or path that could not be covered.
@@ -404,6 +408,7 @@ impl<'a> Machine<'a> {
                 .map(|&t| self.graph.transitions[t].id)
                 .collect(),
             states,
+            sneak_event: None,
         }
     }
 
@@ -425,6 +430,7 @@ impl<'a> Machine<'a> {
             | CoverageCriterion::PrimePaths
             | CoverageCriterion::ReachElement
             | CoverageCriterion::Requirement
+            | CoverageCriterion::SneakPath
             | CoverageCriterion::Random => {}
         }
         set
@@ -451,6 +457,7 @@ impl<'a> Machine<'a> {
             | CoverageCriterion::PrimePaths
             | CoverageCriterion::ReachElement
             | CoverageCriterion::Requirement
+            | CoverageCriterion::SneakPath
             | CoverageCriterion::Random => Vec::new(),
         }
     }
@@ -537,6 +544,62 @@ impl<'a> Machine<'a> {
             path.extend(tail);
         }
         Ok(path)
+    }
+
+    /// For every non-final state and every event of the model that no transition leaving the
+    /// state carries: the shortest path to the state, then that event (ADR 0022). States that
+    /// cannot be reached are reported once. At most `MAX_SNEAK_TESTS` pairs.
+    fn cover_sneak_paths(&self, max_depth: usize) -> (Vec<(Vec<usize>, String)>, Vec<SkippedPath>) {
+        let mut events: Vec<&str> = Vec::new();
+        for t in &self.graph.transitions {
+            let e = t.event.as_str();
+            if !e.trim().is_empty() && !events.contains(&e) {
+                events.push(e);
+            }
+        }
+        let mut out = Vec::new();
+        let mut skipped = Vec::new();
+        'states: for (s, state) in self.graph.states.iter().enumerate() {
+            if state.kind == StateKind::Final {
+                continue;
+            }
+            let allowed: HashSet<&str> = self.out[s]
+                .iter()
+                .map(|&t| self.graph.transitions[t].event.as_str())
+                .collect();
+            let blocked: Vec<&str> = events
+                .iter()
+                .copied()
+                .filter(|e| !allowed.contains(e))
+                .collect();
+            if blocked.is_empty() {
+                continue;
+            }
+            let found = self.search(&self.start(), max_depth, |_, n| n.state == s);
+            let Some((path, _)) = found else {
+                skipped.push(SkippedPath {
+                    transition_ids: Vec::new(),
+                    reason: format!(
+                        "state '{}' is unreachable or infeasible within {max_depth} steps; its sneak events are skipped",
+                        state.name
+                    ),
+                });
+                continue;
+            };
+            for e in blocked {
+                if out.len() >= MAX_SNEAK_TESTS {
+                    skipped.push(SkippedPath {
+                        transition_ids: Vec::new(),
+                        reason: format!(
+                            "limit of {MAX_SNEAK_TESTS} sneak paths reached; the rest are omitted"
+                        ),
+                    });
+                    break 'states;
+                }
+                out.push((path.clone(), e.to_owned()));
+            }
+        }
+        (out, skipped)
     }
 
     /// One shortest path per distinct requirement tag, to the nearest element carrying it.
@@ -913,6 +976,20 @@ fn target_label_of(machine: &Machine<'_>, target: Target) -> String {
     machine.target_label(target)
 }
 
+/// An environment as step data: `bool`, integer or string per variable.
+fn env_data(env: &expr::Env) -> std::collections::BTreeMap<String, serde_json::Value> {
+    env.iter()
+        .map(|(k, v)| {
+            let value = match v {
+                expr::Value::Bool(b) => serde_json::Value::Bool(*b),
+                expr::Value::Int(i) => serde_json::Value::from(*i),
+                expr::Value::Str(s) => serde_json::Value::String(s.clone()),
+            };
+            (k.clone(), value)
+        })
+        .collect()
+}
+
 /// Generates paths covering the criterion. Deterministic for graph, options and seed (FR-020, FR-021).
 pub fn generate(
     graph: &ModelGraph,
@@ -926,6 +1003,7 @@ pub fn generate(
         return Err(GenerationError::InvalidModel(issues));
     };
     let default_depth = (graph.states.len() + graph.transitions.len()).max(32) * 2;
+    let mut sneak_events: Vec<String> = Vec::new();
     let (paths, skipped) = match options.criterion {
         CoverageCriterion::BoundedPaths => {
             let n = options
@@ -953,6 +1031,12 @@ pub fn generate(
         CoverageCriterion::Requirement => {
             machine.cover_requirements(options.max_path_length.unwrap_or(default_depth))
         }
+        CoverageCriterion::SneakPath => {
+            let (list, skipped) =
+                machine.cover_sneak_paths(options.max_path_length.unwrap_or(default_depth));
+            sneak_events = list.iter().map(|(_, e)| e.clone()).collect();
+            (list.into_iter().map(|(p, _)| p).collect(), skipped)
+        }
         CoverageCriterion::Random => machine.random_walks(
             options.seed,
             options.max_path_length.unwrap_or(default_depth),
@@ -963,7 +1047,10 @@ pub fn generate(
             machine.cover_greedily(criterion, options.max_path_length.unwrap_or(default_depth))
         }
     };
-    let paths: Vec<GeneratedPath> = paths.iter().map(|p| machine.to_path(p)).collect();
+    let mut paths: Vec<GeneratedPath> = paths.iter().map(|p| machine.to_path(p)).collect();
+    for (path, event) in paths.iter_mut().zip(sneak_events) {
+        path.sneak_event = Some(event);
+    }
     let covered_states: HashSet<Uuid> = paths.iter().flat_map(|p| p.states.clone()).collect();
     let covered_transitions: HashSet<Uuid> =
         paths.iter().flat_map(|p| p.transitions.clone()).collect();
@@ -995,7 +1082,14 @@ pub fn path_to_test_case(
     let state_name = |id: Uuid| graph.state(id).map_or("?", |s| s.name.as_str());
     let route: Vec<&str> = path.states.iter().map(|&id| state_name(id)).collect();
     let name = truncate_chars(
-        format!("{model_name} #{}: {}", index + 1, route.join(" → ")),
+        match &path.sneak_event {
+            Some(e) => format!(
+                "{model_name} #{}: {}, then '{e}' (not allowed)",
+                index + 1,
+                route.join(" → ")
+            ),
+            None => format!("{model_name} #{}: {}", index + 1, route.join(" → ")),
+        },
         MAX_NAME_CHARS,
     );
 
@@ -1006,7 +1100,10 @@ pub fn path_to_test_case(
         preconditions.push_str(&format!(" with {}", vars.join(", ")));
     }
 
-    let mut steps = Vec::with_capacity(path.transitions.len());
+    let mut steps = Vec::with_capacity(path.transitions.len() + 1);
+    // Variable values at the start of each step, while the model's actions can be replayed.
+    let mut env: Option<expr::Env> =
+        (!graph.variables.is_empty()).then(|| expr::initial_env(&graph.variables));
     let mut targets: Vec<(AssignmentTarget, Option<i32>)> = Vec::new();
     let mut seen = HashSet::new();
     let mut push = |targets: &mut Vec<_>, target: AssignmentTarget, step: Option<i32>| {
@@ -1039,15 +1136,35 @@ pub fn path_to_test_case(
             }
             None => (String::from("?"), String::from("?")),
         };
+        let data = env.as_ref().map(env_data);
         steps.push(TestStep {
             order,
             action,
             expected,
+            data,
+        });
+        env = env.and_then(|e| {
+            let src = graph.transition(tid)?.action.as_deref().unwrap_or_default();
+            if src.trim().is_empty() {
+                return Some(e);
+            }
+            let assigns = expr::check_action(src, &graph.variables).ok()?;
+            expr::apply_action(&assigns, &e).ok()
         });
         // Every step's transition is assigned, even one the path takes again, so
         // the path can be rebuilt from the assignments (stale-test detection).
         targets.push((AssignmentTarget::Transition(tid), Some(order)));
         push(&mut targets, AssignmentTarget::State(to), Some(order));
+    }
+
+    if let Some(event) = &path.sneak_event {
+        let last = path.states.last().map_or("?", |&id| state_name(id));
+        steps.push(TestStep {
+            order: steps.len() as i32 + 1,
+            action: format!("{event} (not allowed in state '{last}')"),
+            expected: format!("The event is rejected; the system stays in state '{last}'"),
+            data: env.as_ref().map(env_data),
+        });
     }
 
     let data = TestCaseData {
@@ -1216,6 +1333,97 @@ mod tests {
             .iter()
             .map(|id| g.transition(*id).unwrap().event.clone())
             .collect()
+    }
+
+    #[test]
+    fn steps_carry_the_variable_values_they_start_with() {
+        let mut g = loop_model();
+        g.variables = vec![Variable {
+            name: "count".into(),
+            var_type: VariableType::Integer,
+            initial: None,
+        }];
+        g.transitions[0].action = Some("count = count + 5".into()); // begin
+        g.transitions[3].guard = Some("count > 4".into()); // finish
+        let out = generate(&g, opts(CoverageCriterion::Transition, 1)).unwrap();
+        let path = out
+            .paths
+            .iter()
+            .find(|p| events(&g, p).last().is_some_and(|e| e == "finish"))
+            .expect("a path ending in finish");
+        let (data, _) = path_to_test_case(&g, "M", CoverageCriterion::Transition, 0, path);
+        let counts: Vec<i64> = data
+            .steps
+            .iter()
+            .map(|s| s.data.as_ref().unwrap()["count"].as_i64().unwrap())
+            .collect();
+        // `begin` starts at 0 and sets 5; every later step starts with 5 (and `finish` needs > 4).
+        assert_eq!(counts[0], 0);
+        assert!(counts[1..].iter().all(|&c| c == 5), "{counts:?}");
+        // No variables: no data.
+        let plain = loop_model();
+        let out = generate(&plain, opts(CoverageCriterion::Transition, 1)).unwrap();
+        let (data, _) =
+            path_to_test_case(&plain, "M", CoverageCriterion::Transition, 0, &out.paths[0]);
+        assert!(data.steps.iter().all(|s| s.data.is_none()));
+    }
+
+    #[test]
+    fn sneak_paths_try_each_disallowed_event_after_the_shortest_path() {
+        let g = loop_model();
+        let out = generate(&g, opts(CoverageCriterion::SneakPath, 0)).unwrap();
+        // Events: begin, ab, ba, finish. Start allows only begin; A allows ab and finish;
+        // B allows ba; End is final. Pairs: Start x3, A x2 (begin, ba), B x3.
+        assert_eq!(out.paths.len(), 8, "{:?}", out.skipped);
+        let start_tries: Vec<&str> = out
+            .paths
+            .iter()
+            .filter(|p| p.transitions.is_empty())
+            .map(|p| p.sneak_event.as_deref().unwrap())
+            .collect();
+        assert_eq!(start_tries, ["ab", "ba", "finish"]);
+        for p in &out.paths {
+            let last = *p.states.last().unwrap();
+            let allowed: Vec<&str> = g
+                .transitions
+                .iter()
+                .filter(|t| t.from == last)
+                .map(|t| t.event.as_str())
+                .collect();
+            assert!(!allowed.contains(&p.sneak_event.as_deref().unwrap()));
+        }
+        let (data, targets) =
+            path_to_test_case(&g, "M", CoverageCriterion::SneakPath, 0, &out.paths[0]);
+        let last = data.steps.last().unwrap();
+        assert!(last.action.contains("not allowed"));
+        assert!(last.expected.contains("rejected"));
+        // The sneak step is not a transition: no assignment refers to it.
+        assert!(targets
+            .iter()
+            .all(|(_, step)| step.is_none_or(|s| s as usize <= out.paths[0].transitions.len())));
+    }
+
+    #[test]
+    fn sneak_paths_skip_unreachable_states_and_have_no_final_state_pairs() {
+        let mut g = loop_model();
+        g.transitions[1].guard = Some("flag".into());
+        g.variables = vec![Variable {
+            name: "flag".into(),
+            var_type: VariableType::Boolean,
+            initial: None,
+        }];
+        let out = generate(&g, opts(CoverageCriterion::SneakPath, 0)).unwrap();
+        // B is unreachable behind the false guard: reported once, no tests for it.
+        assert_eq!(out.skipped.len(), 1);
+        assert!(out.skipped[0].reason.contains("'B'"));
+        assert!(out
+            .paths
+            .iter()
+            .all(|p| *p.states.last().unwrap() != g.states[2].id));
+        assert!(out
+            .paths
+            .iter()
+            .all(|p| *p.states.last().unwrap() != g.states[3].id));
     }
 
     #[test]
@@ -1447,6 +1655,7 @@ mod tests {
                 g.states[1].id,
                 g.states[1].id,
             ],
+            sneak_event: None,
         };
         let (_, targets) = path_to_test_case(&g, "Login", CoverageCriterion::Transition, 0, &path);
         assert!(targets.contains(&(AssignmentTarget::Transition(fail), Some(2))));

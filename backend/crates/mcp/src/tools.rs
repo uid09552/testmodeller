@@ -184,7 +184,7 @@ const TOOLS: &[Tool] = &[
                 "required": ["modelId"],
                 "properties": {
                     "modelId": id_prop("Model"),
-                    "criterion": { "enum": ["state", "transition", "transition-pair", "bounded-paths", "requirement"], "default": "transition" },
+                    "criterion": { "enum": ["state", "transition", "transition-pair", "bounded-paths", "requirement", "sneak-path"], "default": "transition" },
                     "seed": { "type": "integer" },
                     "maxPathLength": { "type": "integer", "minimum": 1, "description": "Required for bounded-paths" },
                     "save": { "type": "boolean", "default": false }
@@ -468,6 +468,26 @@ const TOOLS: &[Tool] = &[
         },
     },
     Tool {
+        name: "tm_compare_model_versions",
+        title: "Compare model versions",
+        description: "What changed between two versions of a model: added, removed and changed \
+                      states, transitions and variables. Without `to` the later side is the current model.",
+        read_only: true,
+        destructive: false,
+        idempotent: true,
+        schema: || {
+            json!({ "type": "object", "required": ["modelId", "from"], "properties": {
+                "modelId": id_prop("Model"),
+                "from": { "type": "integer", "minimum": 1, "description": "Earlier version" },
+                "to": { "type": "integer", "minimum": 1, "description": "Later version; default: the current model" } } })
+        },
+        output: || {
+            json!({ "type": "object", "required": ["meta", "states", "transitions", "variables"], "properties": {
+                "meta": { "type": "object" }, "states": { "type": "object" },
+                "transitions": { "type": "object" }, "variables": { "type": "object" } } })
+        },
+    },
+    Tool {
         name: "tm_patch_model",
         title: "Patch a model",
         description: "Add or remove states and transitions of an existing model without resending \
@@ -550,6 +570,7 @@ pub(crate) async fn run(backend: &dyn Backend, name: &str, args: &Args) -> ToolO
         "tm_triage_failures" => triage_failures(backend, args).await,
         "tm_update_test_case" => update_test_case(backend, args).await,
         "tm_patch_model" => patch_model(backend, args).await,
+        "tm_compare_model_versions" => compare_versions(backend, args).await,
         _ => return ToolOutcome::Unknown,
     };
     match out {
@@ -952,6 +973,7 @@ async fn generate(backend: &dyn Backend, args: &Args) -> Out {
             "transition-pair",
             "bounded-paths",
             "requirement",
+            "sneak-path",
         ],
         Some("transition"),
     )?;
@@ -1573,4 +1595,22 @@ fn optional_array<'a>(args: &'a Args, key: &str) -> Result<&'a [Value], Fail> {
         None | Some(Value::Null) => Ok(&[]),
         Some(_) => array(args, key).map(Vec::as_slice),
     }
+}
+
+async fn compare_versions(backend: &dyn Backend, args: &Args) -> Out {
+    let mid = id(args, "modelId")?;
+    let version = |key: &str| -> Result<Option<i64>, Fail> {
+        match opt_int(args, key)? {
+            Some(v) if v >= 1 => Ok(Some(v)),
+            Some(_) => Err(Fail(format!("\"{key}\" must be at least 1"))),
+            None => Ok(None),
+        }
+    };
+    let from = version("from")?.ok_or_else(|| Fail("\"from\" is required".into()))?;
+    let mut request = ApiRequest::new(Method::Get, format!("/models/{mid}/versions/compare"))
+        .query("from", from.to_string());
+    if let Some(to) = version("to")? {
+        request = request.query("to", to.to_string());
+    }
+    send(backend, request).await
 }

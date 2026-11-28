@@ -274,6 +274,7 @@ fn parse_one(
                         order: i as i32 + 1,
                         action: s.action,
                         expected: s.expected,
+                        data: None,
                     })
                     .collect(),
                 implementation_url: None,

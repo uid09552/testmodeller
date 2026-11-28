@@ -5,6 +5,7 @@ pub mod expr;
 pub mod graph;
 pub mod layout;
 pub mod links;
+pub mod model_diff;
 pub mod threat;
 pub mod validation;
 

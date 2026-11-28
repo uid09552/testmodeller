@@ -127,6 +127,38 @@ pub async fn list_versions(
     Ok(Json(versions.iter().map(Into::into).collect()))
 }
 
+/// Query of `GET /models/{modelId}/versions/compare`.
+#[derive(Debug, serde::Deserialize)]
+pub struct CompareQuery {
+    from: u32,
+    /// A version number; absent compares with the current model.
+    to: Option<u32>,
+}
+
+/// `GET /models/{modelId}/versions/compare?from=&to=`
+pub async fn compare_versions(
+    State(state): State<AppState>,
+    ApiPath(id): ApiPath<Uuid>,
+    crate::extract::ApiQuery(q): crate::extract::ApiQuery<CompareQuery>,
+) -> ApiResult<Json<tm_domain::model_diff::ModelComparison>> {
+    let version = |v: u32| {
+        i32::try_from(v)
+            .ok()
+            .filter(|v| *v >= 1)
+            .ok_or_else(|| crate::error::ApiError::bad_request("a version must be >= 1"))
+    };
+    let from = version(q.from)?;
+    let to = q.to.map(version).transpose()?;
+    if to == Some(from) {
+        return Err(crate::error::ApiError::unprocessable(
+            "from and to are the same version",
+        ));
+    }
+    let before = state.store.model_snapshot(id, Some(from)).await?;
+    let after = state.store.model_snapshot(id, to).await?;
+    Ok(Json(tm_domain::model_diff::compare(&before, &after)))
+}
+
 /// `POST /models/{modelId}/versions/{version}/restore`
 pub async fn restore_version(
     State(state): State<AppState>,

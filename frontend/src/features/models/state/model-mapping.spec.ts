@@ -163,6 +163,23 @@ describe('requirement tags (ADR 0021)', () => {
   });
 });
 
+describe('step data (ADR 0023)', () => {
+  it('stays with the steps of an edited test case while their number is unchanged', () => {
+    const tc = {
+      id: 't1', version: 1, featureId: 'f', name: 'T', tags: [], assignments: [],
+      steps: [
+        { action: 'a', expected: 'b', data: { n: 0 } },
+        { action: 'c', expected: 'd', data: { n: 1 } },
+      ],
+    };
+    const st = testFromApi(tc as never, 1, 'm1');
+    expect(st.stepData).toEqual([{ n: 0 }, { n: 1 }]);
+    expect(testToInput(st, 'm1', 's1').steps.map(s => s.data)).toEqual([{ n: 0 }, { n: 1 }]);
+    const shorter = testToInput({ ...st, when: 'a', then: 'b' }, 'm1', 's1');
+    expect(shorter.steps.map(s => s.data)).toEqual([undefined]);
+  });
+});
+
 describe('test cases', () => {
   it('carries category, polarity and links through a save and a load', () => {
     const original = test();

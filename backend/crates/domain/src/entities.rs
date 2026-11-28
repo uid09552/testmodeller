@@ -113,6 +113,7 @@ string_enum!(
         ReachElement => "reach-element",
         Random => "random",
         Requirement => "requirement",
+        SneakPath => "sneak-path",
     }
 );
 
@@ -244,6 +245,9 @@ pub struct TestStep {
     pub action: String,
     /// Expected result.
     pub expected: String,
+    /// Values of the model's variables when the step starts (generated test cases only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<std::collections::BTreeMap<String, serde_json::Value>>,
 }
 
 /// Target of an assignment.
