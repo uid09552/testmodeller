@@ -166,6 +166,7 @@ fn the_catalogue_matches_the_spec_and_marks_writes() {
             "tm_get_project_status",
             "tm_triage_failures",
             "tm_update_test_case",
+            "tm_compare_model_versions",
             "tm_patch_model",
         ]
     );

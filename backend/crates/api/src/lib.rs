@@ -139,6 +139,10 @@ fn api(state: AppState, auth: AuthMode, mcp: Option<mcp_http::McpState>) -> Rout
         .route("/models/{id}/validate", post(models::validate_model))
         .route("/models/{id}/versions", get(models::list_versions))
         .route(
+            "/models/{id}/versions/compare",
+            get(models::compare_versions),
+        )
+        .route(
             "/models/{id}/versions/{version}/restore",
             post(models::restore_version),
         )

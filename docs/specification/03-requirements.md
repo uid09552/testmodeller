@@ -24,7 +24,7 @@ related: [00-overview.md, 05-api.md, 06-ui.md, 07-ai-integration.md]
 - FR-011 Set event, guard, action and expected result on transitions.
 - FR-012 Validate model live (single initial state, reachability, dead ends) and show issues.
 - FR-013 Undo/redo in the editor.
-- FR-014 Version history of models with restore.
+- FR-014 Version history of models with restore, and a comparison of two versions (added, removed and changed states, transitions and variables).
 
 ### Test generation
 - FR-020 Generate test cases for a model by selecting a coverage criterion.

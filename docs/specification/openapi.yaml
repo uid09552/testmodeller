@@ -241,6 +241,19 @@ paths:
         content: { application/json: { schema: { $ref: '#/components/schemas/ModelInput' } } }
       responses:
         '200': { description: Issues (empty if valid), content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ValidationIssue' } } } } }
+  /models/{modelId}/versions/compare:
+    parameters: [ { $ref: '#/components/parameters/ModelId' } ]
+    get:
+      tags: [Models]
+      summary: Compare two versions of a model
+      description: States and transitions are matched by id and variables by name; positions and the editor layout are ignored. `from` and `to` must differ (422).
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: to, in: query, schema: { type: integer, minimum: 1 }, description: Default is the current model }
+      responses:
+        '200': { description: The differences, content: { application/json: { schema: { $ref: '#/components/schemas/ModelComparison' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
   /models/{modelId}/versions:
     parameters: [ { $ref: '#/components/parameters/ModelId' } ]
     get:
@@ -1497,6 +1510,29 @@ components:
         modelId: { $ref: '#/components/schemas/Id' }
         stateId: { $ref: '#/components/schemas/Id' }
         transitionId: { $ref: '#/components/schemas/Id' }
+    ModelComparison:
+      type: object
+      required: [meta, states, transitions, variables]
+      properties:
+        meta: { type: object, required: [fields], properties: { fields: { type: array, items: { type: string, enum: [name, description, status] } } } }
+        states: { $ref: '#/components/schemas/ElementDiff' }
+        transitions: { $ref: '#/components/schemas/ElementDiff' }
+        variables: { $ref: '#/components/schemas/ElementDiff' }
+    ElementDiff:
+      type: object
+      required: [added, removed, changed]
+      properties:
+        added: { type: array, items: { type: object } }
+        removed: { type: array, items: { type: object } }
+        changed:
+          type: array
+          items:
+            type: object
+            required: [before, after, fields]
+            properties:
+              before: { type: object }
+              after: { type: object }
+              fields: { type: array, items: { type: string }, description: Names of the fields that differ }
     TestCasePage:
       type: object
       properties: { items: { type: array, items: { $ref: '#/components/schemas/TestCase' } }, nextCursor: { type: [string, 'null'] } }

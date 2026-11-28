@@ -113,7 +113,7 @@ async fn api_keys_drive_the_mcp_endpoint_within_their_tenant_and_role() {
         json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
     )
     .await;
-    assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 19);
+    assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 20);
 
     // ── Tools run through the real API ──────────────────────────────────────
     let projects = tool(&app, &key, "tm_list_projects", json!({})).await;
