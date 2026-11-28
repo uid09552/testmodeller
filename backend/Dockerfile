@@ -16,14 +16,15 @@ COPY crates/generation/Cargo.toml crates/generation/
 COPY crates/storage/Cargo.toml    crates/storage/
 COPY crates/ai/Cargo.toml         crates/ai/
 COPY crates/api/Cargo.toml        crates/api/
+COPY crates/mcp/Cargo.toml        crates/mcp/
 
 RUN mkdir -p crates/domain/src crates/generation/src crates/storage/src \
-             crates/ai/src crates/api/src \
+             crates/ai/src crates/api/src crates/mcp/src \
  && echo 'pub fn stub() {}' | tee crates/domain/src/lib.rs \
       crates/generation/src/lib.rs crates/storage/src/lib.rs \
-      crates/ai/src/lib.rs crates/api/src/lib.rs > /dev/null \
+      crates/ai/src/lib.rs crates/api/src/lib.rs crates/mcp/src/lib.rs > /dev/null \
  && echo 'fn main() {}' > crates/api/src/main.rs \
- && cargo build --release --bin testmodeller \
+ && cargo build --release --no-default-features --bin testmodeller \
  && rm -rf crates/*/src
 
 # 2. Real sources. `sqlx::migrate!` reads the migrations directory at compile
@@ -32,7 +33,7 @@ RUN mkdir -p crates/domain/src crates/generation/src crates/storage/src \
 COPY crates ./crates
 
 RUN touch crates/*/src/lib.rs crates/api/src/main.rs \
- && cargo build --release --bin testmodeller \
+ && cargo build --release --no-default-features --bin testmodeller \
  && strip target/release/testmodeller
 
 # ── Runtime ───────────────────────────────────────────────────────────────────

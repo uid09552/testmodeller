@@ -219,6 +219,13 @@ export class FakeThreatModelApi {
     return this.generateResult;
   }
 
+  async convertTest(_: string, testId: string, featureId: string, modelId?: string) {
+    this.calls.push({ op: 'convertTest', args: [testId, featureId, modelId] });
+    const t = this.data['security-tests'].find(x => x.id === testId);
+    if (t) Object.assign(t, { status: 'obsolete', convertedToTestCaseId: 'tc-new' });
+    return { id: 'tc-new', version: 1, featureId, name: t?.title ?? 'x', steps: [], assignments: [] };
+  }
+
   async bulkTestStatus(_: string, ids: string[], status: string) {
     this.calls.push({ op: 'bulkTestStatus', args: [ids, status] });
     return [];

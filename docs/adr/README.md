@@ -27,3 +27,4 @@ Use [0000-template.md](0000-template.md). Number sequentially.
 | [0013](0013-threat-model-proposals-store.md) | Threat model proposals have their own store and share the job mechanism | Accepted |
 | [0014](0014-siemens-ix-design-system.md) | The UI uses the Siemens iX design system | Accepted |
 | [0015](0015-api-keys-and-mcp.md) | Per-user API keys authenticate an in-process MCP endpoint | Accepted |
+| [0016](0016-threats-covered-by-feature-test-cases.md) | Feature test cases can cover threats; security tests convert into them | Accepted |

@@ -148,6 +148,20 @@
         <p class="tcd__error">Needs a full http(s) URL.</p>
       }
 
+      <!-- ── Threats covered (ADR 0016) ───────────────────────────────────── -->
+      @if (threatOptions().length) {
+        <ix-select class="tcd__threats" mode="multiple" label="Threats"
+                   helperText="Threats of this project's threat model that this test case checks"
+                   [value]="threatIds()" (valueChange)="setThreats($event)">
+          @for (t of threatOptions(); track t.id) {
+            <ix-select-item [value]="t.id" [label]="t.label" />
+          }
+        </ix-select>
+      }
+      @if (threatsError(); as err) {
+        <p class="tcd__error">{{ err }}</p>
+      }
+
       <!-- ── Live preview ─────────────────────────────────────────────────── -->
       <span class="tcd__label">Preview</span>
       <pre class="tcd__preview">{{ preview() }}</pre>

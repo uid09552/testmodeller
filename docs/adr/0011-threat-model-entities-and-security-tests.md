@@ -26,6 +26,6 @@ Threats also need tests. Feature test cases are tied to models (assignments to s
 ## Consequences
 
 - The glossary keeps "Component" unambiguous; the UI says "Component" only inside the threat modeling workspace.
-- Security tests do not reach feature coverage or traceability. If that is wanted later, each generated test carries its template, threat and control, so they can be converted into feature test cases without loss.
+- Security tests do not reach feature coverage or traceability. If that is wanted later, each generated test carries its template, threat and control, so they can be converted into feature test cases without loss. ADR 0016 adds that path, and lets feature test cases cover threats.
 - Rule suggestions need a memory of what was suggested: rule keys outlive their threats, so a dismissed or deleted suggestion is not suggested again.
 - Each read loads the whole threat model. Threat models are small (hundreds of entities), so this fits NFR-002; caching by version is possible later.

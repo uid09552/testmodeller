@@ -112,10 +112,10 @@ async fn api_keys_drive_the_mcp_endpoint_within_their_tenant_and_role() {
         json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
     )
     .await;
-    assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 14);
+    assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 15);
 
     // ── Tools run through the real API ──────────────────────────────────────
-    let projects = tool(&app, &key, "list_projects", json!({})).await;
+    let projects = tool(&app, &key, "tm_list_projects", json!({})).await;
     assert_eq!(projects["isError"], false, "{projects}");
     assert_eq!(
         projects["structuredContent"]["projects"]
@@ -125,7 +125,7 @@ async fn api_keys_drive_the_mcp_endpoint_within_their_tenant_and_role() {
         1
     );
 
-    let model = tool(&app, &key, "get_model", json!({ "modelId": tree.model })).await;
+    let model = tool(&app, &key, "tm_get_model", json!({ "modelId": tree.model })).await;
     assert_eq!(model["isError"], false, "{model}");
     assert_eq!(
         model["structuredContent"]["model"]["states"]
@@ -142,7 +142,7 @@ async fn api_keys_drive_the_mcp_endpoint_within_their_tenant_and_role() {
     let generated = tool(
         &app,
         &key,
-        "generate_test_cases",
+        "tm_generate_test_cases",
         json!({ "modelId": tree.model, "save": true }),
     )
     .await;
@@ -150,7 +150,7 @@ async fn api_keys_drive_the_mcp_endpoint_within_their_tenant_and_role() {
     let cases = tool(
         &app,
         &key,
-        "list_test_cases",
+        "tm_list_test_cases",
         json!({ "modelId": tree.model }),
     )
     .await;
@@ -161,7 +161,7 @@ async fn api_keys_drive_the_mcp_endpoint_within_their_tenant_and_role() {
     let gherkin = tool(
         &app,
         &key,
-        "export",
+        "tm_export",
         json!({ "projectId": tree.project, "format": "gherkin" }),
     )
     .await;
@@ -173,7 +173,7 @@ async fn api_keys_drive_the_mcp_endpoint_within_their_tenant_and_role() {
         "{gherkin}"
     );
 
-    let saved = tool(&app, &key, "save_model", json!({
+    let saved = tool(&app, &key, "tm_save_model", json!({
         "featureId": tree.feature, "name": "From MCP",
         "states": [{ "id": "a", "name": "A", "kind": "initial" }, { "id": "b", "name": "B", "kind": "final" }],
         "transitions": [{ "from": "a", "to": "b", "event": "go" }]
@@ -182,12 +182,18 @@ async fn api_keys_drive_the_mcp_endpoint_within_their_tenant_and_role() {
 
     // ── A read-only key reads but cannot write ──────────────────────────────
     let reader = stored_key(&app, "dev", "User").await;
-    let read = tool(&app, &reader, "get_model", json!({ "modelId": tree.model })).await;
+    let read = tool(
+        &app,
+        &reader,
+        "tm_get_model",
+        json!({ "modelId": tree.model }),
+    )
+    .await;
     assert_eq!(read["isError"], false);
     let write = tool(
         &app,
         &reader,
-        "generate_test_cases",
+        "tm_generate_test_cases",
         json!({ "modelId": tree.model }),
     )
     .await;
@@ -199,7 +205,7 @@ async fn api_keys_drive_the_mcp_endpoint_within_their_tenant_and_role() {
 
     // ── Another tenant's key sees nothing of this tenant ────────────────────
     let stranger = stored_key(&app, "other", "Editor").await;
-    let none = tool(&app, &stranger, "list_projects", json!({})).await;
+    let none = tool(&app, &stranger, "tm_list_projects", json!({})).await;
     assert_eq!(
         none["structuredContent"]["projects"]
             .as_array()
@@ -210,7 +216,7 @@ async fn api_keys_drive_the_mcp_endpoint_within_their_tenant_and_role() {
     let hidden = tool(
         &app,
         &stranger,
-        "get_model",
+        "tm_get_model",
         json!({ "modelId": tree.model }),
     )
     .await;

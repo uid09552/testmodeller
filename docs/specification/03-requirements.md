@@ -84,6 +84,8 @@ See [09-threat-modeling.md](09-threat-modeling.md).
 - FR-087 Mark entities created from AI proposals with origin `ai` and the model id, and keep pending proposals out of counts and matrices. (`threat-model-ai-proposals`)
 - FR-088 Offer a chat panel in the threat model workspace with kind inference, focus on a selected entity, proposal cards and clear error and disabled states. (`threat-model-ai-chat`)
 - FR-089 Keep AI assistance off per threat model until enabled, show and cap the context sent, treat model text as data, forbid AI from verifying controls, adding evidence, accepting or dismissing risks, setting treatments or thresholds and deleting anything, and respect budgets and rate limits. (`threat-model-ai-safeguards`)
+- FR-093 Let a feature test case cover threats of its project's threat model, show the covering test cases on each threat, and raise the threat's `failing-test` flag when one of them last failed.
+- FR-094 Convert a security test into a feature test case of the same project that covers the same threats, and mark the security test obsolete.
 
 ### Authentication and tenancy
 See [08-usermanagement.md](08-usermanagement.md).

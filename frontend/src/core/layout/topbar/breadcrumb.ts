@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRouteSnapshot, NavigationEnd, Router, RouterLink } from '@angular/router';
 import { IxBreadcrumb, IxBreadcrumbItem } from '@siemens/ix-angular/standalone';
 import { filter, map, startWith } from 'rxjs';
+import { ExplorerStore } from '../../../features/explorer/state/explorer.store';
 
 export interface Crumb {
   label: string;
@@ -35,17 +36,50 @@ export function buildCrumbs(root: ActivatedRouteSnapshot | null | undefined): Cr
   return crumbs;
 }
 
-/** Reads `data.breadcrumb` from the active route chain. */
+/** The deepest `modelId` route parameter in the chain, if any. */
+export function modelIdOf(root: ActivatedRouteSnapshot | null | undefined): string | null {
+  let id: string | null = null;
+  for (let r = root ?? null; r; r = r.firstChild) id = r.params?.['modelId'] ?? id;
+  return id;
+}
+
+/** Where a model sits in the tree, as the explorer store reports it. */
+export interface ModelPlace {
+  projectName: string;
+  componentName: string;
+  featureName: string;
+  model: { id: string; name: string };
+}
+
+/**
+ * Project > Component > Feature > Model for an open model (DESIGN.md, Layout).
+ * The tree has no page per node, so the levels above the model lead to the
+ * Explorer, where the tree is.
+ */
+export function modelCrumbs(place: ModelPlace): Crumb[] {
+  return [
+    { label: 'Projects', route: '/explorer' },
+    { label: place.projectName, route: '/explorer' },
+    { label: place.componentName, route: '/explorer' },
+    { label: place.featureName, route: '/explorer' },
+    { label: place.model.name },
+  ];
+}
+
+/**
+ * Reads `data.breadcrumb` from the active route chain; on a model, shows where
+ * it sits in the project tree instead.
+ */
 @Component({
   selector: 'tm-breadcrumb',
   imports: [RouterLink, IxBreadcrumb, IxBreadcrumbItem],
   template: `
     <ix-breadcrumb aria-label="Breadcrumb">
-      @for (crumb of crumbs(); track crumb.label; let last = $last) {
+      @for (crumb of crumbs(); track $index; let last = $last, i = $index) {
         @if (!last && crumb.route) {
-          <ix-breadcrumb-item [breadcrumbKey]="crumb.route" [label]="crumb.label" [routerLink]="crumb.route" />
+          <ix-breadcrumb-item [breadcrumbKey]="i + ':' + crumb.route" [label]="crumb.label" [routerLink]="crumb.route" />
         } @else {
-          <ix-breadcrumb-item [breadcrumbKey]="crumb.label" [label]="crumb.label" aria-current="page" />
+          <ix-breadcrumb-item [breadcrumbKey]="i + ':' + crumb.label" [label]="crumb.label" aria-current="page" />
         }
       }
     </ix-breadcrumb>
@@ -54,13 +88,23 @@ export function buildCrumbs(root: ActivatedRouteSnapshot | null | undefined): Cr
 })
 export class BreadcrumbComponent {
   private readonly router = inject(Router);
+  private readonly explorer = inject(ExplorerStore);
 
-  readonly crumbs = toSignal(
+  private readonly route = toSignal(
     this.router.events.pipe(
       filter((e) => e instanceof NavigationEnd),
       startWith(null),
-      map(() => buildCrumbs(this.router.routerState.snapshot.root)),
+      map(() => {
+        const root = this.router.routerState.snapshot.root;
+        return { crumbs: buildCrumbs(root), modelId: modelIdOf(root) };
+      }),
     ),
-    { initialValue: [] as Crumb[] },
+    { initialValue: { crumbs: [] as Crumb[], modelId: null as string | null } },
   );
+
+  readonly crumbs = computed(() => {
+    const { crumbs, modelId } = this.route();
+    const place = modelId ? this.explorer.modelPaths().find(p => p.model.id === modelId) : undefined;
+    return place ? modelCrumbs(place) : crumbs;
+  });
 }

@@ -51,6 +51,8 @@ pub struct ExportBundle {
     pub project: Project,
     /// Components in scope.
     pub components: Vec<ExportComponent>,
+    /// Display ids (`THR-n`) of the project's threats, for Gherkin tags (ADR 0016).
+    pub threat_labels: std::collections::HashMap<Uuid, String>,
 }
 
 /// Model to import. `source_id` and graph ids are only used to resolve references.
@@ -199,9 +201,28 @@ impl Store {
                 features,
             });
         }
+        let threat_labels = sqlx::query(
+            "SELECT t.id, t.number FROM tm_threats t
+             JOIN threat_models m ON m.id = t.threat_model_id WHERE m.project_id = $1",
+        )
+        .bind(project_id)
+        .fetch_all(&mut *conn)
+        .await?
+        .iter()
+        .map(|r| {
+            Ok((
+                sqlx::Row::try_get::<Uuid, _>(r, "id")?,
+                tm_domain::threat::display_id(
+                    tm_domain::threat::THREAT_PREFIX,
+                    sqlx::Row::try_get(r, "number")?,
+                ),
+            ))
+        })
+        .collect::<Result<_, sqlx::Error>>()?;
         Ok(ExportBundle {
             project,
             components,
+            threat_labels,
         })
     }
 

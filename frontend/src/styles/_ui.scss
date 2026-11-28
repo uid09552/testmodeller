@@ -1126,3 +1126,16 @@
 
   &:focus-visible { outline: 2px solid var(--si-sys-color-border-accent); outline-offset: 2px; }
 }
+
+// Visually hidden, still read by screen readers (live regions, extra labels).
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

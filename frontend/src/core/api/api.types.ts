@@ -78,6 +78,8 @@ export interface TestCaseInput {
   backlogUrl?: string;
   steps: TestStepInput[];
   assignments?: AssignmentInput[];
+  /** Threats of the project's threat model it covers (ADR 0016); omit to keep the links. */
+  threatIds?: string[];
 }
 
 /** Payload of a `feature-description` proposal. */
@@ -137,6 +139,10 @@ export interface TestCase extends TestCaseInput {
   assignments: (AssignmentInput & { testCaseId: string })[];
   /** Read-only: most recent imported result. */
   lastResult?: TestResult;
+  /** How it was created (`Origin` in openapi.yaml). */
+  origin?: 'manual' | 'generated' | 'ai';
+  /** The model a generated test case came from. */
+  generatedFromModelId?: string;
 }
 
 /** Payload of a `states-and-transitions` proposal. */

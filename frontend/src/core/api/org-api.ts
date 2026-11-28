@@ -54,6 +54,24 @@ export interface SimulationStep {
 }
 
 /** `Coverage` in openapi.yaml. */
+/** `CoverageCriterion` in openapi.yaml. */
+export type CoverageCriterion = 'state' | 'transition' | 'transition-pair' | 'bounded-paths';
+/** `GenerationRequest`. */
+export interface GenerationRequest {
+  criterion: CoverageCriterion;
+  seed?: number;
+  /** Required for `bounded-paths`. */
+  maxPathLength?: number;
+  save?: boolean;
+}
+/** `GenerationResult`. */
+export interface GenerationResult {
+  seed?: number;
+  testCases: TestCase[];
+  coverage: Coverage;
+  skippedPaths?: { transitionIds?: string[]; reason?: string }[];
+}
+
 export interface Coverage {
   states: { covered: number; total: number };
   transitions: { covered: number; total: number };
@@ -226,6 +244,12 @@ export class OrgApi {
 
   // ── Test cases ────────────────────────────────────────────────────────────
   /** `GET /models/{id}/test-cases` — every test case assigned in the model. */
+  /** `POST /models/{id}/generate`: deterministic for model, criterion and seed; stored only with `save`. */
+  async generate(modelId: string, req: GenerationRequest): Promise<GenerationResult> {
+    return this.call(() => firstValueFrom(
+      this.http.post<GenerationResult>(`${BASE}/models/${modelId}/generate`, req)));
+  }
+
   async modelTestCases(modelId: string): Promise<TestCase[]> {
     return this.call(() => firstValueFrom(
       this.http.get<TestCase[]>(`${BASE}/models/${modelId}/test-cases`)));

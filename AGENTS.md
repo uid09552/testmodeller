@@ -17,6 +17,7 @@ TestModeller: model-based testing tool. See [docs/specification/00-overview.md](
 7. Terminology: Project > Component > Feature > Model. "Scenario" refers only to a feature's `scenarioDescription`.
 8. AI-generated output (proposals) is never persisted as accepted data without explicit user approval.
 9. UI uses the Siemens iX design system (https://ix.siemens.io/). Read [DESIGN.md](DESIGN.md) before any change in `frontend/` and follow it: iX components where one exists, `--si-sys-*` tokens and iX typography classes only (no hex/px literals, no new custom tokens), dark and light schema, iX icons. A frontend change that violates DESIGN.md is not done.
+10. Tenant checks are always needed. The tenant guard checks ids in the path; every id that arrives any other way (request body, query, MCP tool argument) must be checked with `tenant_guard::require_tenant` in the handler, even when storage also checks it against a parent. Add a cross-tenant test for each new one ([ADR 0005](docs/adr/0005-jwt-auth-and-tenancy.md)).
 
 ## Where things live
 

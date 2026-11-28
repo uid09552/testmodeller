@@ -8,7 +8,6 @@
 use axum::http::StatusCode;
 use sha2::{Digest, Sha256};
 use tm_storage::Store;
-use uuid::Uuid;
 
 use crate::auth::{Identity, Role};
 use crate::error::ApiError;
@@ -23,13 +22,12 @@ const DISPLAY_LEN: usize = 10;
 /// Two v4 UUIDs supply the randomness (both from the OS source); their version
 /// and variant bits leave 244 random bits, well beyond guessing.
 pub fn generate() -> String {
+    // 256 bits from the OS (08-usermanagement.md, ADR 0015).
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).expect("the OS random number generator failed");
     let mut key = String::with_capacity(KEY_PREFIX.len() + 64);
     key.push_str(KEY_PREFIX);
-    for byte in Uuid::new_v4()
-        .as_bytes()
-        .iter()
-        .chain(Uuid::new_v4().as_bytes())
-    {
+    for byte in bytes {
         key.push_str(&format!("{byte:02x}"));
     }
     key

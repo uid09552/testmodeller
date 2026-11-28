@@ -30,7 +30,7 @@ pub struct Config {
     pub cors_origin: Option<String>,
 
     /// PostgreSQL image tag used in dev mode.
-    #[arg(long, env = "TM_DEV_POSTGRES_TAG", default_value = "16-alpine")]
+    #[arg(long, env = "TM_DEV_POSTGRES_TAG", default_value = "17-alpine")]
     pub dev_postgres_tag: String,
 
     /// AI provider: `anthropic` (or `claude`), `local` (or `ollama`),

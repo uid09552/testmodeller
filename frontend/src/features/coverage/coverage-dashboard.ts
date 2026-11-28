@@ -1,62 +1,122 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked,
+} from '@angular/core';
+import { RouterLink } from '@angular/router';
+import {
+  IxEmptyState, IxKpi, IxMessageBar, IxPill, IxProgressIndicator, IxSelect, IxSelectItem,
+  IxSpinner,
+} from '@siemens/ix-angular/standalone';
+import { ApiError } from '../../core/api/api-error';
+import { OrgApi } from '../../core/api/org-api';
+import { ExplorerStore } from '../explorer/state/explorer.store';
+import {
+  byFeature, Count, level, LEVEL_LABEL, LEVEL_VARIANT, ModelRow, modelRows, percent, totals,
+  withCoverage,
+} from './coverage-view';
 
-interface CoverageRow {
-  model: string;
-  component: string;
-  states: number;
-  statesCovered: number;
-  transitions: number;
-  transitionsCovered: number;
-}
-
+/**
+ * Coverage of a project's models by their assigned test cases, per feature
+ * (06-ui.md: Coverage dashboard). Each model's coverage comes from
+ * `GET /models/{id}/coverage`; there is no project-wide endpoint.
+ */
 @Component({
   selector: 'tm-coverage-dashboard',
+  imports: [
+    RouterLink, IxEmptyState, IxKpi, IxMessageBar, IxPill, IxProgressIndicator, IxSelect,
+    IxSelectItem, IxSpinner,
+  ],
   templateUrl: './coverage-dashboard.html',
   styleUrl: './coverage-dashboard.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CoverageDashboardComponent {
-  // Placeholder data until GET /coverage is wired up.
-  readonly rows = signal<CoverageRow[]>([
-    { model: 'Login Flow',        component: 'Auth Flow', states: 4, statesCovered: 4, transitions: 5,  transitionsCovered: 5 },
-    { model: 'Registration Flow', component: 'Auth Flow', states: 6, statesCovered: 5, transitions: 8,  transitionsCovered: 6 },
-    { model: 'Reset Password',    component: 'Auth Flow', states: 3, statesCovered: 2, transitions: 3,  transitionsCovered: 1 },
-    { model: 'Cart Checkout',     component: 'Checkout',  states: 7, statesCovered: 3, transitions: 11, transitionsCovered: 4 },
-    { model: 'Payment',           component: 'Checkout',  states: 5, statesCovered: 0, transitions: 7,  transitionsCovered: 0 },
-  ]);
+  private readonly explorer = inject(ExplorerStore);
+  private readonly api = inject(OrgApi);
 
-  readonly totalStates      = computed(() => this.rows().reduce((s, r) => s + r.states, 0));
-  readonly coveredStates    = computed(() => this.rows().reduce((s, r) => s + r.statesCovered, 0));
-  readonly totalTransitions = computed(() => this.rows().reduce((s, r) => s + r.transitions, 0));
-  readonly coveredTransitions = computed(() => this.rows().reduce((s, r) => s + r.transitionsCovered, 0));
+  readonly projects = this.explorer.projects;
+  readonly projectId = signal<string | null>(null);
+  readonly rows = signal<ModelRow[]>([]);
+  readonly loading = signal(false);
+  private requests = 0;
 
-  readonly statePct = computed(() =>
-    this.totalStates() ? Math.round((this.coveredStates() / this.totalStates()) * 100) : 0);
-  readonly transitionPct = computed(() =>
-    this.totalTransitions() ? Math.round((this.coveredTransitions() / this.totalTransitions()) * 100) : 0);
+  readonly groups = computed(() => byFeature(this.rows()));
+  readonly totals = computed(() => totals(this.rows()));
+  readonly statePct = computed(() => percent(this.totals().states));
+  readonly transitionPct = computed(() => percent(this.totals().transitions));
 
-  readonly fullyCovered = computed(() =>
-    this.rows().filter(r => r.statesCovered === r.states && r.transitionsCovered === r.transitions).length);
+  readonly label = LEVEL_LABEL;
+  readonly variant = LEVEL_VARIANT;
 
-  readonly uncovered = computed(() =>
-    this.rows().filter(r => r.statesCovered === 0).length);
-
-  pct(covered: number, total: number): number {
-    return total ? Math.round((covered / total) * 100) : 0;
+  constructor() {
+    // Open on the first project, and move off one that was deleted.
+    effect(() => {
+      const projects = this.projects();
+      const current = untracked(this.projectId);
+      if (!projects.some(p => p.id === current)) this.projectId.set(projects[0]?.id ?? null);
+    });
+    // Reload when the project, or the models in its tree, change.
+    effect(() => {
+      const project = this.projects().find(p => p.id === this.projectId());
+      const rows = modelRows(project);
+      untracked(() => void this.load(rows));
+    });
   }
 
-  /** Colour band for a coverage percentage. */
-  band(p: number): 'high' | 'mid' | 'low' {
-    if (p >= 80) return 'high';
-    if (p >= 40) return 'mid';
-    return 'low';
+  /** From `ix-select`'s `valueChange`, or a plain id. */
+  setProject(value: Event | string): void {
+    const raw = typeof value === 'string' ? value : (value as CustomEvent<string | string[]>).detail;
+    const id = Array.isArray(raw) ? raw[0] : raw;
+    if (id && this.projects().some(p => p.id === id)) this.projectId.set(id);
   }
 
-  /** Circumference offset for the donut gauge (r = 38). */
-  dashOffset(p: number): number {
-    const c = 2 * Math.PI * 38;
-    return c - (c * p) / 100;
+  private async load(rows: ModelRow[]): Promise<void> {
+    const request = ++this.requests;
+    this.rows.set(rows);
+    if (rows.length === 0) {
+      this.loading.set(false);
+      return;
+    }
+    this.loading.set(true);
+    const loaded = await Promise.all(rows.map(async r => {
+      try {
+        return withCoverage(r, await this.api.modelCoverage(r.modelId));
+      } catch (e) {
+        return { ...r, error: e instanceof ApiError ? e.message : 'Coverage could not be loaded.' };
+      }
+    }));
+    if (request !== this.requests) return;
+    this.rows.set(loaded);
+    this.loading.set(false);
   }
 
-  readonly circumference = 2 * Math.PI * 38;
+  pct(c: Count): number {
+    return percent(c);
+  }
+
+  levelOf(r: ModelRow) {
+    return r.states && r.transitions ? level(r.states, r.transitions) : null;
+  }
+
+  /** Progress status for a count: complete is success, anything else is partial. */
+  status(c: Count): 'success' | 'warning' | 'base' {
+    if (c.total === 0) return 'base';
+    if (c.covered === c.total) return 'success';
+    return c.covered === 0 ? 'base' : 'warning';
+  }
+
+  /** KPI state for a percentage, matching the status families above. */
+  kpiState(p: number, total: number): 'success' | 'warning' | 'neutral' {
+    if (total === 0 || p === 0) return 'neutral';
+    return p === 100 ? 'success' : 'warning';
+  }
+
+  uncovered(r: ModelRow): string {
+    if (!r.states || !r.transitions) return '';
+    const s = r.states.total - r.states.covered;
+    const t = r.transitions.total - r.transitions.covered;
+    const parts = [];
+    if (s) parts.push(`${s} ${s === 1 ? 'state' : 'states'}`);
+    if (t) parts.push(`${t} ${t === 1 ? 'transition' : 'transitions'}`);
+    return parts.length ? `${parts.join(', ')} uncovered` : 'Nothing uncovered';
+  }
 }

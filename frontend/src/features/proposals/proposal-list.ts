@@ -1,107 +1,151 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked,
+} from '@angular/core';
+import {
+  IxButton, IxCard, IxCardContent, IxEmptyState, IxMessageBar, IxPill, IxSelect, IxSelectItem,
+  IxSpinner, ToastService,
+} from '@siemens/ix-angular/standalone';
+import { AiApi } from '../../core/api/ai-api';
+import { ApiError } from '../../core/api/api-error';
+import { Proposal, ProposalStatus } from '../../core/api/api.types';
+import { ExplorerStore } from '../explorer/state/explorer.store';
+import { details, KIND_LABEL, summary } from './proposal-view';
 
-type ProposalKind = 'model' | 'states-and-transitions' | 'feature-description' | 'test-cases';
-type ProposalStatus = 'pending' | 'accepted' | 'rejected';
+type Filter = 'all' | ProposalStatus;
 
-interface Proposal {
-  id: string;
-  kind: ProposalKind;
-  target: string;
-  summary: string;
-  /** Human-readable rendering of what would be added if accepted. */
-  items: string[];
-  status: ProposalStatus;
-  createdAt: string;
-  expanded: boolean;
-}
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'all', label: 'All' },
+];
 
+/**
+ * AI proposals of a project (FR-030..FR-034). A proposal is not accepted data
+ * until a person accepts it here (AGENTS.md rule 8; DESIGN.md "AI proposals").
+ */
 @Component({
   selector: 'tm-proposal-list',
+  imports: [
+    IxButton, IxCard, IxCardContent, IxEmptyState, IxMessageBar, IxPill, IxSelect, IxSelectItem,
+    IxSpinner,
+  ],
   templateUrl: './proposal-list.html',
   styleUrl: './proposal-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProposalListComponent {
-  readonly filter = signal<'all' | ProposalStatus>('pending');
+  private readonly api = inject(AiApi);
+  private readonly explorer = inject(ExplorerStore);
+  private readonly toasts = inject(ToastService);
 
-  // Placeholder data until GET /ai/proposals is wired up.
-  readonly proposals = signal<Proposal[]>([
-    {
-      id: 'p1', kind: 'states-and-transitions', target: 'Login Flow',
-      summary: 'Add error-handling states for failed authentication',
-      status: 'pending', createdAt: '10 minutes ago', expanded: false,
-      items: [
-        'State "Auth Failed" (regular)',
-        'State "Account Locked" (final)',
-        'Transition Login → Auth Failed  [attempts < 3]',
-        'Transition Auth Failed → Login  [retry]',
-        'Transition Auth Failed → Account Locked  [attempts >= 3]',
-      ],
-    },
-    {
-      id: 'p2', kind: 'test-cases', target: 'Registration Flow',
-      summary: 'Generate 4 boundary test cases for the registration form',
-      status: 'pending', createdAt: '1 hour ago', expanded: false,
-      items: [
-        'Register with minimum-length password',
-        'Register with maximum-length email',
-        'Register with an already-used email',
-        'Register with mismatched password confirmation',
-      ],
-    },
-    {
-      id: 'p3', kind: 'feature-description', target: 'Password Reset',
-      summary: 'Draft a scenario description from the current model',
-      status: 'pending', createdAt: '3 hours ago', expanded: false,
-      items: [
-        'As a user who has forgotten their password, I want to request a reset link by email so that I can regain access to my account without contacting support.',
-      ],
-    },
-    {
-      id: 'p4', kind: 'model', target: 'Checkout › Cart',
-      summary: 'Propose an initial model for the cart feature',
-      status: 'accepted', createdAt: 'yesterday', expanded: false,
-      items: ['7 states, 11 transitions'],
-    },
-    {
-      id: 'p5', kind: 'test-cases', target: 'Login Flow',
-      summary: 'Generate exhaustive all-paths suite (38 cases)',
-      status: 'rejected', createdAt: '2 days ago', expanded: false,
-      items: ['38 test cases — rejected as too broad for this iteration'],
-    },
-  ]);
+  readonly projects = this.explorer.projects;
+  readonly projectId = signal<string | null>(null);
+  readonly filter = signal<Filter>('pending');
+  readonly filters = FILTERS;
+  readonly proposals = signal<Proposal[]>([]);
+  readonly loading = signal(false);
+  readonly error = signal<string | null>(null);
+  /** The proposal being accepted or rejected, so its buttons show progress. */
+  readonly busyId = signal<string | null>(null);
+  private requests = 0;
 
-  readonly filtered = computed(() => {
+  readonly kindLabel = KIND_LABEL;
+  readonly summary = summary;
+  readonly details = details;
+
+  readonly pendingCount = computed(() => this.proposals().filter(p => p.status === 'pending').length);
+  readonly shown = computed(() => {
     const f = this.filter();
     return this.proposals().filter(p => f === 'all' || p.status === f);
   });
 
-  readonly pendingCount = computed(() => this.proposals().filter(p => p.status === 'pending').length);
+  /** "Checkout › Cart › Login flow" for a proposal's feature and model, from the tree. */
+  readonly targetOf = computed(() => {
+    const paths = this.explorer.modelPaths();
+    const features = new Map(this.projects().flatMap(p => p.components.flatMap(c =>
+      c.features.map(f => [f.id, `${c.name} › ${f.name}`] as const))));
+    return (p: Proposal): string => {
+      const model = p.modelId ? paths.find(m => m.model.id === p.modelId)?.model.name : undefined;
+      const feature = p.featureId ? features.get(p.featureId) : undefined;
+      return [feature, model].filter(Boolean).join(' › ') || 'Project';
+    };
+  });
 
-  setFilter(f: 'all' | ProposalStatus): void { this.filter.set(f); }
-
-  toggle(id: string): void {
-    this.proposals.update(ps => ps.map(p => p.id === id ? { ...p, expanded: !p.expanded } : p));
+  constructor() {
+    effect(() => {
+      const projects = this.projects();
+      const current = untracked(this.projectId);
+      if (!projects.some(p => p.id === current)) this.projectId.set(projects[0]?.id ?? null);
+    });
+    effect(() => {
+      const id = this.projectId();
+      untracked(() => void this.load(id));
+    });
   }
 
-  /**
-   * Explicit user approval is the only path that marks a proposal accepted —
-   * nothing here is applied automatically (AGENTS.md rule 8).
-   */
-  accept(id: string): void {
-    this.proposals.update(ps => ps.map(p => p.id === id ? { ...p, status: 'accepted' as const } : p));
+  setProject(e: Event | string): void {
+    const raw = typeof e === 'string' ? e : (e as CustomEvent<string | string[]>).detail;
+    const id = Array.isArray(raw) ? raw[0] : raw;
+    if (id && this.projects().some(p => p.id === id)) this.projectId.set(id);
   }
 
-  reject(id: string): void {
-    this.proposals.update(ps => ps.map(p => p.id === id ? { ...p, status: 'rejected' as const } : p));
+  setFilter(e: Event | Filter): void {
+    const raw = typeof e === 'string' ? e : (e as CustomEvent<string | string[]>).detail;
+    const v = (Array.isArray(raw) ? raw[0] : raw) as Filter;
+    if (FILTERS.some(f => f.value === v)) this.filter.set(v);
   }
 
-  kindLabel(k: ProposalKind): string {
-    return {
-      'model': 'Model',
-      'states-and-transitions': 'States & Transitions',
-      'feature-description': 'Feature Description',
-      'test-cases': 'Test Cases',
-    }[k];
+  private async load(projectId: string | null): Promise<void> {
+    const request = ++this.requests;
+    if (!projectId) {
+      this.proposals.set([]);
+      return;
+    }
+    this.loading.set(true);
+    try {
+      const list = await this.api.listProposals(projectId);
+      if (request !== this.requests) return;
+      this.proposals.set(list);
+      this.error.set(null);
+    } catch (e) {
+      if (request !== this.requests) return;
+      this.error.set(e instanceof ApiError ? e.message : 'The proposals could not be loaded.');
+    } finally {
+      if (request === this.requests) this.loading.set(false);
+    }
+  }
+
+  /** The only way a proposal becomes accepted data (AGENTS.md rule 8). */
+  accept(p: Proposal): Promise<void> {
+    return this.decide(p, () => this.api.acceptProposal(p.id), 'Accepted: the change is now in the project.');
+  }
+
+  reject(p: Proposal): Promise<void> {
+    return this.decide(p, () => this.api.rejectProposal(p.id), 'Rejected: nothing was changed.');
+  }
+
+  private async decide(p: Proposal, call: () => Promise<Proposal>, done: string): Promise<void> {
+    this.busyId.set(p.id);
+    try {
+      const updated = await call();
+      this.proposals.update(ps => ps.map(x => x.id === updated.id ? updated : x));
+      void this.toasts.show({ type: 'success', message: done });
+    } catch (e) {
+      void this.toasts.show({
+        type: 'error',
+        message: e instanceof ApiError ? e.message : 'The decision could not be saved; the proposal is still pending.',
+      });
+    } finally {
+      this.busyId.set(null);
+    }
+  }
+
+  statusVariant(s: ProposalStatus): 'information' | 'success' | 'neutral' {
+    return s === 'pending' ? 'information' : s === 'accepted' ? 'success' : 'neutral';
+  }
+
+  statusLabel(s: ProposalStatus): string {
+    return s === 'pending' ? 'Proposal' : s === 'accepted' ? '✓ Accepted' : '✗ Rejected';
   }
 }

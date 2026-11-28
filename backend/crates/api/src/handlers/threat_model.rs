@@ -430,6 +430,39 @@ async fn test_dtos(state: &AppState, tm: Uuid, ids: &[Uuid]) -> ApiResult<Vec<Se
         .collect())
 }
 
+/// `POST /threat-models/{id}/security-tests/{item}/convert` — copies the test
+/// into a feature test case covering the same threats (ADR 0016).
+pub async fn convert_test(
+    State(state): State<AppState>,
+    identity: Identity,
+    ApiPath((tm, id)): ApiPath<(Uuid, Uuid)>,
+    ApiJson(req): ApiJson<ConvertRequest>,
+) -> ApiResult<(StatusCode, Json<crate::dto::TestCaseDto>)> {
+    // The path's threat model is checked by the tenant guard; the body's
+    // feature is checked here, then storage requires the same project.
+    crate::tenant_guard::require_tenant(
+        &state,
+        &identity,
+        tm_storage::TenantScope::Feature,
+        req.feature_id,
+    )
+    .await?;
+    if let Some(model) = req.model_id {
+        crate::tenant_guard::require_tenant(
+            &state,
+            &identity,
+            tm_storage::TenantScope::Model,
+            model,
+        )
+        .await?;
+    }
+    let tc = state
+        .store
+        .convert_security_test(tm, id, req.feature_id, req.model_id)
+        .await?;
+    Ok((StatusCode::CREATED, Json((&tc).into())))
+}
+
 /// `POST /threat-models/{id}/security-tests/generate`
 pub async fn generate_tests(
     State(state): State<AppState>,

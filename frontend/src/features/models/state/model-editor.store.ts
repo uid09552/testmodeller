@@ -91,6 +91,8 @@ export interface StateTest {
   backlogUrl?: string;
   /** Latest imported result; read-only, never saved from the editor. */
   lastResult?: LastResult;
+  /** Threats of the project's threat model it covers (ADR 0016); absent keeps the stored links. */
+  threatIds?: string[];
   /**
    * Where the stored test case is assigned in this model, read-only: the
    * states and transitions it walks, with step numbers when it has them.
@@ -1682,29 +1684,5 @@ export class ModelEditorStore {
     this.undoStack.set([]);
     this.redoStack.set([]);
     this.dirty.set(false);
-  }
-
-  // ── Demo seed ─────────────────────────────────────────────────────────────
-  loadDemo(): void {
-    const s0 = this.addNode('initial', 80, 160);
-    const s1 = this.addNode('regular', 280, 80);
-    const s2 = this.addNode('regular', 280, 240);
-    const s3 = this.addNode('final', 500, 160);
-    s0.label = 'Start'; s1.label = 'Login'; s2.label = 'Guest'; s3.label = 'Home';
-    this.nodes.update(ns => ns.map(n =>
-      n.id === s0.id ? { ...n, label: 'Start' } :
-      n.id === s1.id ? { ...n, label: 'Login' } :
-      n.id === s2.id ? { ...n, label: 'Guest' } :
-      n.id === s3.id ? { ...n, label: 'Home' } : n
-    ));
-    this.addEdge(s0.id, s1.id);
-    this.addEdge(s0.id, s2.id);
-    this.addEdge(s1.id, s3.id);
-    this.addEdge(s2.id, s3.id);
-    this.addEdge(s1.id, s2.id);
-    this.dirty.set(false);
-    this.testSeq.set(1);
-    this.undoStack.set([]);
-    this.redoStack.set([]);
   }
 }

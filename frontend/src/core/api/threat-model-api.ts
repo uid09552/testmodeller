@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom, Observable } from 'rxjs';
 import { toApiError } from './api-error';
+import { TestCase } from './api.types';
 
 /**
  * Threat model resources (tag `ThreatModel` in openapi.yaml). See
@@ -222,6 +223,8 @@ export interface Threat extends Audit, ThreatInput {
   affectedBoundaries: Crossing[];
   flags: ThreatFlag[];
   residualFacts: string[];
+  /** Feature test cases that cover this threat (ADR 0016). */
+  testCaseIds?: string[];
 }
 
 export interface ControlInput {
@@ -321,6 +324,8 @@ export interface SecurityTest extends Audit, SecurityTestInput {
   templateVersion: number | null;
   stale: string | null;
   lastResult: SecurityTestResult | null;
+  /** The feature test case this test was converted into; it is then obsolete. */
+  convertedToTestCaseId?: string | null;
 }
 
 export interface MatrixCell { likelihood: number; impact: number; count: number }
@@ -344,6 +349,8 @@ export interface ThreatModelSummary {
   expiringAcceptances: RefLabel[];
   expiredAcceptances: number;
   verificationOverdue: number;
+  /** Open and accepted threats with at least one covering feature test case. */
+  threatsCoveredByTestCases?: number;
 }
 export interface CompletenessFinding {
   code: string;
@@ -476,6 +483,13 @@ export class ThreatModelApi {
   generateTests(id: string, threatIds?: string[]): Promise<GenerateSecurityTestsResult> {
     return this.call(this.http.post<GenerateSecurityTestsResult>(
       `${BASE}/threat-models/${id}/security-tests/generate`, threatIds ? { threatIds } : {}));
+  }
+
+  /** Copies a security test into a feature test case covering its threats (ADR 0016). */
+  convertTest(id: string, testId: string, featureId: string, modelId?: string): Promise<TestCase> {
+    return this.call(this.http.post<TestCase>(
+      `${BASE}/threat-models/${id}/security-tests/${testId}/convert`,
+      modelId ? { featureId, modelId } : { featureId }));
   }
 
   bulkTestStatus(id: string, ids: string[], status: SecurityTestStatus): Promise<SecurityTest[]> {

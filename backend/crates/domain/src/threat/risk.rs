@@ -189,11 +189,13 @@ pub fn unsupported_residual_facts(
 }
 
 /// Computes the flags of a threat (09-threat-modeling.md#threat-flags).
-/// `tests` are the security tests linking this threat.
+/// `tests` are the security tests linking this threat; `failing_test_case` is
+/// whether a feature test case covering it last failed (ADR 0016).
 pub fn threat_flags(
     threat: &Threat,
     controls: &HashMap<Uuid, &Control>,
     tests: &[&SecurityTest],
+    failing_test_case: bool,
     today: NaiveDate,
 ) -> Vec<ThreatFlag> {
     let f = &threat.fields;
@@ -242,11 +244,13 @@ pub fn threat_flags(
     if open && f.due_date.is_some_and(|d| d < today) {
         out.push(ThreatFlag::Overdue);
     }
-    if tests.iter().any(|t| {
-        t.last_result
-            .as_ref()
-            .is_some_and(|r| r.outcome == SecurityTestOutcome::Failed)
-    }) {
+    if failing_test_case
+        || tests.iter().any(|t| {
+            t.last_result
+                .as_ref()
+                .is_some_and(|r| r.outcome == SecurityTestOutcome::Failed)
+        })
+    {
         out.push(ThreatFlag::FailingTest);
     }
     out
@@ -370,7 +374,7 @@ mod tests {
             }),
         );
         assert_eq!(
-            threat_flags(&t, &HashMap::new(), &[], today()),
+            threat_flags(&t, &HashMap::new(), &[], false, today()),
             [ThreatFlag::NoControl]
         );
         let c = control(1, "Authz", ControlStatus::Planned);
@@ -378,7 +382,7 @@ mod tests {
         t2.fields.control_ids = vec![c.audit.id];
         let map = HashMap::from([(c.audit.id, &c)]);
         assert_eq!(
-            threat_flags(&t2, &map, &[], today()),
+            threat_flags(&t2, &map, &[], false, today()),
             [ThreatFlag::PlannedControlsOnly]
         );
     }
@@ -397,12 +401,31 @@ mod tests {
         let planned = control(1, "P", ControlStatus::Planned);
         t.fields.control_ids = vec![planned.audit.id];
         let map = HashMap::from([(planned.audit.id, &planned)]);
-        assert!(threat_flags(&t, &map, &[], today()).contains(&ThreatFlag::UnsupportedReduction));
+        assert!(
+            threat_flags(&t, &map, &[], false, today()).contains(&ThreatFlag::UnsupportedReduction)
+        );
         let verified = control(2, "V", ControlStatus::Verified);
         t.fields.control_ids.push(verified.audit.id);
         let map = HashMap::from([(planned.audit.id, &planned), (verified.audit.id, &verified)]);
-        assert!(!threat_flags(&t, &map, &[], today()).contains(&ThreatFlag::UnsupportedReduction));
+        assert!(!threat_flags(&t, &map, &[], false, today())
+            .contains(&ThreatFlag::UnsupportedReduction));
         assert_eq!(t.fields.current.unwrap().score(), 6);
+    }
+
+    /// ADR 0016: a failing covering feature test case raises the same flag.
+    #[test]
+    fn a_failing_covering_test_case_is_a_failing_test() {
+        let t = threat(
+            1,
+            threat_fields(ThreatTarget {
+                kind: TargetKind::Component,
+                id: Uuid::nil(),
+            }),
+        );
+        assert!(threat_flags(&t, &HashMap::new(), &[], true, today())
+            .contains(&ThreatFlag::FailingTest));
+        assert!(!threat_flags(&t, &HashMap::new(), &[], false, today())
+            .contains(&ThreatFlag::FailingTest));
     }
 
     #[test]
@@ -433,6 +456,7 @@ mod tests {
             source: None,
             last_result: None,
             source_model: None,
+            converted_to_test_case_id: None,
         };
         test.last_result = Some(SecurityTestResult {
             id: Uuid::new_v4(),
@@ -441,7 +465,7 @@ mod tests {
             note: None,
             executed_at: test.audit.created_at,
         });
-        let flags = threat_flags(&t, &HashMap::new(), &[&test], today());
+        let flags = threat_flags(&t, &HashMap::new(), &[&test], false, today());
         assert!(flags.contains(&ThreatFlag::Overdue));
         assert!(flags.contains(&ThreatFlag::FailingTest));
     }
@@ -469,7 +493,7 @@ mod tests {
     #[test]
     fn residual_flags() {
         let above = threat_with(Some((2, 3)), Some((3, 3)));
-        assert!(threat_flags(&above, &HashMap::new(), &[], today())
+        assert!(threat_flags(&above, &HashMap::new(), &[], false, today())
             .contains(&ThreatFlag::ResidualAboveCurrent));
 
         let mut t = threat_with(Some((3, 4)), Some((2, 2)));
@@ -479,7 +503,7 @@ mod tests {
         t.fields.control_ids = vec![id];
         let mut map = HashMap::new();
         map.insert(id, &c);
-        let flags = threat_flags(&t, &map, &[], today());
+        let flags = threat_flags(&t, &map, &[], false, today());
         assert!(flags.contains(&ThreatFlag::UnsupportedResidual));
         assert_eq!(
             unsupported_residual_facts(&t, &map),
@@ -489,7 +513,9 @@ mod tests {
         let v = control(1, "WAF", ControlStatus::Verified);
         let mut map = HashMap::new();
         map.insert(id, &v);
-        assert!(!threat_flags(&t, &map, &[], today()).contains(&ThreatFlag::UnsupportedResidual));
+        assert!(
+            !threat_flags(&t, &map, &[], false, today()).contains(&ThreatFlag::UnsupportedResidual)
+        );
     }
 
     #[test]
@@ -507,11 +533,11 @@ mod tests {
         t.fields.treatment = crate::threat::RiskTreatment::Accept;
         t.fields.acceptance_expires = Some(NaiveDate::from_ymd_opt(2026, 10, 16).unwrap());
         assert_eq!(effective_status(&t, today()), ThreatStatus::Open);
-        let flags = threat_flags(&t, &HashMap::new(), &[], today());
+        let flags = threat_flags(&t, &HashMap::new(), &[], false, today());
         assert!(flags.contains(&ThreatFlag::AcceptanceExpired));
         assert!(flags.contains(&ThreatFlag::NoControl));
         t.fields.acceptance_expires = Some(NaiveDate::from_ymd_opt(2026, 10, 18).unwrap());
         assert_eq!(effective_status(&t, today()), ThreatStatus::Accepted);
-        assert!(threat_flags(&t, &HashMap::new(), &[], today()).is_empty());
+        assert!(threat_flags(&t, &HashMap::new(), &[], false, today()).is_empty());
     }
 }

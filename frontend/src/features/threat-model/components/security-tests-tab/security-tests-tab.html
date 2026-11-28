@@ -89,6 +89,10 @@
     <tm-multi-pick legend="Verifies threats" [options]="threatOptions()" [(value)]="e.draft.threatIds" />
     <tm-multi-pick legend="Verifies controls" [options]="controlOptions()" [(value)]="e.draft.controlIds"
                    emptyText="No controls yet." />
+    @if (e.item && store.model(); as tm) {
+      <tm-convert-test [threatModelId]="tm.id" [projectId]="store.projectId()" [test]="e.item"
+                       (converted)="onConverted()" />
+    }
   </tm-editor-drawer>
 }
 

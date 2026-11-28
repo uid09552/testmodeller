@@ -27,6 +27,11 @@ pub struct App {
 }
 
 pub async fn app() -> App {
+    app_with_ai_key(None).await
+}
+
+/// Like [`app`], with a provider key as if from `TM_AI_API_KEY`.
+pub async fn app_with_ai_key(ai_key: Option<&str>) -> App {
     let db = Postgres::default()
         .with_tag("17-alpine")
         .start()
@@ -37,7 +42,7 @@ pub async fn app() -> App {
     let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
     let store = Store::connect(&url, 4).await.unwrap();
     let secrets = Arc::new(SecretStore::from_bytes(&[7u8; 32], KeySource::Configured).unwrap());
-    let state = AppState::new(store.clone(), None, secrets);
+    let state = AppState::new(store.clone(), ai_key.map(str::to_owned), secrets);
     App {
         _db: db,
         store,

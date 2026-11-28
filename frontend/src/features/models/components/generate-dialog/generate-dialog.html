@@ -1,0 +1,82 @@
+<ix-modal-header>Generate test cases — {{ data.modelName }}</ix-modal-header>
+<ix-modal-content>
+  <div class="gen">
+    <ix-select label="Coverage criterion" [value]="criterion()" [helperText]="hint()"
+               (valueChange)="setCriterion($event)">
+      @for (c of criteria; track c.value) { <ix-select-item [value]="c.value" [label]="c.label" /> }
+    </ix-select>
+
+    @if (criterion() === 'bounded-paths') {
+      <ix-number-input label="Maximum path length" [min]="1" [max]="50" [value]="maxPathLength()"
+                       [invalidText]="lengthInvalid() ? 'Between 1 and 50 transitions.' : ''"
+                       [class.ix-invalid]="lengthInvalid()"
+                       (valueChange)="setMaxPathLength($event)" />
+    }
+
+    <ix-input label="Seed" helperText="Optional. The same model, criterion and seed always give the same test cases."
+              [value]="seed()" [invalidText]="seedInvalid() ? 'A whole number, or leave it empty.' : ''"
+              [class.ix-invalid]="seedInvalid()" (valueChange)="setSeed($event)" />
+
+    @if (error(); as err) {
+      <ix-message-bar type="danger" [persistent]="true">{{ err }}</ix-message-bar>
+    }
+
+    @if (busy() === 'preview') {
+      <p class="typography-body-sm gen__muted" role="status"><ix-spinner size="sm" aria-hidden="true" /> Generating…</p>
+    }
+
+    @if (result(); as r) {
+      <section class="gen__result" aria-labelledby="gen-result-title">
+        <h3 id="gen-result-title" class="typography-h6">
+          {{ r.testCases.length }} test case{{ r.testCases.length === 1 ? '' : 's' }}
+          @if (r.seed !== undefined) { <span class="typography-body-sm gen__muted">(seed {{ r.seed }})</span> }
+        </h3>
+        <p class="typography-body">
+          Covers {{ r.coverage.states.covered }} of {{ r.coverage.states.total }} states ({{ pct(r.coverage.states) }} %)
+          and {{ r.coverage.transitions.covered }} of {{ r.coverage.transitions.total }} transitions
+          ({{ pct(r.coverage.transitions) }} %).
+        </p>
+        @if (r.skippedPaths?.length) {
+          <p class="typography-body-sm">⚠ {{ r.skippedPaths!.length }} path(s) skipped: {{ r.skippedPaths![0].reason }}</p>
+        }
+
+        @if (diff(); as d) {
+          @if (existing().length) {
+            <p class="typography-body-sm" role="status">
+              Compared with the {{ existing().length }} generated test case{{ existing().length === 1 ? '' : 's' }} this model has:
+              {{ d.added.length }} new, {{ d.changed.length }} changed, {{ d.unchanged.length }} unchanged,
+              {{ d.dropped.length }} no longer generated.
+            </p>
+            @if (d.unchanged.length || d.changed.length) {
+              <ix-message-bar type="warning" [persistent]="true">
+                Saving adds all {{ r.testCases.length }} again, next to the existing ones. Delete the old generated test
+                cases on the Test Cases page first if you want to replace them.
+              </ix-message-bar>
+            }
+          }
+          <ul class="typography-body gen__list">
+            @for (tc of r.testCases; track $index) {
+              <li>
+                {{ tc.name }}
+                <span class="typography-body-sm gen__muted">
+                  — {{ tc.steps.length }} step{{ tc.steps.length === 1 ? '' : 's' }}
+                  @if (d.added.includes(tc.name)) { · new } @else if (d.changed.includes(tc.name)) { · changed }
+                </span>
+              </li>
+            }
+          </ul>
+          @if (d.dropped.length) {
+            <p class="typography-body-sm gen__muted">No longer generated: {{ d.dropped.join(', ') }}</p>
+          }
+        }
+      </section>
+    }
+  </div>
+</ix-modal-content>
+<ix-modal-footer>
+  <ix-button variant="secondary" (click)="cancel()">Cancel</ix-button>
+  <ix-button variant="secondary" [loading]="busy() === 'preview'" [disabled]="!canRun()" (click)="preview()">Preview</ix-button>
+  <ix-button variant="primary" [loading]="busy() === 'save'" [disabled]="!canRun()" (click)="save()">
+    Save test cases
+  </ix-button>
+</ix-modal-footer>

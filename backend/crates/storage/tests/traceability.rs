@@ -131,7 +131,7 @@ impl Fixture {
             vec![]
         };
         self.store
-            .create_test_case(self.feature, &d, Origin::Manual, &assignments)
+            .create_test_case(self.feature, &d, Origin::Manual, &assignments, &[])
             .await
             .unwrap()
             .audit
@@ -160,7 +160,7 @@ async fn links_round_trip_as_fields() {
     assert_eq!(tc.data.description, None);
 
     let updated = store
-        .replace_test_case(id, tc.audit.version, &data("a", None, None), None)
+        .replace_test_case(id, tc.audit.version, &data("a", None, None), None, None)
         .await
         .unwrap();
     assert_eq!(updated.data.backlog_url, None);

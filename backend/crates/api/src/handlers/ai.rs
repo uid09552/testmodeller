@@ -14,6 +14,7 @@ use crate::auth::Identity;
 use crate::dto::*;
 use crate::error::{ApiError, ApiResult};
 use crate::extract::{optional_json, ApiJson, ApiPath, ApiQuery, Paging};
+use crate::tenant_guard::require_tenant;
 use crate::AppState;
 
 const MAX_PROMPT_CHARS: usize = 8000;
@@ -58,22 +59,6 @@ pub async fn request_proposals(
         )
         .await?;
     Ok((StatusCode::ACCEPTED, Json((&job).into())))
-}
-
-/// Rejects an id that belongs to another tenant, reporting it as missing.
-async fn require_tenant(
-    state: &AppState,
-    identity: &Identity,
-    scope: TenantScope,
-    id: Uuid,
-) -> ApiResult<()> {
-    if state.store.tenant_of(scope, id).await? != identity.tenant {
-        return Err(ApiError::new(
-            StatusCode::NOT_FOUND,
-            format!("{} not found", scope.entity()),
-        ));
-    }
-    Ok(())
 }
 
 /// `GET /jobs/{jobId}`
@@ -172,7 +157,10 @@ pub async fn get_ai_settings(State(state): State<AppState>) -> ApiResult<Json<Ai
     Ok(Json(settings_dto(&state, s).await))
 }
 
-/// `PUT /settings/ai` — the API key is kept in memory only and never returned.
+/// `PUT /settings/ai` — the API key is stored encrypted and never returned.
+///
+/// Changing the provider or base URL without sending `apiKey` drops the stored
+/// key, so it is never sent to an endpoint it was not entered for.
 pub async fn put_ai_settings(
     State(state): State<AppState>,
     ApiJson(input): ApiJson<AiSettingsInput>,
@@ -192,9 +180,6 @@ pub async fn put_ai_settings(
         model: input.model.filter(|m| !m.is_empty()),
         max_tokens_per_request: input.max_tokens_per_request,
     };
-    let saved = state.store.put_ai_settings(&settings).await?;
-    if let Some(key) = input.api_key {
-        state.ai.set_api_key(key).await?;
-    }
+    let saved = state.ai.save_settings(&settings, input.api_key).await?;
     Ok(Json(settings_dto(&state, saved).await))
 }

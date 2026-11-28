@@ -18,7 +18,7 @@ related: [testing-guide.md, workflow.md]
 - Templates: new control flow (`@if`, `@for`), no logic-heavy expressions.
 - Styling: Siemens iX per [DESIGN.md](../../DESIGN.md) — iX components, `--si-sys-*` tokens, iX typography classes; no hex/px literals, no inline styles. The legacy `--clr-*` tokens and `_ui.scss` primitives below are being phased out.
 - Accessibility: semantic HTML, labels, focus management, keyboard support.
-- Tests: Jest or Karma per ADR; test components via harnesses; mock API at service level.
+- Tests: Vitest (`ng test`, jsdom); test components via harnesses; mock API at service level.
 - Lint: ESLint with `@angular-eslint`; Prettier for formatting.
 
 ## Bundle budgets
@@ -33,7 +33,7 @@ icons by name from `@siemens/ix-angular/standalone` and
 split it: once a lazy page uses an iX component, that component's element
 definition joins the chunk the shell already loads. Using `ix-input`,
 `ix-select` and the message service in Settings added about 30 kB gzipped to
-the initial load (1.34 MB raw, over the 1.2 MB warning). Expect the initial
+the initial load (1.41 MB raw, over the 1.2 MB warning and close to the 1.5 MB error; see issue #45). Expect the initial
 bundle to grow towards "every iX component the app uses" as pages migrate;
 revisit the budget then rather than hand-loading elements per page.
 

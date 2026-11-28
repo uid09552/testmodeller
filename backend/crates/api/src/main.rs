@@ -4,8 +4,11 @@ use anyhow::{bail, Context};
 use axum::http::{HeaderValue, Method};
 use clap::Parser;
 use std::sync::Arc;
+#[cfg(feature = "dev-mode")]
 use testcontainers::runners::AsyncRunner;
+#[cfg(feature = "dev-mode")]
 use testcontainers::{ContainerAsync, ImageExt};
+#[cfg(feature = "dev-mode")]
 use testcontainers_modules::postgres::Postgres;
 
 use tm_api::config::Config;
@@ -18,8 +21,25 @@ use tracing_subscriber::EnvFilter;
 
 const DEV_CORS_ORIGIN: &str = "http://localhost:4200";
 
+/// The dev-mode database, removed again at shutdown.
+#[cfg(feature = "dev-mode")]
+type DevDatabase = ContainerAsync<Postgres>;
+/// Without the `dev-mode` feature there is never one.
+#[cfg(not(feature = "dev-mode"))]
+type DevDatabase = std::convert::Infallible;
+
+/// Without the `dev-mode` feature, `--dev-mode` cannot start a database.
+#[cfg(not(feature = "dev-mode"))]
+async fn start_dev_database(_tag: &str) -> anyhow::Result<(DevDatabase, String)> {
+    bail!(
+        "--dev-mode needs a build with the dev-mode feature (the default); \
+         this binary was built with --no-default-features, so set TM_DATABASE_URL"
+    )
+}
+
 /// Starts a disposable PostgreSQL container and returns it with its connection URL.
-async fn start_dev_database(tag: &str) -> anyhow::Result<(ContainerAsync<Postgres>, String)> {
+#[cfg(feature = "dev-mode")]
+async fn start_dev_database(tag: &str) -> anyhow::Result<(DevDatabase, String)> {
     tracing::info!(image = %format!("postgres:{tag}"), "dev mode: starting PostgreSQL container");
     let container = Postgres::default()
         .with_db_name("testmodeller")
@@ -34,6 +54,18 @@ async fn start_dev_database(tag: &str) -> anyhow::Result<(ContainerAsync<Postgre
     let url = format!("postgres://testmodeller:testmodeller@{host}:{port}/testmodeller");
     tracing::info!(%host, %port, "dev mode: PostgreSQL ready (user/password/db: testmodeller)");
     Ok((container, url))
+}
+
+#[cfg(feature = "dev-mode")]
+async fn remove_dev_database(c: DevDatabase) -> anyhow::Result<()> {
+    tracing::info!("dev mode: removing PostgreSQL container");
+    c.rm().await?;
+    Ok(())
+}
+
+#[cfg(not(feature = "dev-mode"))]
+async fn remove_dev_database(c: DevDatabase) -> anyhow::Result<()> {
+    match c {}
 }
 
 async fn shutdown_signal() {
@@ -170,8 +202,7 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     if let Some(c) = container {
-        tracing::info!("dev mode: removing PostgreSQL container");
-        c.rm().await?;
+        remove_dev_database(c).await?;
     }
     Ok(())
 }

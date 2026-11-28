@@ -66,7 +66,6 @@ describe('ModelEditorPageComponent', () => {
     expect(page.store.name()).toBe('Model m1');
     expect(page.store.nodes().map(n => n.label)).toEqual(['Start']);
     expect(page.store.scenarioDesc()).toBe('As a user');
-    expect(page.featureName()).toBe('Login');
   });
 
   it('loads the other model when the route parameter changes', async () => {

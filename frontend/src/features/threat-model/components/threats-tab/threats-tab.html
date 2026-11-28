@@ -112,6 +112,7 @@
     <tm-multi-pick legend="Affected assets" [options]="assetOptions()" [(value)]="e.draft.assetIds" />
     <tm-multi-pick legend="Addressed by controls" [options]="controlOptions()" [(value)]="e.draft.controlIds"
                    emptyText="No controls yet." />
+    @if (e.item) { <tm-covering-tests [testCaseIds]="e.item.testCaseIds ?? []" /> }
     <p class="field__hint">Rate the risk and decide its treatment on the Risks tab.</p>
   </tm-editor-drawer>
 }

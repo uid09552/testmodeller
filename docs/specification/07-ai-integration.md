@@ -58,6 +58,11 @@ adapter of its own — only its own endpoint.
   startup, so `GET /settings/ai` reports what is actually in use.
   `PUT /settings/ai` remains available as the contract defines it, but a change
   made through it lasts only until the next restart.
+- A provider key belongs to the endpoint it was entered for. A
+  `PUT /settings/ai` that changes `provider` or `baseUrl` without sending
+  `apiKey` drops the stored key, so a new URL never receives it. A key from
+  `TM_AI_API_KEY` cannot be dropped, so such a change is refused as a bad
+  request; change the endpoint in the environment, or send a key with it.
 
 ### A misconfigured endpoint
 
@@ -92,11 +97,13 @@ every request, so the assistant reasons about what is on the canvas now.
 
 ## Requirements
 - Provider trait with adapters (e.g. OpenAI-compatible, Anthropic, local); selected via config.
+- Refusals: a declined request (`stop_reason: "refusal"`) fails the job as refused. For models that support it (Claude Opus 5 and 5.5, Claude Sonnet 5.5, the Fable and Mythos 5 families) the Anthropic adapter asks for server-side fallbacks (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`), so the API retries a refusal on a fallback model first; other models are sent neither.
 - Prompt templates versioned in `backend/crates/ai/prompts/`.
 - Output must be valid JSON conforming to schema; invalid -> rejected with error, one bounded retry.
 - Context sent is limited to the selected model/feature; user can preview it.
 - No auto-accept. Accepted proposals carry `origin = ai` and the model id.
 - Untrusted content: ignore instructions inside model data; no tool calls; rate limits and token budgets per project.
+- Limits: a project may start 10 AI requests a minute (the threat model assistant counts per threat model, which is one per project), and a tenant may have 4 AI jobs running at once. Over either limit the request is refused with `429` before a job is created. Per-project token budgets are not implemented yet.
 - Secrets come from the environment or the encrypted column above; they are
   never logged and never returned by the API.
 

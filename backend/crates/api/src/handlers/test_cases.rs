@@ -9,12 +9,14 @@ use chrono::Utc;
 use serde::Deserialize;
 use tm_domain::{Assignment, AssignmentTarget, Audit, Origin, TestCase, TestCaseStatus};
 use tm_generation::{CoverageReport, GenerationError, GenerationOptions};
-use tm_storage::{NewAssignment, TestCaseFilter, TraceFilter, TraceGap};
+use tm_storage::{NewAssignment, TenantScope, TestCaseFilter, TraceFilter, TraceGap};
 use uuid::Uuid;
 
+use crate::auth::Identity;
 use crate::dto::*;
 use crate::error::{ApiError, ApiResult, FieldError};
 use crate::extract::{ApiJson, ApiPath, ApiQuery, IfMatch, Paging};
+use crate::tenant_guard::require_tenant;
 use crate::AppState;
 
 /// Query of `GET /features/{featureId}/test-cases`.
@@ -47,16 +49,34 @@ pub async fn list_test_cases(
     Ok(Json(PageDto::from_page(page)))
 }
 
+/// Tenant-checks every threat a test case body names (ADR 0005, 0016): the
+/// guard sees only path ids. Storage then requires the same project.
+async fn require_threats(state: &AppState, identity: &Identity, threats: &[Uuid]) -> ApiResult<()> {
+    for t in threats {
+        require_tenant(state, identity, TenantScope::Threat, *t).await?;
+    }
+    Ok(())
+}
+
 /// `POST /features/{featureId}/test-cases`
 pub async fn create_test_case(
     State(state): State<AppState>,
+    identity: Identity,
     ApiPath(id): ApiPath<Uuid>,
-    ApiJson(input): ApiJson<TestCaseInput>,
+    ApiJson(mut input): ApiJson<TestCaseInput>,
 ) -> ApiResult<(StatusCode, Json<TestCaseDto>)> {
+    let threats = input.threat_ids.take().unwrap_or_default();
+    require_threats(&state, &identity, &threats).await?;
     let (data, assignments) = input.into_parts()?;
     let tc = state
         .store
-        .create_test_case(id, &data, Origin::Manual, &assignments.unwrap_or_default())
+        .create_test_case(
+            id,
+            &data,
+            Origin::Manual,
+            &assignments.unwrap_or_default(),
+            &threats,
+        )
         .await?;
     Ok((StatusCode::CREATED, Json((&tc).into())))
 }
@@ -72,14 +92,25 @@ pub async fn get_test_case(
 /// `PUT /test-cases/{testCaseId}` — replaces fields and steps; assignments only if given.
 pub async fn replace_test_case(
     State(state): State<AppState>,
+    identity: Identity,
     ApiPath(id): ApiPath<Uuid>,
     IfMatch(version): IfMatch,
-    ApiJson(input): ApiJson<TestCaseInput>,
+    ApiJson(mut input): ApiJson<TestCaseInput>,
 ) -> ApiResult<Json<TestCaseDto>> {
+    let threats = input.threat_ids.take();
+    if let Some(list) = &threats {
+        require_threats(&state, &identity, list).await?;
+    }
     let (data, assignments) = input.into_parts()?;
     let tc = state
         .store
-        .replace_test_case(id, version, &data, assignments.as_deref())
+        .replace_test_case(
+            id,
+            version,
+            &data,
+            assignments.as_deref(),
+            threats.as_deref(),
+        )
         .await?;
     Ok(Json((&tc).into()))
 }
@@ -96,9 +127,11 @@ pub async fn delete_test_case(
 /// `POST /test-cases/{testCaseId}/move`
 pub async fn move_test_case(
     State(state): State<AppState>,
+    identity: Identity,
     ApiPath(id): ApiPath<Uuid>,
     ApiJson(body): ApiJson<MoveTestCase>,
 ) -> ApiResult<Json<TestCaseDto>> {
+    require_tenant(&state, &identity, TenantScope::Feature, body.feature_id).await?;
     let tc = state.store.move_test_case(id, body.feature_id).await?;
     Ok(Json((&tc).into()))
 }
@@ -299,6 +332,7 @@ pub async fn generate(
                     data,
                     origin: Origin::Generated,
                     generated_from_model_id: Some(id),
+                    threat_ids: Vec::new(),
                     assignments: assignments
                         .into_iter()
                         .map(|a| Assignment {

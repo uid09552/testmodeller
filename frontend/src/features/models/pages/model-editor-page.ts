@@ -3,7 +3,7 @@ import {
   inject, OnInit, signal, untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { Router, RouterLink, ActivatedRoute } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 import { CanvasComponent } from '../components/canvas/canvas';
 import { PropertiesPanelComponent } from '../components/properties-panel/properties-panel';
 import { TestCasesPanelComponent } from '../components/test-cases-panel/test-cases-panel';
@@ -15,6 +15,12 @@ import { ModelEditorStore } from '../state/model-editor.store';
 import { OrgApi } from '../../../core/api/org-api';
 import { ModelPersistenceService } from '../state/model-persistence';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
+import { EDITOR_PROJECT_ID } from '../../threat-model/state/project-threats';
+import { IxButton, ModalService, ToastService } from '@siemens/ix-angular/standalone';
+import { iconPlay } from '@siemens/ix-icons/icons';
+import {
+  GenerateDialogComponent, GenerateDialogData, GenerateDialogResult,
+} from '../components/generate-dialog/generate-dialog';
 import { readJson, writeJson } from '../../../core/persistence/local-store';
 
 function clamp(v: number, min: number, max: number): number {
@@ -28,12 +34,26 @@ export type EditorMode = 'edit' | 'present' | 'table';
 @Component({
   selector: 'tm-model-editor-page',
   imports: [
-    RouterLink, CanvasComponent, TestCasesPanelComponent, PropertiesPanelComponent,
+    IxButton, CanvasComponent, TestCasesPanelComponent, PropertiesPanelComponent,
     BottomPanelComponent, AiChatWindowComponent, ModelTableComponent,
   ],
   // Each editor instance gets its own stores. The chat store is here, not in
   // the chat window, so the transcript survives closing the window.
-  providers: [ModelEditorStore, ModelPersistenceService, AiChatStore],
+  providers: [
+    ModelEditorStore, ModelPersistenceService, AiChatStore,
+    // The open model's project, for the threats its test cases may cover (ADR 0016).
+    {
+      provide: EDITOR_PROJECT_ID,
+      useFactory: () => {
+        const explorer = inject(ExplorerStore);
+        const params = toSignal(inject(ActivatedRoute).paramMap);
+        return computed(() => {
+          const id = params()?.get('modelId');
+          return explorer.modelPaths().find(p => p.model.id === id)?.projectId ?? null;
+        });
+      },
+    },
+  ],
   templateUrl: './model-editor-page.html',
   styleUrl: './model-editor-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -161,7 +181,6 @@ export class ModelEditorPageComponent implements OnInit {
   readonly confirmDelete = signal(false);
 
   /** The feature the open model belongs to, as the database has it. */
-  readonly featureName = this.remote.featureName;
   readonly featureId   = this.remote.featureId;
   /** What the stored copy is up to; the template shows failures. */
   readonly saveState   = this.remote.state;
@@ -314,6 +333,34 @@ export class ModelEditorPageComponent implements OnInit {
   }
 
   keepMine(): Promise<void> { return this.remote.keepMine(); }
+
+  readonly generateIcon = iconPlay;
+  private readonly modals = inject(ModalService);
+  private readonly toasts = inject(ToastService);
+
+  /**
+   * "Generate test cases" (06-ui.md): saves pending edits first, because
+   * generation reads the stored model, then reloads the test cases it stored.
+   */
+  async openGenerate(): Promise<void> {
+    const id = this.modelId();
+    if (!id) return;
+    if (this.store.dirty()) await this.save();
+    const instance = await this.modals.open<GenerateDialogData, GenerateDialogResult | null>({
+      content: GenerateDialogComponent,
+      data: { modelId: id, modelName: this.store.name() },
+      size: '600',
+    });
+    instance.onClose.once(async result => {
+      if (!result?.saved.length) return;
+      const loaded = await this.remote.open(id);
+      if (loaded && this.modelId() === id) this.store.loadFrom(loaded);
+      void this.toasts.show({
+        type: 'success',
+        message: `${result.saved.length} test case${result.saved.length === 1 ? '' : 's'} generated and saved.`,
+      });
+    });
+  }
 
   async save(): Promise<void> {
     this.saving.set(true);
