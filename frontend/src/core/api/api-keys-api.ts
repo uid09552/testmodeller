@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { toApiError } from './api-error';
+import { callApi } from './api-error';
 import { ApiKey, ApiKeyCreated, ApiKeyInput } from './api.types';
 
 /** Base path of the API; the dev server proxies it (frontend/proxy.conf.json). */
@@ -32,11 +32,5 @@ export class ApiKeysApi {
       firstValueFrom(this.http.delete<void>(`${BASE}/me/api-keys/${encodeURIComponent(id)}`)));
   }
 
-  private async call<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-      return await fn();
-    } catch (e) {
-      throw toApiError(e);
-    }
-  }
+  private readonly call = callApi;
 }

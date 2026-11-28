@@ -4,6 +4,7 @@ import { Baseline, BaselineComparison } from '../../../../core/api/threat-model-
 import { errorMessage, ThreatModelStore } from '../../state/threat-model.store';
 import { label, levelText } from '../../state/threat-model-view';
 import { WorkspaceNav } from '../../state/workspace-nav';
+import { ConfirmService } from '../../../../core/ui/confirm';
 
 /** Immutable snapshots of the threat model and their comparison with it (FR-081). */
 @Component({
@@ -14,6 +15,7 @@ import { WorkspaceNav } from '../../state/workspace-nav';
 })
 export class BaselinesTabComponent {
   readonly store = inject(ThreatModelStore);
+  private readonly confirmer = inject(ConfirmService);
   readonly nav = inject(WorkspaceNav);
   readonly label = label;
   readonly levelText = levelText;
@@ -53,7 +55,7 @@ export class BaselinesTabComponent {
   }
 
   async remove(b: Baseline): Promise<void> {
-    if (!confirm(`Delete baseline "${b.name}"? This cannot be undone.`)) return;
+    if (!(await this.confirmer.danger('Delete baseline?', `"${b.name}" is deleted. This cannot be undone.`))) return;
     this.message.set(null);
     try {
       await this.store.deleteBaseline(b.id);

@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { toApiError } from './api-error';
+import { callApi } from './api-error';
 import {
   ModelInput, ModelLayoutDoc, StateInput, TestCase, TestCaseInput, TransitionInput, Variable,
 } from './api.types';
@@ -295,11 +295,5 @@ export class OrgApi {
     return items;
   }
 
-  private async call<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-      return await fn();
-    } catch (e) {
-      throw toApiError(e);
-    }
-  }
+  private readonly call = callApi;
 }

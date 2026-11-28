@@ -2,6 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { ThreatModelApi } from '../../../../core/api/threat-model-api';
+import { ConfirmService } from '../../../../core/ui/confirm';
 import { ThreatModelIndex } from '../../../threat-model/state/threat-model-index';
 import { ExplorerStore } from '../../state/explorer.store';
 import { ExplorerTreeComponent } from './explorer-tree';
@@ -14,6 +15,7 @@ const PROJECTS = [
 describe('ExplorerTreeComponent: threat models', () => {
   let byProject: ReturnType<typeof signal<Record<string, { id: string; name: string } | null>>>;
   let index: { byProject: typeof byProject; of: (id: string) => { id: string; name: string } | null; create: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
+  const confirmSpy = { answer: true, danger: vi.fn(async () => confirmSpy.answer) };
   let router: Router;
   let root: HTMLElement;
   let fixture: ReturnType<typeof TestBed.createComponent<ExplorerTreeComponent>>;
@@ -40,6 +42,7 @@ describe('ExplorerTreeComponent: threat models', () => {
       providers: [
         provideRouter([]),
         { provide: ThreatModelApi, useValue: {} },
+        { provide: ConfirmService, useValue: confirmSpy },
         { provide: ThreatModelIndex, useValue: index },
         {
           provide: ExplorerStore,
@@ -101,7 +104,7 @@ describe('ExplorerTreeComponent: threat models', () => {
   });
 
   it('deletes a threat model from its own menu, after confirming', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    confirmSpy.answer = false;
     const open = () => {
       threat('Shop threat model')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }));
       fixture.detectChanges();
@@ -113,7 +116,7 @@ describe('ExplorerTreeComponent: threat models', () => {
     del();
     await settle();
     expect(index.remove).not.toHaveBeenCalled();
-    confirmSpy.mockReturnValue(true);
+    confirmSpy.answer = true;
     open();
     del();
     await settle();
