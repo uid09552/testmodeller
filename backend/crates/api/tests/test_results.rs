@@ -79,6 +79,7 @@ async fn imports_matches_records_and_reports() {
             },
             tm_domain::Origin::Manual,
             &[],
+            &[],
         )
         .await
         .unwrap()

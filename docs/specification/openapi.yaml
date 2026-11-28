@@ -990,6 +990,33 @@ paths:
       tags: [ThreatModel]
       summary: Delete security test and its results
       responses: { '204': { description: Deleted } }
+  /threat-models/{threatModelId}/security-tests/{itemId}/convert:
+    parameters: [ { $ref: '#/components/parameters/ThreatModelId' }, { $ref: '#/components/parameters/ItemId' } ]
+    post:
+      tags: [ThreatModel]
+      summary: Convert a security test into a feature test case
+      description: >-
+        Copies the title, objective, preconditions and steps into a new manual test case of the
+        feature, linked to the security test's threats. With modelId (a model of that feature) the
+        test case is assigned to the model's initial state, so it shows in the model editor and on
+        the Test Cases page. The security test is set to obsolete and records the new test case.
+        The feature must belong to the threat model's project and the model to the feature (422);
+        a test that was already converted answers 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [featureId]
+              properties:
+                featureId: { $ref: '#/components/schemas/Id' }
+                modelId: { $ref: '#/components/schemas/Id' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/TestCase' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
   /threat-models/{threatModelId}/security-tests/generate:
     parameters: [ { $ref: '#/components/parameters/ThreatModelId' } ]
     post:
@@ -1378,6 +1405,7 @@ components:
         backlogUrl: { type: string, format: uri, maxLength: 2048, pattern: '^https?://', description: Optional http(s) link to the backlog item (the requirement) }
         steps: { type: array, items: { $ref: '#/components/schemas/TestStepInput' } }
         assignments: { type: array, items: { $ref: '#/components/schemas/AssignmentInput' } }
+        threatIds: { type: array, items: { $ref: '#/components/schemas/Id' }, description: 'Threats of the same project''s threat model this test case covers; omitted keeps the current links (422 for a threat of another project)' }
     TestCase:
       allOf:
         - { $ref: '#/components/schemas/Audit' }
@@ -1398,6 +1426,7 @@ components:
             lastResult: { allOf: [ { $ref: '#/components/schemas/TestResult' } ], readOnly: true, description: Most recent imported result by execution time }
             steps: { type: array, items: { $ref: '#/components/schemas/TestStep' } }
             assignments: { type: array, items: { $ref: '#/components/schemas/Assignment' } }
+            threatIds: { type: array, items: { $ref: '#/components/schemas/Id' }, description: Threats this test case covers }
     Traceability:
       type: object
       required: [items, untraced, summary]
@@ -1785,6 +1814,7 @@ components:
         expiringAcceptances: { type: array, items: { $ref: '#/components/schemas/RefLabel' }, description: Accepted threats expiring within 30 days }
         expiredAcceptances: { type: integer }
         verificationOverdue: { type: integer }
+        threatsCoveredByTestCases: { type: integer, description: Open and accepted threats that at least one feature test case covers }
     CompletenessFinding:
       type: object
       required: [code, message]
@@ -1986,6 +2016,7 @@ components:
             acceptedOn: { type: [string, 'null'], format: date }
             effectiveStatus: { $ref: '#/components/schemas/ThreatStatus', description: Stored status, except an accepted threat whose acceptance expired reads as open }
             affectedBoundaries: { type: array, items: { $ref: '#/components/schemas/Crossing' } }
+            testCaseIds: { type: array, items: { $ref: '#/components/schemas/Id' }, description: Feature test cases that cover this threat }
     SuggestThreatsResult:
       type: object
       required: [rulesetVersion, created, skipped]
@@ -2087,6 +2118,7 @@ components:
             templateVersion: { type: [integer, 'null'] }
             stale: { type: [string, 'null'], description: 'Reason the generated test is stale, e.g. "threat dismissed", "no threat", "control unlinked: CTL-2"' }
             lastResult: { oneOf: [ { $ref: '#/components/schemas/SecurityTestResult' }, { type: 'null' } ] }
+            convertedToTestCaseId: { oneOf: [ { $ref: '#/components/schemas/Id' }, { type: 'null' } ], description: The feature test case this test was converted into (the test is then obsolete) }
     GenerateSecurityTestsResult:
       type: object
       required: [created, skipped]

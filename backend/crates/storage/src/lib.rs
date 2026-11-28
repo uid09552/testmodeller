@@ -35,8 +35,8 @@ pub use results::NewResult;
 pub use tenancy::TenantScope;
 pub use test_cases::{NewAssignment, TestCaseFilter};
 pub use threat_model::{
-    BaselineMeta, ControlApply, EvidenceOwner, NewArchitecture, NewBaseline, NewComponent, NewFlow,
-    NewTmProposal, ThreatModelAggregate, TmProposalRow, MAX_BASELINES,
+    BaselineMeta, ControlApply, CoveringTestCase, EvidenceOwner, NewArchitecture, NewBaseline,
+    NewComponent, NewFlow, NewTmProposal, ThreatModelAggregate, TmProposalRow, MAX_BASELINES,
 };
 pub use traceability::{
     TraceElement, TraceFilter, TraceGap, TraceItem, TraceSummary, TraceTestCase, Traceability,

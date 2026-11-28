@@ -66,6 +66,7 @@ mod tests {
             }),
             last_result: None,
             source_model: None,
+            converted_to_test_case_id: None,
         }
     }
 

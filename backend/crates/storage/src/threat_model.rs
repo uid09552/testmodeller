@@ -41,6 +41,17 @@ pub struct ThreatModelAggregate {
     pub evidence: Vec<Evidence>,
     /// Every rule key ever used.
     pub rule_keys: HashSet<String>,
+    /// Feature test cases covering each threat, by threat id (ADR 0016).
+    pub covering: HashMap<Uuid, Vec<CoveringTestCase>>,
+}
+
+/// A feature test case that covers a threat.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CoveringTestCase {
+    /// The test case.
+    pub id: Uuid,
+    /// Its latest imported result is failed or error.
+    pub failing: bool,
 }
 
 fn unique_violation(e: sqlx::Error, message: impl FnOnce() -> String) -> StorageError {
@@ -735,6 +746,7 @@ impl Store {
                         source,
                         last_result: latest.remove(&sid),
                         source_model: r.try_get("ai_source")?,
+                        converted_to_test_case_id: r.try_get("converted_to_test_case_id")?,
                     })
                 })
                 .collect::<Result<Vec<_>, sqlx::Error>>()?;
@@ -755,6 +767,34 @@ impl Store {
                 .fetch_all(&mut *conn)
                 .await?;
 
+        // Covering test cases with whether their latest result failed; the
+        // latest result is ordered as `results::latest_results` orders it.
+        let mut covering: HashMap<Uuid, Vec<CoveringTestCase>> = HashMap::new();
+        for r in sqlx::query(
+            "SELECT l.threat_id, l.test_case_id,
+                    COALESCE(lr.status IN ('failed', 'error'), false) AS failing
+             FROM test_case_threats l
+             JOIN tm_threats t ON t.id = l.threat_id
+             LEFT JOIN LATERAL (
+                 SELECT status FROM test_results r WHERE r.test_case_id = l.test_case_id
+                 ORDER BY r.executed_at DESC, r.imported_at DESC LIMIT 1
+             ) lr ON true
+             WHERE t.threat_model_id = $1
+             ORDER BY l.created_at, l.test_case_id",
+        )
+        .bind(id)
+        .fetch_all(&mut *conn)
+        .await?
+        {
+            covering
+                .entry(r.try_get("threat_id")?)
+                .or_default()
+                .push(CoveringTestCase {
+                    id: r.try_get("test_case_id")?,
+                    failing: r.try_get("failing")?,
+                });
+        }
+
         Ok(ThreatModelAggregate {
             model,
             arch: Architecture {
@@ -768,7 +808,137 @@ impl Store {
             tests,
             evidence,
             rule_keys: rule_keys.into_iter().collect(),
+            covering,
         })
+    }
+
+    // ---- Conversion into feature test cases (ADR 0016) ----
+
+    /// Copies security test `test` of threat model `tm` into a new manual test
+    /// case of `feature_id` covering the same threats, sets the security test
+    /// obsolete and records the new test case. With `model_id` (a model of the
+    /// feature) the test case is assigned to the model's initial state. The
+    /// feature must belong to the threat model's project and the model to the
+    /// feature (422); a converted test cannot be converted again (409).
+    pub async fn convert_security_test(
+        &self,
+        tm: Uuid,
+        test: Uuid,
+        feature_id: Uuid,
+        model_id: Option<Uuid>,
+    ) -> Result<tm_domain::TestCase> {
+        let mut tx = self.pool.begin().await?;
+        let row = sqlx::query(
+            "SELECT * FROM security_tests WHERE id = $1 AND threat_model_id = $2 FOR UPDATE",
+        )
+        .bind(test)
+        .bind(tm)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(StorageError::NotFound("security test"))?;
+        if row
+            .try_get::<Option<Uuid>, _>("converted_to_test_case_id")?
+            .is_some()
+        {
+            return Err(StorageError::Conflict(
+                "this security test was already converted into a feature test case".into(),
+            ));
+        }
+        let same_project = sqlx::query(
+            "SELECT 1 FROM features f JOIN components c ON c.id = f.component_id
+             JOIN threat_models m ON m.project_id = c.project_id
+             WHERE f.id = $1 AND m.id = $2",
+        )
+        .bind(feature_id)
+        .bind(tm)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if same_project.is_none() {
+            return Err(StorageError::Invalid(
+                "featureId: must be a feature of the threat model's project".into(),
+            ));
+        }
+
+        let steps: serde_json::Value = row.try_get("steps")?;
+        let steps: Vec<SecurityTestStep> =
+            serde_json::from_value(steps).map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+        let preconditions: Vec<String> = row.try_get("preconditions")?;
+        let template: Option<String> = row.try_get("template_id")?;
+        let threats: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT threat_id FROM security_test_threats WHERE security_test_id = $1
+             ORDER BY position",
+        )
+        .bind(test)
+        .fetch_all(&mut *tx)
+        .await?;
+        let title: String = row.try_get("title")?;
+        let data = tm_domain::TestCaseData {
+            name: title.chars().take(300).collect(),
+            description: row.try_get("objective")?,
+            preconditions: (!preconditions.is_empty()).then(|| preconditions.join("\n")),
+            priority: None,
+            status: tm_domain::TestCaseStatus::Draft,
+            tags: std::iter::once("security".to_owned())
+                .chain(template)
+                .collect(),
+            steps: steps
+                .into_iter()
+                .enumerate()
+                .map(|(i, s)| tm_domain::TestStep {
+                    order: i as i32 + 1,
+                    action: s.action,
+                    expected: s.expected,
+                })
+                .collect(),
+            implementation_url: None,
+            backlog_url: None,
+        };
+        let assignments = match model_id {
+            None => Vec::new(),
+            Some(model) => {
+                let initial: Option<Uuid> = sqlx::query_scalar(
+                    "SELECT s.id FROM states s JOIN models m ON m.id = s.model_id
+                     WHERE m.id = $1 AND m.feature_id = $2 AND s.kind = 'initial'
+                     ORDER BY s.sort_order LIMIT 1",
+                )
+                .bind(model)
+                .bind(feature_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+                let state = initial.ok_or_else(|| {
+                    StorageError::Invalid(
+                        "modelId: must be a model of the feature, with an initial state".into(),
+                    )
+                })?;
+                vec![crate::NewAssignment {
+                    model_id: model,
+                    target: tm_domain::AssignmentTarget::State(state),
+                    step_order: None,
+                }]
+            }
+        };
+        let id = crate::test_cases::insert_test_case(
+            &mut tx,
+            feature_id,
+            &data,
+            tm_domain::Origin::Manual,
+            None,
+            &assignments,
+        )
+        .await?;
+        crate::test_cases::write_threats(&mut tx, id, feature_id, &threats).await?;
+        sqlx::query(
+            "UPDATE security_tests SET status = 'obsolete', converted_to_test_case_id = $2,
+                 version = version + 1, updated_at = now()
+             WHERE id = $1",
+        )
+        .bind(test)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        let tc = crate::test_cases::load_test_case(&mut tx, id).await?;
+        tx.commit().await?;
+        Ok(tc)
     }
 
     // ---- Zones ----

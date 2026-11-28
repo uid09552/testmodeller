@@ -170,6 +170,7 @@ export function testToInput(t: StateTest, modelId: string, stateId: string): Tes
     tags: [t.category, t.polarity],
     steps,
     assignments: [{ modelId, stateId }],
+    ...(t.threatIds ? { threatIds: t.threatIds } : {}),
   };
 }
 
@@ -191,6 +192,7 @@ export function testFromApi(tc: TestCase, seq: number, modelId?: string): StateT
     then: tc.steps.map(s => s.expected?.trim()).filter(Boolean).join('\n'),
     implementationUrl: tc.implementationUrl ?? legacy(LEGACY_IMPL),
     backlogUrl: tc.backlogUrl ?? legacy(LEGACY_BACKLOG),
+    ...(tc.threatIds?.length ? { threatIds: tc.threatIds } : {}),
     ...(modelId ? {
       path: tc.assignments
         .filter(a => a.modelId === modelId && (a.stateId || a.transitionId))

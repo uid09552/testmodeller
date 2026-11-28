@@ -32,6 +32,8 @@ pub enum TenantScope {
     Job,
     /// `/threat-models/{id}`
     ThreatModel,
+    /// A threat, named in a request body (`threatIds`, ADR 0016); never a path collection.
+    Threat,
 }
 
 impl TenantScope {
@@ -48,6 +50,7 @@ impl TenantScope {
             Self::Proposal => "proposal",
             Self::Job => "job",
             Self::ThreatModel => "threat model",
+            Self::Threat => "threat",
         }
     }
 
@@ -109,6 +112,12 @@ impl TenantScope {
                 "SELECT p.tenant_id FROM threat_models t
                  JOIN projects p ON p.id = t.project_id
                  WHERE t.id = $1"
+            }
+            Self::Threat => {
+                "SELECT p.tenant_id FROM tm_threats th
+                 JOIN threat_models t ON t.id = th.threat_model_id
+                 JOIN projects p ON p.id = t.project_id
+                 WHERE th.id = $1"
             }
         }
     }

@@ -225,7 +225,15 @@ fn render_gherkin(b: &ExportBundle) -> String {
             for tc in &f.test_cases {
                 let d = &tc.data;
                 out.push('\n');
+                // Covered threats as `@THR-n` (ADR 0016); a label always exists
+                // for a linked threat, which belongs to the same project.
+                let threat_tags = tc
+                    .threat_ids
+                    .iter()
+                    .filter_map(|id| b.threat_labels.get(id))
+                    .map(|l| format!("@{l}"));
                 let tags: Vec<String> = std::iter::once(tm_tag(tc.audit.id))
+                    .chain(threat_tags)
                     .chain(d.tags.iter().map(|t| gherkin_tag(t)))
                     .collect();
                 out.push_str(&format!("  {}\n", tags.join(" ")));

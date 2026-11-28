@@ -304,6 +304,8 @@ pub struct TestCase {
     pub assignments: Vec<Assignment>,
     /// Most recent imported result, by execution time.
     pub last_result: Option<TestResult>,
+    /// Threats of the project's threat model this test case covers (ADR 0016).
+    pub threat_ids: Vec<Uuid>,
 }
 
 /// An imported execution result of a test case (FR-052).

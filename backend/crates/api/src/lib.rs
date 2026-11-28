@@ -311,6 +311,10 @@ fn api(state: AppState, auth: AuthMode, mcp: Option<mcp_http::McpState>) -> Rout
                 .delete(tmh::tests::delete),
         )
         .route(
+            "/threat-models/{id}/security-tests/{item}/convert",
+            post(tmh::convert_test),
+        )
+        .route(
             "/threat-models/{id}/security-tests/{item}/results",
             get(tmh::results).post(tmh::record_result),
         )

@@ -740,6 +740,8 @@ pub struct SecurityTest {
     pub last_result: Option<SecurityTestResult>,
     /// Model id of the LLM when the origin is AI.
     pub source_model: Option<String>,
+    /// Feature test case this test was converted into (ADR 0016).
+    pub converted_to_test_case_id: Option<Uuid>,
 }
 
 impl SecurityTest {

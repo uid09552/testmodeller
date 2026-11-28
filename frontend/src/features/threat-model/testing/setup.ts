@@ -3,6 +3,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ThreatModelApi } from '../../../core/api/threat-model-api';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
+import { OrgApi } from '../../../core/api/org-api';
+import { MessageService, ToastService } from '@siemens/ix-angular/standalone';
 import { AiTranscript } from '../state/ai-transcript';
 import { ThreatModelIndex } from '../state/threat-model-index';
 import { ThreatModelStore } from '../state/threat-model.store';
@@ -15,8 +17,19 @@ export interface Harness<T> {
   api: FakeThreatModelApi;
   store: ThreatModelStore;
   nav: { go: ReturnType<typeof vi.fn> };
+  /** Fakes for the feature test case side (ADR 0016). */
+  org: { getTestCase: ReturnType<typeof vi.fn> };
+  messages: { information: ReturnType<typeof vi.fn>; answer: string };
+  toasts: { show: ReturnType<typeof vi.fn> };
   settle(): Promise<void>;
 }
+
+/** Models of `PROJECTS`, as `ExplorerStore.modelPaths` lists them. */
+export const MODEL_PATHS = [{
+  projectId: 'p1', projectName: 'Shop', componentId: 'c1', componentName: 'Payments',
+  featureId: 'f1', featureName: 'Pay',
+  model: { id: 'm1', name: 'Checkout', status: 'draft' as const, states: 2, transitions: 1 },
+}];
 
 export const PROJECTS = [{
   id: 'p1', name: 'Shop', expanded: true,
@@ -36,6 +49,19 @@ export async function mount<T>(
   const api = new FakeThreatModelApi();
   prepare(api);
   const nav = { go: vi.fn(), projectId: 'p1' };
+  const org = {
+    getTestCase: vi.fn(async (id: string) => ({
+      id, version: 1, featureId: 'f1', name: `Case ${id}`, steps: [], assignments: [],
+    })),
+  };
+  // A confirmation answers with `messages.answer` ("convert" unless a test changes it).
+  const messages = {
+    answer: 'convert',
+    information: vi.fn(async () => ({
+      once: (cb: (r: { payload: string }) => void) => cb({ payload: messages.answer }),
+    })),
+  };
+  const toasts = { show: vi.fn(async () => undefined) };
   TestBed.configureTestingModule({
     imports: [type],
     providers: [
@@ -45,7 +71,10 @@ export async function mount<T>(
       { provide: WorkspaceNav, useValue: nav },
       { provide: ThreatModelApi, useValue: api },
       { provide: ThreatModelIndex, useValue: { set: () => undefined } },
-      { provide: ExplorerStore, useValue: { projects: signal(PROJECTS) } },
+      { provide: ExplorerStore, useValue: { projects: signal(PROJECTS), modelPaths: signal(MODEL_PATHS) } },
+      { provide: OrgApi, useValue: org },
+      { provide: MessageService, useValue: messages },
+      { provide: ToastService, useValue: toasts },
     ],
   });
   const store = TestBed.inject(ThreatModelStore);
@@ -62,7 +91,7 @@ export async function mount<T>(
     }
   };
   await settle();
-  return { fixture, root: fixture.nativeElement, api, store, nav, settle };
+  return { fixture, root: fixture.nativeElement, api, store, nav, org, messages, toasts, settle };
 }
 
 export function byText<E extends HTMLElement = HTMLButtonElement>(root: HTMLElement, selector: string, text: string): E {

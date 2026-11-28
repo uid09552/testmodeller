@@ -49,9 +49,14 @@ another tenant.
   carries the entity id. A route that names an entity in its body must check
   it in the handler with `tenant_guard::require_tenant`: today
   `POST /ai/proposals` (feature, model), `POST /features/{id}/move` (target
-  component), `POST /test-cases/{id}/move` (target feature) and
-  `POST /models/{id}/duplicate` (target feature); `tests/tenancy.rs` covers
-  them. Ids that point inside a threat model or a model are checked by storage
+  component), `POST /test-cases/{id}/move` (target feature),
+  `POST /models/{id}/duplicate` (target feature), `threatIds` on
+  `POST /features/{id}/test-cases` and `PUT /test-cases/{id}` (threats), and
+  `POST …/security-tests/{id}/convert` (feature, model); `tests/tenancy.rs`
+  and `tests/threat_links.rs` cover them. This check is always made, even
+  where storage also checks the id against a parent (same project, same
+  feature): the tenant boundary must not depend on a second rule holding.
+  Ids that point inside a threat model or a model are checked by storage
   against their parent. The middleware fails closed for any path shape it does
   not recognise.
 - No per-query `tenant_id = $n` predicates to forget, and no change to the

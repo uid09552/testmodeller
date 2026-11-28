@@ -91,6 +91,8 @@ export interface StateTest {
   backlogUrl?: string;
   /** Latest imported result; read-only, never saved from the editor. */
   lastResult?: LastResult;
+  /** Threats of the project's threat model it covers (ADR 0016); absent keeps the stored links. */
+  threatIds?: string[];
   /**
    * Where the stored test case is assigned in this model, read-only: the
    * states and transitions it walks, with step numbers when it has them.

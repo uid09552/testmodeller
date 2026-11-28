@@ -14,6 +14,7 @@ import { EditorDrawerComponent } from '../editor-drawer/editor-drawer';
 import { Column, EntityTableComponent } from '../entity-table/entity-table';
 import { crossingText } from '../flows-tab/flows-tab';
 import { MultiPickComponent } from '../multi-pick/multi-pick';
+import { CoveringTestsComponent } from '../covering-tests/covering-tests';
 
 export const CATEGORIES: StrideCategory[] = [
   'spoofing', 'tampering', 'repudiation', 'information-disclosure', 'denial-of-service',
@@ -26,7 +27,10 @@ type ThreatDraft = ThreatInput & { targetIds: string[] };
 /** Threats, manual or suggested by STRIDE rules (FR-068, FR-069). */
 @Component({
   selector: 'tm-threats-tab',
-  imports: [AiBadgeComponent, FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent],
+  imports: [
+    AiBadgeComponent, FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent,
+    CoveringTestsComponent,
+  ],
   templateUrl: './threats-tab.html',
   styleUrl: './threats-tab.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

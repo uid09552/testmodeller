@@ -78,6 +78,8 @@ export interface TestCaseInput {
   backlogUrl?: string;
   steps: TestStepInput[];
   assignments?: AssignmentInput[];
+  /** Threats of the project's threat model it covers (ADR 0016); omit to keep the links. */
+  threatIds?: string[];
 }
 
 /** Payload of a `feature-description` proposal. */

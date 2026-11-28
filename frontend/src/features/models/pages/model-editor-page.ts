@@ -15,6 +15,7 @@ import { ModelEditorStore } from '../state/model-editor.store';
 import { OrgApi } from '../../../core/api/org-api';
 import { ModelPersistenceService } from '../state/model-persistence';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
+import { EDITOR_PROJECT_ID } from '../../threat-model/state/project-threats';
 import { readJson, writeJson } from '../../../core/persistence/local-store';
 
 function clamp(v: number, min: number, max: number): number {
@@ -33,7 +34,21 @@ export type EditorMode = 'edit' | 'present' | 'table';
   ],
   // Each editor instance gets its own stores. The chat store is here, not in
   // the chat window, so the transcript survives closing the window.
-  providers: [ModelEditorStore, ModelPersistenceService, AiChatStore],
+  providers: [
+    ModelEditorStore, ModelPersistenceService, AiChatStore,
+    // The open model's project, for the threats its test cases may cover (ADR 0016).
+    {
+      provide: EDITOR_PROJECT_ID,
+      useFactory: () => {
+        const explorer = inject(ExplorerStore);
+        const params = toSignal(inject(ActivatedRoute).paramMap);
+        return computed(() => {
+          const id = params()?.get('modelId');
+          return explorer.modelPaths().find(p => p.model.id === id)?.projectId ?? null;
+        });
+      },
+    },
+  ],
   templateUrl: './model-editor-page.html',
   styleUrl: './model-editor-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

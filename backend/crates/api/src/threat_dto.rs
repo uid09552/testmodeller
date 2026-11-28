@@ -643,6 +643,9 @@ pub struct ThreatDto {
     pub residual_facts: Vec<String>,
     #[serde(default)]
     pub source: Option<String>,
+    /// Feature test cases that cover this threat (ADR 0016).
+    #[serde(default)]
+    pub test_case_ids: Vec<Uuid>,
 }
 
 /// `ThreatBulkStatus`.
@@ -857,6 +860,18 @@ pub struct SecurityTestDto {
     pub last_result: Option<ResultDto>,
     #[serde(default)]
     pub source: Option<String>,
+    /// The feature test case this test was converted into (ADR 0016).
+    #[serde(default)]
+    pub converted_to_test_case_id: Option<Uuid>,
+}
+
+/// Body of `POST …/security-tests/convert`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConvertRequest {
+    pub feature_id: Uuid,
+    #[serde(default)]
+    pub model_id: Option<Uuid>,
 }
 
 /// Body of `POST …/security-tests/generate`.
@@ -920,6 +935,9 @@ pub struct SummaryDto {
     pub expiring_acceptances: Vec<RefLabel>,
     pub expired_acceptances: usize,
     pub verification_overdue: usize,
+    /// Open and accepted threats with at least one covering feature test case (ADR 0016).
+    #[serde(default)]
+    pub threats_covered_by_test_cases: usize,
 }
 
 /// `CompletenessFinding`.
@@ -1443,8 +1461,15 @@ impl<'a> View<'a> {
             residual_level: self.level(f.residual),
             effective_status: risk::effective_status(th, self.today),
             affected_boundaries: self.affected_boundaries(th),
-            flags: risk::threat_flags(th, &self.controls, &self.tests_of(th.audit.id), self.today),
+            flags: risk::threat_flags(
+                th,
+                &self.controls,
+                &self.tests_of(th.audit.id),
+                self.covering(th.audit.id).iter().any(|c| c.failing),
+                self.today,
+            ),
             residual_facts: risk::unsupported_residual_facts(th, &self.controls),
+            test_case_ids: self.covering(th.audit.id).iter().map(|c| c.id).collect(),
         }
     }
 
@@ -1550,7 +1575,13 @@ impl<'a> View<'a> {
             template_version: s.source.as_ref().map(|x| x.template_version),
             stale: staleness::stale_reason(s, &self.threats, &self.controls),
             last_result: s.last_result.as_ref().map(Into::into),
+            converted_to_test_case_id: s.converted_to_test_case_id,
         }
+    }
+
+    /// Feature test cases covering threat `id`.
+    fn covering(&self, id: Uuid) -> &[tm_storage::CoveringTestCase] {
+        self.agg.covering.get(&id).map_or(&[], Vec::as_slice)
     }
 
     /// The Overview summary.
@@ -1607,7 +1638,7 @@ impl<'a> View<'a> {
             if let Some(r) = th.fields.residual {
                 *residual.entry((r.likelihood, r.impact)).or_default() += 1;
             }
-            let flags = risk::threat_flags(th, &self.controls, &[], self.today);
+            let flags = risk::threat_flags(th, &self.controls, &[], false, self.today);
             if flags.contains(&ThreatFlag::NoControl) {
                 without_control.push(RefLabel {
                     id: th.audit.id,
@@ -1689,6 +1720,16 @@ impl<'a> View<'a> {
                 .filter(|c| {
                     assurance::control_flags(c, self.evidence_count(c.audit.id), self.today)
                         .contains(&ControlFlag::VerificationOverdue)
+                })
+                .count(),
+            threats_covered_by_test_cases: agg
+                .threats
+                .iter()
+                .filter(|th| {
+                    matches!(
+                        risk::effective_status(th, self.today),
+                        ThreatStatus::Open | ThreatStatus::Accepted
+                    ) && !self.covering(th.audit.id).is_empty()
                 })
                 .count(),
         }
@@ -1836,6 +1877,7 @@ mod tests {
             tests: vec![],
             evidence: vec![],
             rule_keys: Default::default(),
+            covering: HashMap::new(),
         }
     }
 

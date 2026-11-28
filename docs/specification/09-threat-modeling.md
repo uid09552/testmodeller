@@ -110,7 +110,7 @@ Thresholds map scores to levels; the default is Low 1–4, Moderate 5–9, High 
 | `planned-controls-only` | status open, at least one linked control, all of them planned |
 | `unsupported-reduction` | both ratings set, current score below inherent score, and no linked control is implemented or verified |
 | `overdue` | status open and the due date is before today (UTC) |
-| `failing-test` | a linked security test's latest result is failed |
+| `failing-test` | a linked security test's latest result is failed, or a feature test case that covers the threat has a latest imported result of failed or error |
 
 ### Stale generated tests
 A generated test is stale, with the first matching reason, when
@@ -167,9 +167,17 @@ Facts name entities and attribute values, e.g. "Web app (Internet, trust 0) → 
 
 *target*/*source* are component names, *asset* the first linked asset (or "protected data"). When the test is for a control, a final step is added: "Verify control CTL-n *name*" → its acceptance criteria (or "the control is in place"). The title is "*template title*: *threat title*" plus " (CTL-n)" when per control; preconditions name the threat ("Threat THR-n is in scope").
 
-## Security tests are a separate list
+## Security tests and feature test cases
 
 Security tests belong to the threat model. They are not feature test cases: they do not appear on the Test Cases page, in coverage, traceability, the project export, or test result import. Results are recorded by hand. CSV and Gherkin export of the filtered list happen in the browser; each Gherkin scenario is tagged `@sec-<id>` and with its threats' display ids (`@THR-1`), has one `Given` per precondition and a `When`/`Then` per step.
+
+A threat can also be covered by **feature test cases** — the model-based tests that run in CI ([ADR 0016](../adr/0016-threats-covered-by-feature-test-cases.md)):
+
+- **Link.** A feature test case lists the threats it covers (`threatIds`), from the threat model of its own project; any other threat is rejected (`422`). The link is many-to-many and is edited from the test case; a threat reads the ids back as `testCaseIds`. Deleting either side removes the link.
+- **Results.** Feature test cases get their results from imports (JUnit, Cucumber). A covering test case whose latest result is failed or error raises the threat's `failing-test` flag, like a failed security test.
+- **Summary.** `threatsCoveredByTestCases` counts the open and accepted threats with at least one covering test case.
+- **Export.** In the Gherkin export of feature test cases, a scenario is tagged with the display ids of the threats it covers (`@THR-1`), next to its `@tm-<id>` tag.
+- **Convert.** `POST …/security-tests/{id}/convert` with a `featureId` of the same project copies a security test into a new manual feature test case: name = title, description = objective, preconditions = the preconditions one per line, steps = the steps, tags `security` and the template id when there is one, `threatIds` = the security test's threats. With a `modelId` of that feature, the test case is assigned to the model's initial state, so it is listed in the model editor and on the Test Cases page; which states and transitions it really exercises is then refined in the editor. Without one it has no assignments. The security test becomes `obsolete` and records `convertedToTestCaseId`; a second convert answers `409`.
 
 ## Assurance (residual risk, evidence, acceptance, baselines)
 

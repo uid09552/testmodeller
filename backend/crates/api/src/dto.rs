@@ -748,6 +748,9 @@ pub struct TestCaseInput {
     pub steps: Vec<TestStepInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assignments: Option<Vec<AssignmentInput>>,
+    /// Threats covered (ADR 0016); `None` keeps the current links.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threat_ids: Option<Vec<Uuid>>,
 }
 
 impl TestCaseInput {
@@ -807,6 +810,7 @@ impl TestCaseInput {
                 })
                 .collect(),
             assignments: None,
+            threat_ids: None,
         }
     }
 }
@@ -840,6 +844,9 @@ pub struct TestCaseDto {
     /// Read-only; ignored on import.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_result: Option<TestResultDto>,
+    /// Threats this test case covers (ADR 0016); ignored on import.
+    #[serde(default)]
+    pub threat_ids: Vec<Uuid>,
 }
 
 impl From<&d::TestCase> for TestCaseDto {
@@ -869,6 +876,7 @@ impl From<&d::TestCase> for TestCaseDto {
                 .collect(),
             assignments: t.assignments.iter().map(Into::into).collect(),
             last_result: t.last_result.as_ref().map(Into::into),
+            threat_ids: t.threat_ids.clone(),
         }
     }
 }

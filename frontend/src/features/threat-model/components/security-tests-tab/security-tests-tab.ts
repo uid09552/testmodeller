@@ -14,6 +14,7 @@ import { AiBadgeComponent } from '../ai-badge/ai-badge';
 import { EditorDrawerComponent } from '../editor-drawer/editor-drawer';
 import { Column, EntityTableComponent } from '../entity-table/entity-table';
 import { MultiPickComponent } from '../multi-pick/multi-pick';
+import { ConvertTestComponent } from '../convert-test/convert-test';
 
 /** Latest result as a symbol and a word. */
 export function resultText(t: SecurityTest): string {
@@ -30,7 +31,10 @@ type TestDraft = SecurityTestInput & { preconditionsText: string };
 /** Security tests of the threat model, separate from feature test cases (FR-073..FR-075). */
 @Component({
   selector: 'tm-security-tests-tab',
-  imports: [AiBadgeComponent, FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent],
+  imports: [
+    AiBadgeComponent, FormsModule, EntityTableComponent, EditorDrawerComponent, MultiPickComponent,
+    ConvertTestComponent,
+  ],
   templateUrl: './security-tests-tab.html',
   styleUrl: './security-tests-tab.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -43,6 +47,12 @@ export class SecurityTestsTabComponent {
     'configuration-review', 'resilience', 'logging-audit', 'other',
   ];
   readonly statuses: SecurityTestStatus[] = ['draft', 'ready', 'obsolete'];
+
+  /** The test is now obsolete with a new version: close the editor and reload. */
+  async onConverted(): Promise<void> {
+    this.editor.close();
+    await this.store.refresh();
+  }
   readonly outcomes: SecurityTestOutcome[] = ['passed', 'failed', 'not-run'];
   readonly label = label;
   readonly resultText = resultText;

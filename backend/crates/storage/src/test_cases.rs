@@ -61,6 +61,7 @@ fn test_case(row: &PgRow) -> Result<TestCase, sqlx::Error> {
         generated_from_model_id: row.try_get("generated_from_model_id")?,
         assignments: Vec::new(),
         last_result: None,
+        threat_ids: Vec::new(),
     })
 }
 
@@ -123,10 +124,74 @@ async fn attach_assignments(conn: &mut PgConnection, cases: &mut [TestCase]) -> 
         by_case.entry(a.test_case_id).or_default().push(a);
     }
     let mut latest = latest_results(conn, &ids).await?;
+    let mut threats: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+    for row in sqlx::query(
+        "SELECT test_case_id, threat_id FROM test_case_threats WHERE test_case_id = ANY($1)
+         ORDER BY created_at, threat_id",
+    )
+    .bind(&ids)
+    .fetch_all(&mut *conn)
+    .await?
+    {
+        threats
+            .entry(row.try_get("test_case_id")?)
+            .or_default()
+            .push(row.try_get("threat_id")?);
+    }
     for c in cases {
         c.assignments = by_case.remove(&c.audit.id).unwrap_or_default();
         c.last_result = latest.remove(&c.audit.id);
+        c.threat_ids = threats.remove(&c.audit.id).unwrap_or_default();
     }
+    Ok(())
+}
+
+/// Replaces the threats a test case covers (ADR 0016). Every threat must
+/// belong to the threat model of the feature's project (422 otherwise).
+pub(crate) async fn write_threats(
+    conn: &mut PgConnection,
+    test_case_id: Uuid,
+    feature_id: Uuid,
+    threats: &[Uuid],
+) -> Result<()> {
+    let mut unique: Vec<Uuid> = Vec::with_capacity(threats.len());
+    for t in threats {
+        if !unique.contains(t) {
+            unique.push(*t);
+        }
+    }
+    if !unique.is_empty() {
+        let found: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM tm_threats t
+             JOIN threat_models m ON m.id = t.threat_model_id
+             JOIN components c ON c.project_id = m.project_id
+             JOIN features f ON f.component_id = c.id
+             WHERE f.id = $1 AND t.id = ANY($2)",
+        )
+        .bind(feature_id)
+        .bind(&unique)
+        .fetch_one(&mut *conn)
+        .await?;
+        if found != unique.len() as i64 {
+            return Err(StorageError::Invalid(
+                "threatIds: every threat must belong to this project's threat model".into(),
+            ));
+        }
+    }
+    sqlx::query("DELETE FROM test_case_threats WHERE test_case_id = $1")
+        .bind(test_case_id)
+        .execute(&mut *conn)
+        .await?;
+    // One statement, with a timestamp per position so the order is kept.
+    sqlx::query(
+        "INSERT INTO test_case_threats (test_case_id, threat_id, created_at)
+         SELECT $1, t, now() + (n * interval '1 microsecond')
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS u(t, n)",
+    )
+    .bind(test_case_id)
+    .bind(&unique)
+    .execute(&mut *conn)
+    .await?;
     Ok(())
 }
 
@@ -327,16 +392,18 @@ impl Store {
         Ok(page)
     }
 
-    /// Creates a test case.
+    /// Creates a test case covering `threats` (ADR 0016).
     pub async fn create_test_case(
         &self,
         feature_id: Uuid,
         data: &TestCaseData,
         origin: Origin,
         assignments: &[NewAssignment],
+        threats: &[Uuid],
     ) -> Result<TestCase> {
         let mut tx = self.pool.begin().await?;
         let id = insert_test_case(&mut tx, feature_id, data, origin, None, assignments).await?;
+        write_threats(&mut tx, id, feature_id, threats).await?;
         let tc = load_test_case(&mut tx, id).await?;
         tx.commit().await?;
         Ok(tc)
@@ -349,13 +416,15 @@ impl Store {
     }
 
     /// Replaces a test case if `expected_version` matches. `assignments: None` keeps them,
-    /// dropping only those that point at steps that no longer exist.
+    /// dropping only those that point at steps that no longer exist; `threats: None` keeps
+    /// the threat links.
     pub async fn replace_test_case(
         &self,
         id: Uuid,
         expected_version: i32,
         data: &TestCaseData,
         assignments: Option<&[NewAssignment]>,
+        threats: Option<&[Uuid]>,
     ) -> Result<TestCase> {
         let mut tx = self.pool.begin().await?;
         let feature_id: Option<Uuid> = sqlx::query_scalar(
@@ -394,6 +463,9 @@ impl Store {
                     .await?;
             }
         }
+        if let Some(threats) = threats {
+            write_threats(&mut tx, id, feature_id, threats).await?;
+        }
         let tc = load_test_case(&mut tx, id).await?;
         tx.commit().await?;
         Ok(tc)
@@ -428,6 +500,17 @@ impl Store {
             return Err(StorageError::NotFound("test case"));
         }
         write_assignments(&mut tx, id, &[]).await?;
+        // Threats of another project's threat model cannot stay linked.
+        sqlx::query(
+            "DELETE FROM test_case_threats l USING tm_threats t, threat_models m
+             WHERE l.test_case_id = $1 AND t.id = l.threat_id AND m.id = t.threat_model_id
+               AND m.project_id <> (SELECT c.project_id FROM features f
+                                    JOIN components c ON c.id = f.component_id WHERE f.id = $2)",
+        )
+        .bind(id)
+        .bind(feature_id)
+        .execute(&mut *tx)
+        .await?;
         let tc = load_test_case(&mut tx, id).await?;
         tx.commit().await?;
         Ok(tc)

@@ -128,6 +128,15 @@ describe('test cases', () => {
     expect(back).toEqual(original);
   });
 
+  it('sends threat links only when the editor knows them (ADR 0016)', () => {
+    // Unknown links are left out, so the server keeps the stored ones.
+    expect('threatIds' in testToInput(test(), MODEL, A)).toBe(false);
+    expect(testToInput(test({ threatIds: ['t1'] }), MODEL, A).threatIds).toEqual(['t1']);
+    expect(testToInput(test({ threatIds: [] }), MODEL, A).threatIds).toEqual([]);
+    const back = testFromApi({ ...stored(test(), A), threatIds: ['t1', 't2'] }, 1);
+    expect(back.threatIds).toEqual(['t1', 't2']);
+  });
+
   it('pairs uneven When and Then lines into steps without losing any', () => {
     const input = testToInput(test({ when: 'a\nb\nc', then: 'x' }), MODEL, A);
     expect(input.steps).toEqual([

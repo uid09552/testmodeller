@@ -298,6 +298,7 @@ export class TestCaseListPageComponent {
       test,
       stateName: `${model.name} › ${singleLine(node.label)}`,
       ref: `${testRefPrefix(model.name)}_${test.seq}`,
+      projectId: this.explorer.modelPaths().find(p => p.model.id === ids.modelId)?.projectId ?? null,
     };
   });
 

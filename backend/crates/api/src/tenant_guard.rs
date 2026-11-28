@@ -229,6 +229,7 @@ mod tests {
             format!("/threat-models/{tm}/security-tests/{item}/results/{result}/evidence"),
             format!("/threat-models/{tm}/evidence/{item}"),
             format!("/threat-models/{tm}/baselines/{item}/compare"),
+            format!("/threat-models/{tm}/security-tests/{item}/convert"),
         ] {
             assert_eq!(kinds(&path), [TenantScope::ThreatModel], "{path}");
         }
