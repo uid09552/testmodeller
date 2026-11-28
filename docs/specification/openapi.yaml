@@ -689,20 +689,57 @@ paths:
       summary: Model Context Protocol endpoint (Streamable HTTP, JSON-RPC 2.0, JSON responses)
       description: >-
         Authenticated with `Authorization: Bearer tm_…` (an API key from `/me/api-keys`), not with a JWT; the gateway
-        forwards this path without the OIDC handshake. Supports `initialize`, `ping`, `tools/list` and `tools/call`;
-        a notification is answered `202`. Each tool runs as the key's tenant and role through the same checks as
+        forwards this path without the OIDC handshake. Two protocol eras are served. The handshake revisions
+        (2025-06-18, 2025-03-26, 2024-11-05) use `initialize`, `ping`, `tools/list` and `tools/call`. The stateless
+        revision 2026-07-28 has no handshake and no session: every request carries `MCP-Protocol-Version` (equal to
+        `_meta["io.modelcontextprotocol/protocolVersion"]`), `Mcp-Method` (equal to the method) and, for `tools/call`,
+        `Mcp-Name` (equal to `params.name`), plus `_meta` with the client capabilities. It answers `server/discover`,
+        `tools/list` and `tools/call` with `resultType` (and `ttlMs`/`cacheScope` on discovery and lists); `initialize`
+        and `ping` are not found (`404`). A header that is missing or differs is `400` with JSON-RPC code `-32020`,
+        missing `_meta` is `400` with `-32602`, an unsupported version is `400` with `-32022` and `data.supported`.
+        A notification is answered `202`. Each tool runs as the key's tenant and role through the same checks as
         this API. Tools and their arguments are listed in 05-api.md and returned by `tools/list`.
+        A `401` carries `WWW-Authenticate: Bearer resource_metadata="…"` when OAuth metadata is configured.
       security: [ { ApiKey: [] } ]
+      parameters:
+        - { name: MCP-Protocol-Version, in: header, schema: { type: string } }
+        - { name: Mcp-Method, in: header, schema: { type: string } }
+        - { name: Mcp-Name, in: header, schema: { type: string } }
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/JsonRpcMessage' } } } }
       responses:
         '200': { description: JSON-RPC response, content: { application/json: { schema: { $ref: '#/components/schemas/JsonRpcMessage' } } } }
         '202': { description: Notification accepted }
+        '400': { description: Header mismatch, missing _meta or unsupported version (stateless revision), content: { application/json: { schema: { $ref: '#/components/schemas/JsonRpcMessage' } } } }
         '401': { $ref: '#/components/responses/Problem' }
+        '404': { description: Method not found (stateless revision), content: { application/json: { schema: { $ref: '#/components/schemas/JsonRpcMessage' } } } }
     get:
       tags: [Mcp]
       summary: Not supported; the server sends no stream
       responses:
         '405': { description: Method not allowed }
+
+  /.well-known/oauth-protected-resource:
+    get:
+      tags: [Mcp]
+      summary: OAuth protected resource metadata of the MCP endpoint (RFC 9728)
+      description: >-
+        Served outside `/api/v1`, without authentication, also at `/.well-known/oauth-protected-resource/api/v1/mcp`.
+        `404` unless `TM_MCP_OAUTH_ISSUER` and `TM_PUBLIC_URL` are set. Metadata only: `/mcp` still accepts API keys,
+        not tokens of the advertised authorization server.
+      security: []
+      responses:
+        '200':
+          description: The metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [resource, authorization_servers]
+                properties:
+                  resource: { type: string, format: uri }
+                  authorization_servers: { type: array, minItems: 1, items: { type: string, format: uri } }
+                  bearer_methods_supported: { type: array, items: { type: string } }
+        '404': { description: Not configured }
 
   /projects/{projectId}/threat-model:
     parameters: [ { $ref: '#/components/parameters/ProjectId' } ]

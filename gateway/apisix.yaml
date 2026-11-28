@@ -19,6 +19,15 @@ routes:
     methods: [POST, GET]
     upstream_id: backend
 
+  # OAuth protected resource metadata of /mcp (RFC 9728, ADR 0024): public, no handshake.
+  - uris:
+      - /.well-known/oauth-protected-resource
+      - /.well-known/oauth-protected-resource/api/v1/mcp
+    name: backend-oauth-metadata
+    priority: 10
+    methods: [GET]
+    upstream_id: backend
+
   # ── CI result upload ────────────────────────────────────────────────────────
   # A pipeline posts its test results with an upload key (ADR 0018). Only a
   # request that presents an API key (`Authorization: Bearer tm_…`) skips

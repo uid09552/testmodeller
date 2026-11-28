@@ -10,7 +10,10 @@
 mod protocol;
 mod tools;
 
-pub use protocol::{handle, PROTOCOL_VERSION, SUPPORTED_VERSIONS};
+pub use protocol::{
+    handle, handle_http, Reply, RequestHeaders, PROTOCOL_VERSION, STATELESS_VERSION,
+    SUPPORTED_VERSIONS,
+};
 pub use tools::catalogue;
 
 use serde_json::Value;

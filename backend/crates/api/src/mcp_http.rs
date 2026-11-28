@@ -33,10 +33,62 @@ pub struct McpState {
     pub dev: bool,
     /// The `/api/v1` router with internal authentication.
     pub internal: Router,
+    /// Protected resource metadata, when an authorization server is configured.
+    pub oauth: Option<std::sync::Arc<OAuthResource>>,
+}
+
+/// What `/mcp` tells clients about OAuth (RFC 9728). Metadata only: `/mcp` still accepts
+/// API keys, not the tokens of this authorization server (ADR 0024).
+#[derive(Debug, Clone)]
+pub struct OAuthResource {
+    /// Public base URL of the deployment, without a trailing slash.
+    pub public_url: String,
+    /// Issuer URL of the authorization server.
+    pub authorization_server: String,
+}
+
+impl OAuthResource {
+    /// The `resource` identifier: the MCP endpoint's URL.
+    pub fn resource(&self) -> String {
+        format!("{}/api/v1/mcp", self.public_url)
+    }
+
+    fn metadata_url(&self) -> String {
+        format!(
+            "{}/.well-known/oauth-protected-resource/api/v1/mcp",
+            self.public_url
+        )
+    }
+}
+
+/// `GET /.well-known/oauth-protected-resource[/api/v1/mcp]` (RFC 9728). Not found unless an
+/// authorization server is configured.
+pub async fn protected_resource(State(state): State<McpState>) -> Response {
+    match &state.oauth {
+        Some(o) => Json(serde_json::json!({
+            "resource": o.resource(),
+            "authorization_servers": [o.authorization_server],
+            "bearer_methods_supported": ["header"],
+        }))
+        .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// `POST /mcp`
 pub async fn post(State(state): State<McpState>, headers: HeaderMap, body: Bytes) -> Response {
+    let oauth = state.oauth.clone();
+    let mut response = post_inner(state, headers, body).await;
+    // A 401 points clients at the protected resource metadata (RFC 9728 section 5.1).
+    if let (StatusCode::UNAUTHORIZED, Some(o)) = (response.status(), oauth) {
+        if let Ok(v) = format!("Bearer resource_metadata=\"{}\"", o.metadata_url()).parse() {
+            response.headers_mut().insert(header::WWW_AUTHENTICATE, v);
+        }
+    }
+    response
+}
+
+async fn post_inner(state: McpState, headers: HeaderMap, body: Bytes) -> Response {
     if let Err(e) = check_origin(&headers) {
         return e.into_response();
     }
@@ -68,9 +120,22 @@ pub async fn post(State(state): State<McpState>, headers: HeaderMap, body: Bytes
         router: state.internal,
         identity,
     };
-    match tm_mcp::handle(&dispatcher, &body).await {
-        Some(reply) => Json(reply).into_response(),
-        None => StatusCode::ACCEPTED.into_response(),
+    let text = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned)
+    };
+    let mcp_headers = tm_mcp::RequestHeaders {
+        protocol_version: text("mcp-protocol-version"),
+        method: text("mcp-method"),
+        name: text("mcp-name"),
+    };
+    let reply = tm_mcp::handle_http(&dispatcher, &mcp_headers, &body).await;
+    let status = StatusCode::from_u16(reply.status).unwrap_or(StatusCode::OK);
+    match reply.body {
+        Some(body) => (status, Json(body)).into_response(),
+        None => status.into_response(),
     }
 }
 

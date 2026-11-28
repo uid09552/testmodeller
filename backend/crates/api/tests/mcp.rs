@@ -334,3 +334,190 @@ async fn new_tools_respect_tenant_and_role() {
         1
     );
 }
+
+// ── The stateless revision and OAuth metadata (ADR 0024) ─────────────────────
+
+use std::sync::Arc;
+use std::time::Duration as StdDuration;
+
+use tm_api::auth::AuthConfig;
+use tm_api::mcp_http::OAuthResource;
+use tm_api::secrets::{KeySource, SecretStore};
+use tm_api::{auth_mode, router, AppState};
+
+/// The app's store behind a router with OAuth metadata configured; JWT mode with an
+/// unreachable JWKS when `jwt`, so a request without an API key is refused.
+fn oauth_router(app: &common::App, jwt: bool) -> axum::Router {
+    let secrets = Arc::new(SecretStore::from_bytes(&[7u8; 32], KeySource::Configured).unwrap());
+    let state = AppState::new(app.store.clone(), None, secrets).with_oauth(OAuthResource {
+        public_url: "https://tm.example.com".into(),
+        authorization_server: "https://idp.example.com/realms/tm".into(),
+    });
+    let config = jwt.then(|| AuthConfig {
+        jwks_url: "http://127.0.0.1:9/jwks".into(),
+        tenant_claim: "tenant".into(),
+        role_claim: "role".into(),
+        issuer: None,
+        audience: None,
+        cache: StdDuration::from_secs(60),
+        min_refresh: StdDuration::from_secs(60),
+    });
+    router(state, auth_mode(config))
+}
+
+async fn raw(
+    router: &axum::Router,
+    method: &str,
+    uri: &str,
+    headers: &[(&str, &str)],
+    body: Option<Value>,
+) -> (StatusCode, axum::http::HeaderMap, Value) {
+    let mut req = Request::builder().method(method).uri(uri);
+    for (k, v) in headers {
+        req = req.header(*k, *v);
+    }
+    let res = router
+        .clone()
+        .oneshot(
+            req.body(body.map_or_else(Body::empty, |b| Body::from(b.to_string())))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = res.status();
+    let headers = res.headers().clone();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        headers,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn the_stateless_revision_works_over_http_with_its_headers_and_statuses() {
+    let app = common::app().await;
+    let meta = json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {}
+    });
+    let key = stored_key(&app, "dev", "Editor").await;
+    let auth = format!("Bearer {key}");
+    let h = |method: &'static str, name: Option<&'static str>| {
+        let mut v = vec![
+            ("content-type", "application/json"),
+            ("mcp-protocol-version", "2026-07-28"),
+            ("mcp-method", method),
+        ];
+        if let Some(n) = name {
+            v.push(("mcp-name", n));
+        }
+        v
+    };
+    let mut headers = h("server/discover", None);
+    headers.push(("authorization", auth.as_str()));
+    let (st, _, v) = raw(
+        &app.router,
+        "POST",
+        "/api/v1/mcp",
+        &headers,
+        Some(json!({ "jsonrpc": "2.0", "id": 1, "method": "server/discover", "params": { "_meta": meta } })),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["result"]["resultType"], "complete");
+
+    // A tool call runs as the key's identity, and a header mismatch is a 400.
+    let call = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": { "_meta": meta, "name": "tm_list_projects", "arguments": {} } });
+    let mut ok_headers = h("tools/call", Some("tm_list_projects"));
+    ok_headers.push(("authorization", auth.as_str()));
+    let (st, _, v) = raw(
+        &app.router,
+        "POST",
+        "/api/v1/mcp",
+        &ok_headers,
+        Some(call.clone()),
+    )
+    .await;
+    assert_eq!(
+        (st, v["result"]["isError"].clone()),
+        (StatusCode::OK, json!(false)),
+        "{v}"
+    );
+    let mut bad = h("tools/call", Some("tm_search"));
+    bad.push(("authorization", auth.as_str()));
+    let (st, _, v) = raw(&app.router, "POST", "/api/v1/mcp", &bad, Some(call)).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+    assert_eq!(v["error"]["code"], -32020);
+
+    // Removed methods are 404; the earlier handshake still works without MCP headers.
+    let mut ping = h("ping", None);
+    ping.push(("authorization", auth.as_str()));
+    let (st, _, _) = raw(
+        &app.router,
+        "POST",
+        "/api/v1/mcp",
+        &ping,
+        Some(json!({ "jsonrpc": "2.0", "id": 3, "method": "ping", "params": { "_meta": meta } })),
+    )
+    .await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    let (st, _, v) = raw(
+        &app.router,
+        "POST",
+        "/api/v1/mcp",
+        &[
+            ("authorization", auth.as_str()),
+            ("content-type", "application/json"),
+        ],
+        Some(json!({ "jsonrpc": "2.0", "id": 4, "method": "initialize",
+            "params": { "protocolVersion": "2025-06-18", "capabilities": {} } })),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(v["result"]["protocolVersion"], "2025-06-18");
+}
+
+#[tokio::test]
+async fn protected_resource_metadata_is_served_only_when_configured_and_401_points_to_it() {
+    let app = common::app().await;
+    // Not configured: not found, and a 401 carries no pointer.
+    let (st, _, _) = raw(
+        &app.router,
+        "GET",
+        "/.well-known/oauth-protected-resource",
+        &[],
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+
+    let configured = oauth_router(&app, true);
+    for path in [
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/api/v1/mcp",
+    ] {
+        let (st, _, v) = raw(&configured, "GET", path, &[], None).await;
+        assert_eq!(st, StatusCode::OK, "{path}");
+        assert_eq!(v["resource"], "https://tm.example.com/api/v1/mcp");
+        assert_eq!(
+            v["authorization_servers"],
+            json!(["https://idp.example.com/realms/tm"])
+        );
+    }
+    let (st, headers, _) = raw(
+        &configured,
+        "POST",
+        "/api/v1/mcp",
+        &[("content-type", "application/json")],
+        Some(json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })),
+    )
+    .await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        headers[axum::http::header::WWW_AUTHENTICATE],
+        "Bearer resource_metadata=\"https://tm.example.com/.well-known/oauth-protected-resource/api/v1/mcp\""
+    );
+    // The metadata is public: it needs no token even in JWT mode (checked above).
+}
