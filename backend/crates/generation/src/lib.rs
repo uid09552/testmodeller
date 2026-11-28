@@ -1349,6 +1349,47 @@ mod tests {
             prop_assert_eq!(a, b);
         }
 
+        /// Every path of every criterion is a real walk: it starts at the initial state and each
+        /// transition leaves the state the previous one entered.
+        #[test]
+        fn every_generated_path_is_a_walk_from_the_initial_state(
+            n in 2usize..9,
+            edges in proptest::collection::vec((0usize..9, 0usize..9, 0u32..4), 1..20),
+            seed in any::<u64>(),
+            crit in 0usize..3,
+        ) {
+            let mut states: Vec<State> = (0..n).map(|i| state(&format!("S{i}"), StateKind::Normal)).collect();
+            states[0].kind = StateKind::Initial;
+            let mut transitions: Vec<Transition> = (1..n).map(|i| tr(&states[i - 1], &states[i], "chain")).collect();
+            for &(a, b, w) in &edges {
+                let mut t = tr(&states[a % n], &states[b % n], "edge");
+                t.weight = Some(w);
+                transitions.push(t);
+            }
+            let g = ModelGraph { states, transitions, variables: vec![] };
+            let criterion = [CoverageCriterion::PrimePaths, CoverageCriterion::Random, CoverageCriterion::ReachElement][crit];
+            let mut o = opts(criterion, seed);
+            o.target = Some(g.states[n - 1].id);
+            o.stop_after_tests = Some(5);
+            o.max_path_length = Some(20);
+            let out = generate(&g, o).unwrap();
+            for p in &out.paths {
+                prop_assert_eq!(p.states[0], g.states[0].id);
+                prop_assert_eq!(p.states.len(), p.transitions.len() + 1);
+                for (i, tid) in p.transitions.iter().enumerate() {
+                    let t = g.transition(*tid).unwrap();
+                    prop_assert_eq!(t.from, p.states[i]);
+                    prop_assert_eq!(t.to, p.states[i + 1]);
+                }
+                if criterion == CoverageCriterion::Random {
+                    prop_assert!(p.transitions.len() <= 20);
+                    // A transition of weight 0 is never taken.
+                    prop_assert!(p.transitions.iter().all(|t| g.transition(*t).unwrap().weight != Some(0)));
+                }
+            }
+            prop_assert_eq!(out, generate(&g, o).unwrap());
+        }
+
         /// Transition coverage is complete on fully feasible random graphs.
         #[test]
         fn transition_coverage_is_complete(n in 2usize..12, edges in proptest::collection::vec((0usize..12, 0usize..12), 1..30), seed in any::<u64>()) {
