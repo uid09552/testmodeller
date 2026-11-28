@@ -1,0 +1,12 @@
+DROP INDEX IF EXISTS transitions_from_state_idx;
+DROP INDEX IF EXISTS transitions_to_state_idx;
+DROP INDEX IF EXISTS test_cases_generated_from_model_idx;
+DROP INDEX IF EXISTS proposals_feature_idx;
+DROP INDEX IF EXISTS proposals_model_idx;
+DROP INDEX IF EXISTS tm_components_linked_component_idx;
+DROP INDEX IF EXISTS tm_components_linked_feature_idx;
+DROP INDEX IF EXISTS tm_components_zone_idx;
+DROP INDEX IF EXISTS tm_rule_keys_threat_idx;
+DROP INDEX IF EXISTS tm_threat_assets_asset_idx;
+DROP INDEX IF EXISTS tm_control_components_component_idx;
+DROP INDEX IF EXISTS security_test_controls_control_idx;
