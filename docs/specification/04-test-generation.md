@@ -18,6 +18,7 @@ related: [02-domain-model.md, 03-requirements.md]
 | `prime-paths` | Every prime path: a maximal simple path of the state graph (no state repeats, except that a cycle may return to where it started) that is not part of a longer one |
 | `reach-element` | The shortest path to one state or transition (`targetId`) |
 | `requirement` | One shortest path per distinct requirement tag, to the nearest state or transition carrying it; tags that cannot be reached are skipped and reported, identical paths are kept once |
+| `sneak-path` | For every non-final state and every event of the model that no transition leaving that state carries: the shortest path to the state, then that event, expecting it to be rejected. At most 1000 tests; unreachable states are skipped and reported |
 | `random` | Seeded random walks from the initial state, each step chosen by transition weight; stops by test count or coverage |
 
 ### Prime paths

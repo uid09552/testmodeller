@@ -7,7 +7,9 @@ use axum::http::StatusCode;
 use axum::Json;
 use chrono::Utc;
 use serde::Deserialize;
-use tm_domain::{Assignment, AssignmentTarget, Audit, Origin, TestCase, TestCaseStatus};
+use tm_domain::{
+    Assignment, AssignmentTarget, Audit, CoverageCriterion, Origin, TestCase, TestCaseStatus,
+};
 use tm_generation::{CoverageReport, GenerationError, GenerationOptions};
 use tm_storage::{NewAssignment, TenantScope, TestCaseFilter, TraceFilter, TraceGap};
 use uuid::Uuid;
@@ -485,7 +487,15 @@ pub async fn stale_tests(
                 .filter(|a| a.model_id == id)
                 .map(|a| (a.target, a.step_order))
                 .collect();
-            let reasons = tm_generation::check_path(&graph, tc.data.steps.len(), &assigned);
+            // A sneak-path test ends with an event the model refuses (ADR 0022): that last
+            // step has no transition, so only the steps before it are checked.
+            let sneak = tc
+                .data
+                .tags
+                .iter()
+                .any(|t| t == CoverageCriterion::SneakPath.as_str());
+            let steps = tc.data.steps.len() - usize::from(sneak && !tc.data.steps.is_empty());
+            let reasons = tm_generation::check_path(&graph, steps, &assigned);
             (!reasons.is_empty()).then(|| StaleTestDto {
                 test_case_id: tc.audit.id,
                 reasons: reasons.iter().map(Into::into).collect(),

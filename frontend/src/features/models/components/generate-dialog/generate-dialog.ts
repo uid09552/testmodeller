@@ -29,6 +29,7 @@ export const CRITERIA: { value: CoverageCriterion; label: string; hint: string }
   { value: 'prime-paths', label: 'Prime paths', hint: 'Every longest loop-free path — covers loops without listing every path.' },
   { value: 'reach-element', label: 'Path to one element', hint: 'The shortest path to one state or transition — a single scenario.' },
   { value: 'requirement', label: 'Requirements', hint: 'One path per requirement tag on states and transitions — to the nearest tagged element.' },
+  { value: 'sneak-path', label: 'Sneak paths', hint: 'For each state, events it does not allow — expecting each to be rejected.' },
   { value: 'random', label: 'Random walks', hint: 'Seeded random walks; transition weights set how likely each step is.' },
 ];
 

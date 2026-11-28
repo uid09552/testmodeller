@@ -22,7 +22,7 @@ REST/JSON under `/api/v1`. Errors use RFC 7807 problem details. Updates of versi
 | States / Transitions | Fine-grained CRUD within a model (transition = model step) |
 | TestCases | CRUD under a feature (manual), move, steps embedded, optional `implementationUrl` and `backlogUrl`, `threatIds` (threats of the project's threat model it covers), read-only `lastResult` |
 | Assignments | Assign test cases to states/transitions; list per test case, state, transition, model |
-| Generation | Generate test cases from a model (optionally saved and assigned) by criterion: `state`, `transition`, `transition-pair`, `bounded-paths`, `prime-paths`, `reach-element` (shortest path to `targetId`), `requirement` (one path per requirement tag of the model's elements) or a seeded weighted `random` walk with stop conditions (`stopAfterTests`, `stopAtCoverage`); simulate one step of a model |
+| Generation | Generate test cases from a model (optionally saved and assigned) by criterion: `state`, `transition`, `transition-pair`, `bounded-paths`, `prime-paths`, `reach-element` (shortest path to `targetId`), `requirement` (one path per requirement tag of the model's elements), `sneak-path` (events a state does not allow, expected to be rejected) or a seeded weighted `random` walk with stop conditions (`stopAfterTests`, `stopAtCoverage`); simulate one step of a model |
 | Coverage | Per model, feature, component (states, transitions and requirement tags); stale generated test cases of a model |
 | TestResults | Import JUnit XML / Cucumber JSON results for a project, result history per test case |
 | Traceability | Read-only trace of backlog items and of requirement tags on model elements to test cases, model elements and implementation links, with gaps |
@@ -51,7 +51,7 @@ error. Tools that write (marked ✎) need a key with the `Editor` role.
 | `tm_search` | `projectId`, `query`, `types?`, `limit?` | `GET /projects/{id}/search` |
 | `tm_get_model` | `modelId` | `GET /models/{id}`, `POST /models/{id}/validate`, `GET /models/{id}/coverage` |
 | `tm_save_model` ✎ | `featureId` (create) or `modelId` (replace), `name`, `states`, `transitions`, `description?` | `POST /features/{id}/models`, or `GET` + `PUT /models/{id}` with the current version |
-| `tm_generate_test_cases` ✎ | `modelId`, `criterion?` (default `transition`; also `requirement`), `seed?`, `maxPathLength?`, `save?` | `POST /models/{id}/generate` |
+| `tm_generate_test_cases` ✎ | `modelId`, `criterion?` (default `transition`; also `requirement`, `sneak-path`), `seed?`, `maxPathLength?`, `save?` | `POST /models/{id}/generate` |
 | `tm_list_test_cases` | `featureId` or `modelId`, `limit?`, `detail?` | `GET /features/{id}/test-cases` or `GET /models/{id}/test-cases` |
 | `tm_export` | `projectId`, `format` (`gherkin`, `csv`, `json`, `playwright`), `featureId?`, `componentId?` | `GET /projects/{id}/export` |
 | `tm_import_test_results` ✎ | `projectId`, `format` (`junit`, `cucumber`), `content`, `dryRun?` | `POST /projects/{id}/test-results` |

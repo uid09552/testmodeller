@@ -1553,7 +1553,7 @@ components:
           required: [testCaseId]
           properties: { testCaseId: { $ref: '#/components/schemas/Id' } }
 
-    CoverageCriterion: { type: string, enum: [state, transition, transition-pair, bounded-paths, prime-paths, reach-element, random, requirement] }
+    CoverageCriterion: { type: string, enum: [state, transition, transition-pair, bounded-paths, prime-paths, reach-element, random, requirement, sneak-path] }
     GenerationRequest:
       type: object
       required: [criterion]

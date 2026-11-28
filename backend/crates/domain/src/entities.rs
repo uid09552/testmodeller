@@ -113,6 +113,7 @@ string_enum!(
         ReachElement => "reach-element",
         Random => "random",
         Requirement => "requirement",
+        SneakPath => "sneak-path",
     }
 );
 

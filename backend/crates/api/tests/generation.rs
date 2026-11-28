@@ -130,3 +130,32 @@ async fn another_tenants_target_is_not_found() {
         assert_eq!(st, StatusCode::NOT_FOUND, "{v}");
     }
 }
+
+#[tokio::test]
+async fn sneak_paths_end_with_a_rejected_event_and_stay_fresh_when_saved() {
+    let app = common::app().await;
+    let t = common::tree(&app.store, "dev").await;
+    // Chain Start -open-> Out -login-> In -close-> Done: Start refuses login and close, Out
+    // refuses open and close, In refuses open and login: six sneak tests.
+    let (st, v) = generate(
+        &app,
+        t.model,
+        json!({"criterion": "sneak-path", "save": true}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let cases = v["testCases"].as_array().unwrap();
+    assert_eq!(cases.len(), 6, "{v}");
+    for c in cases {
+        let steps = c["steps"].as_array().unwrap();
+        let last = steps.last().unwrap();
+        assert!(last["action"].as_str().unwrap().contains("not allowed"));
+        assert!(last["expected"].as_str().unwrap().contains("rejected"));
+    }
+    // A saved sneak test is not reported stale: its extra step has no transition.
+    let (st, stale) = app
+        .send("GET", &format!("/models/{}/stale-tests", t.model), None)
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(stale.as_array().unwrap().is_empty(), "{stale}");
+}

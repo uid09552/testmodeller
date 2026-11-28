@@ -184,7 +184,7 @@ const TOOLS: &[Tool] = &[
                 "required": ["modelId"],
                 "properties": {
                     "modelId": id_prop("Model"),
-                    "criterion": { "enum": ["state", "transition", "transition-pair", "bounded-paths", "requirement"], "default": "transition" },
+                    "criterion": { "enum": ["state", "transition", "transition-pair", "bounded-paths", "requirement", "sneak-path"], "default": "transition" },
                     "seed": { "type": "integer" },
                     "maxPathLength": { "type": "integer", "minimum": 1, "description": "Required for bounded-paths" },
                     "save": { "type": "boolean", "default": false }
@@ -973,6 +973,7 @@ async fn generate(backend: &dyn Backend, args: &Args) -> Out {
             "transition-pair",
             "bounded-paths",
             "requirement",
+            "sneak-path",
         ],
         Some("transition"),
     )?;

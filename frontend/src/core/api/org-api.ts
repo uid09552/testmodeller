@@ -57,7 +57,7 @@ export interface SimulationStep {
 /** `CoverageCriterion` in openapi.yaml. */
 export type CoverageCriterion =
   | 'state' | 'transition' | 'transition-pair' | 'bounded-paths'
-  | 'prime-paths' | 'reach-element' | 'random' | 'requirement';
+  | 'prime-paths' | 'reach-element' | 'random' | 'requirement' | 'sneak-path';
 /** `GenerationRequest`. */
 export interface GenerationRequest {
   criterion: CoverageCriterion;

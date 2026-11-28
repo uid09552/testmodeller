@@ -250,6 +250,7 @@ mod tests {
             states: std::iter::once(g.states[0].id)
                 .chain(idx.iter().map(|&i| g.transitions[i].to))
                 .collect(),
+            sneak_event: None,
         };
         path_to_test_case(g, "M", CoverageCriterion::Transition, 0, &path).1
     }
