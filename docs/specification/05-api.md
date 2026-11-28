@@ -62,6 +62,10 @@ error. Tools that write (marked ✎) need a key with the `Editor` role.
 | `tm_get_ai_job` | `jobId` | `GET /jobs/{id}`, and `GET /proposals/{id}` for each proposal of a succeeded job |
 | `tm_list_proposals` | `projectId`, `status?`, `limit?`, `detail?` | `GET /projects/{id}/proposals` |
 | `tm_decide_proposal` ✎ | `proposalId`, `decision` (`accept`, `reject`), `payload?` | `POST /proposals/{id}/accept` or `/reject` |
+| `tm_get_project_status` | `projectId` | `GET /projects/{id}/tree`, per model `GET /models/{id}`, `POST /models/{id}/validate` and `GET /models/{id}/coverage` (at most 50 models), `GET /projects/{id}/traceability` and `GET /projects/{id}/proposals?status=pending` |
+| `tm_triage_failures` | `projectId`, `limit?` | `GET /projects/{id}/traceability` and `GET /models/{id}`: failed or errored last results grouped by the state or transition their test case is assigned to, most failures first; failures with no assignment are listed apart |
+| `tm_update_test_case` ✎ | `testCaseId`, any of `name`, `description`, `preconditions`, `priority`, `status`, `tags`, `implementationUrl`, `backlogUrl`, `steps` | `GET` + `PUT /test-cases/{id}` with the current version; omitted fields, assignments and threat links are kept |
+| `tm_patch_model` ✎ | `modelId`, `name?`, `description?`, `addStates?`, `addTransitions?`, `removeStateIds?`, `removeTransitionIds?` | `GET` + `PUT /models/{id}` with the current version; removing a state removes its transitions |
 
 Names carry the `tm_` prefix so they do not collide with other servers' tools
 (`search`, `export`). Listings take `limit` (1–500, default 100) and report
