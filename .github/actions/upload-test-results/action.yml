@@ -1,0 +1,61 @@
+name: Upload test results to TestModeller
+description: >-
+  Posts a JUnit XML or Cucumber JSON result file to a TestModeller project with an
+  upload key (Settings, API keys, "Upload test results of a project"). Results are matched to
+  test cases by their @tm-<id> tag, then by name.
+inputs:
+  server-url:
+    description: Base URL of TestModeller, e.g. https://testmodeller.example.com
+    required: true
+  project-id:
+    description: The project the upload key was created for
+    required: true
+  api-key:
+    description: The upload key (store it as a secret)
+    required: true
+  file:
+    description: Path of the result file
+    required: true
+  format:
+    description: junit or cucumber
+    required: false
+    default: junit
+  dry-run:
+    description: Report what would match without recording anything
+    required: false
+    default: "false"
+outputs:
+  report:
+    description: The import report (JSON) as returned by TestModeller
+    value: ${{ steps.upload.outputs.report }}
+runs:
+  using: composite
+  steps:
+    - id: upload
+      shell: bash
+      env:
+        TM_SERVER_URL: ${{ inputs.server-url }}
+        TM_PROJECT_ID: ${{ inputs.project-id }}
+        TM_API_KEY: ${{ inputs.api-key }}
+        TM_FILE: ${{ inputs.file }}
+        TM_FORMAT: ${{ inputs.format }}
+        TM_DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        set -euo pipefail
+        case "$TM_FORMAT" in junit) type=application/xml ;; cucumber) type=application/json ;;
+          *) echo "::error::format must be junit or cucumber"; exit 1 ;; esac
+        case "$TM_DRY_RUN" in true|false) ;; *) echo "::error::dry-run must be true or false"; exit 1 ;; esac
+        [ -f "$TM_FILE" ] || { echo "::error::result file not found: $TM_FILE"; exit 1; }
+        report="$(mktemp)"
+        status="$(curl --silent --show-error --output "$report" --write-out '%{http_code}' \
+          --request POST \
+          --header "Authorization: Bearer ${TM_API_KEY}" \
+          --header "Content-Type: ${type}" \
+          --data-binary "@${TM_FILE}" \
+          "${TM_SERVER_URL%/}/api/v1/projects/${TM_PROJECT_ID}/test-results?format=${TM_FORMAT}&dryRun=${TM_DRY_RUN}")"
+        cat "$report"; echo
+        if [ "$status" != "200" ]; then
+          echo "::error::TestModeller answered HTTP ${status}"
+          exit 1
+        fi
+        { echo 'report<<EOF_TM'; cat "$report"; echo; echo 'EOF_TM'; } >> "$GITHUB_OUTPUT"

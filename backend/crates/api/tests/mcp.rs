@@ -56,6 +56,7 @@ async fn stored_key(app: &common::App, tenant: &str, role: &str) -> String {
             prefix: &api_keys::display_prefix(&key),
             hash: &api_keys::hash(&key),
             role,
+            project_id: None,
             expires_at: Some(Utc::now() + Duration::days(1)),
         })
         .await

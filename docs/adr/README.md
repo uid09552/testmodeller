@@ -29,3 +29,4 @@ Use [0000-template.md](0000-template.md). Number sequentially.
 | [0015](0015-api-keys-and-mcp.md) | Per-user API keys authenticate an in-process MCP endpoint | Accepted |
 | [0016](0016-threats-covered-by-feature-test-cases.md) | Feature test cases can cover threats; security tests convert into them | Accepted |
 | [0017](0017-more-generation-strategies.md) | Prime paths, reach-element and weighted random walks as generation criteria | Accepted |
+| [0018](0018-upload-scoped-api-keys.md) | Upload-scoped API keys let CI post test results | Accepted |

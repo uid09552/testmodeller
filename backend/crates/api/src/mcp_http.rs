@@ -45,7 +45,14 @@ pub async fn post(State(state): State<McpState>, headers: HeaderMap, body: Bytes
         .map(|v| v.to_str().unwrap_or_default())
     {
         Some(value) => match api_keys::authenticate(&state.store, value).await {
-            Ok(identity) => identity,
+            Ok(key) if key.project_id.is_some() => {
+                return ApiError::new(
+                    StatusCode::UNAUTHORIZED,
+                    "an upload key cannot use the MCP endpoint; create an MCP key in Settings",
+                )
+                .into_response()
+            }
+            Ok(key) => key.identity,
             Err(e) => return e.into_response(),
         },
         None if state.dev => Identity::dev(),

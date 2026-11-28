@@ -1,4 +1,4 @@
-import { daysLeft, mcpUrl, vscodeMcpConfig } from './mcp-config';
+import { daysLeft, mcpUrl, vscodeMcpConfig, uploadActionSnippet, uploadPath } from './mcp-config';
 
 describe('mcp-config', () => {
   it('builds the endpoint URL from the origin', () => {
@@ -23,5 +23,19 @@ describe('mcp-config', () => {
     expect(daysLeft('2026-01-31T00:00:00Z', now)).toBe(30);
     expect(daysLeft('2025-12-01T00:00:00Z', now)).toBe(0);
     expect(daysLeft(null, now)).toBeNull();
+  });
+});
+
+describe('upload key helpers (ADR 0018)', () => {
+  it('names the upload route of a project', () => {
+    expect(uploadPath('p1')).toBe('/api/v1/projects/p1/test-results');
+  });
+
+  it('writes a GitHub Actions step that references a secret, never a key', () => {
+    const step = uploadActionSnippet('https://tm.example.com/', 'p1');
+    expect(step).toContain('server-url: https://tm.example.com');
+    expect(step).toContain('project-id: p1');
+    expect(step).toContain('api-key: ${{ secrets.TESTMODELLER_UPLOAD_KEY }}');
+    expect(step).not.toMatch(/tm_[0-9a-f]{64}/);
   });
 });

@@ -514,6 +514,8 @@ paths:
         The file is the request body (not multipart), at most 10 MB. A result is matched by the tag
         `@tm-<test case id>` (in a JUnit name, classname or `tmId` property, or a Cucumber tag), otherwise
         by exact test case name within the project. Re-importing the same file records nothing new.
+        Also accepts an upload key (`Authorization: Bearer tm_…`) created for this project, so a CI
+        pipeline can post its results without a user session; such a key can do nothing else.
         XML with a DOCTYPE is rejected.
       parameters:
         - { name: format, in: query, required: true, schema: { type: string, enum: [junit, cucumber] } }
@@ -1188,7 +1190,7 @@ components:
     ItemId: { name: itemId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
 
   securitySchemes:
-    ApiKey: { type: http, scheme: bearer, description: 'Per-user API key (`tm_…`) from `/me/api-keys`; MCP only.' }
+    ApiKey: { type: http, scheme: bearer, description: 'Per-user API key (`tm_…`) from `/me/api-keys`. A key without `projectId` is accepted by `/mcp` only; a key with `projectId` (an upload key) only by `POST /projects/{projectId}/test-results` of that project.' }
 
   responses:
     Problem:
@@ -1681,6 +1683,7 @@ components:
         name: { type: string }
         prefix: { type: string, description: First characters of the key, to recognise it (e.g. `tm_3f9a1c`) }
         role: { type: string, enum: [User, Editor], description: Role taken from the creator's token }
+        projectId: { type: [string, 'null'], format: uuid, description: 'Set for an upload key: the one project whose test results it may upload' }
         createdAt: { type: string, format: date-time }
         expiresAt: { type: [string, 'null'], format: date-time }
         lastUsedAt: { type: [string, 'null'], format: date-time }
@@ -1690,6 +1693,7 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 80 }
         expiresInDays: { type: integer, minimum: 1, maximum: 365, default: 90 }
+        projectId: { $ref: '#/components/schemas/Id', description: 'Makes an upload key for this project (needs the Editor role; 404 for a project of another tenant). Without it the key is an MCP key.' }
     ApiKeyCreated:
       allOf:
         - { $ref: '#/components/schemas/ApiKey' }

@@ -37,6 +37,27 @@ export function vscodeMcpConfig(origin: string): string {
   return JSON.stringify(config, null, 2);
 }
 
+/** Path of the test result import (05-api.md → TestResults). */
+export function uploadPath(projectId: string): string {
+  return `/api/v1/projects/${projectId}/test-results`;
+}
+
+/**
+ * A GitHub Actions step that posts a JUnit report with an upload key. The key is a
+ * secret reference, never the key itself.
+ */
+export function uploadActionSnippet(origin: string, projectId: string): string {
+  return [
+    '- uses: <owner>/<repository>/.github/actions/upload-test-results@main',
+    '  with:',
+    `    server-url: ${origin.replace(/\/+$/, '')}`,
+    `    project-id: ${projectId}`,
+    '    api-key: ${{ secrets.TESTMODELLER_UPLOAD_KEY }}',
+    '    file: reports/junit.xml',
+    '    format: junit',
+  ].join('\n');
+}
+
 /** Whole days from now until `iso`, or null without an expiry. */
 export function daysLeft(iso: string | null | undefined, now = Date.now()): number | null {
   if (!iso) return null;

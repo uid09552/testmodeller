@@ -19,6 +19,19 @@ routes:
     methods: [POST, GET]
     upstream_id: backend
 
+  # ── CI result upload ────────────────────────────────────────────────────────
+  # A pipeline posts its test results with an upload key (ADR 0018). Only a
+  # request that presents an API key (`Authorization: Bearer tm_…`) skips
+  # openid-connect, and only on this one path; a browser session still goes
+  # through /api/* below. The backend checks the key, its project and the route.
+  - uri: /api/v1/projects/:projectId/test-results
+    name: backend-ci-upload
+    priority: 10
+    methods: [POST]
+    vars:
+      - ["http_authorization", "~~", "^[Bb]earer tm_"]
+    upstream_id: backend
+
   # ── API ─────────────────────────────────────────────────────────────────────
   # Authenticated, and the access token is forwarded in Authorization for the
   # backend to validate (FR-041).

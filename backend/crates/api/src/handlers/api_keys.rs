@@ -9,13 +9,14 @@ use axum::http::StatusCode;
 use axum::Json;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use tm_storage::{ApiKeyRecord, NewApiKey};
+use tm_storage::{ApiKeyRecord, NewApiKey, TenantScope};
 use uuid::Uuid;
 
 use crate::api_keys;
 use crate::auth::Identity;
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath};
+use crate::tenant_guard::require_tenant;
 use crate::AppState;
 
 const DEFAULT_DAYS: i64 = 90;
@@ -30,6 +31,7 @@ pub struct ApiKeyDto {
     pub name: String,
     pub prefix: String,
     pub role: String,
+    pub project_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
     pub last_used_at: Option<DateTime<Utc>>,
@@ -50,6 +52,9 @@ pub struct ApiKeyCreatedDto {
 pub struct ApiKeyInput {
     pub name: String,
     pub expires_in_days: Option<i64>,
+    /// Makes an upload key for this project (ADR 0018).
+    #[serde(default)]
+    pub project_id: Option<Uuid>,
 }
 
 impl From<ApiKeyRecord> for ApiKeyDto {
@@ -59,6 +64,7 @@ impl From<ApiKeyRecord> for ApiKeyDto {
             name: r.name,
             prefix: r.prefix,
             role: r.role,
+            project_id: r.project_id,
             created_at: r.created_at,
             expires_at: r.expires_at,
             last_used_at: r.last_used_at,
@@ -112,6 +118,18 @@ pub async fn create(
         )));
     }
 
+    // An upload key writes test results of one project: that needs the Editor role, and the
+    // project is named in the body, so the tenant guard cannot see it (AGENTS.md rule 10).
+    if let Some(project) = input.project_id {
+        if identity.role != crate::auth::Role::Editor {
+            return Err(ApiError::new(
+                StatusCode::FORBIDDEN,
+                "the Editor role is needed to create a key that uploads test results",
+            ));
+        }
+        require_tenant(&state, &identity, TenantScope::Project, project).await?;
+    }
+
     let key = api_keys::generate();
     let prefix = api_keys::display_prefix(&key);
     let hash = api_keys::hash(&key);
@@ -124,6 +142,7 @@ pub async fn create(
             prefix: &prefix,
             hash: &hash,
             role: identity.role.as_str(),
+            project_id: input.project_id,
             expires_at: Some(Utc::now() + Duration::days(days)),
         })
         .await?;

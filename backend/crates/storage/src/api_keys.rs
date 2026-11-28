@@ -29,6 +29,8 @@ pub struct ApiKeyRecord {
     pub prefix: String,
     /// `User` or `Editor`, taken from the creator's token.
     pub role: String,
+    /// Set for an upload key: the one project whose test results it may post (ADR 0018).
+    pub project_id: Option<Uuid>,
     /// When it was created.
     pub created_at: DateTime<Utc>,
     /// When it stops working, if ever.
@@ -44,6 +46,8 @@ pub struct NewApiKey<'a> {
     pub tenant: &'a str,
     /// Owner's `sub`.
     pub subject: &'a str,
+    /// Makes an upload key for this project.
+    pub project_id: Option<Uuid>,
     /// Label.
     pub name: &'a str,
     /// Displayed prefix.
@@ -57,7 +61,7 @@ pub struct NewApiKey<'a> {
 }
 
 const COLUMNS: &str =
-    "id, tenant_id, subject, name, prefix, role, created_at, expires_at, last_used_at";
+    "id, tenant_id, subject, name, prefix, role, project_id, created_at, expires_at, last_used_at";
 
 /// Active means neither revoked nor expired.
 const ACTIVE: &str = "revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())";
@@ -70,6 +74,7 @@ fn record(row: &PgRow) -> Result<ApiKeyRecord, sqlx::Error> {
         name: row.try_get("name")?,
         prefix: row.try_get("prefix")?,
         role: row.try_get("role")?,
+        project_id: row.try_get("project_id")?,
         created_at: row.try_get("created_at")?,
         expires_at: row.try_get("expires_at")?,
         last_used_at: row.try_get("last_used_at")?,
@@ -116,8 +121,8 @@ impl Store {
             )));
         }
         let row = sqlx::query(&format!(
-            "INSERT INTO api_keys (id, tenant_id, subject, name, prefix, key_hash, role, expires_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            "INSERT INTO api_keys (id, tenant_id, subject, name, prefix, key_hash, role, project_id, expires_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              RETURNING {COLUMNS}"
         ))
         .bind(Uuid::new_v4())
@@ -127,6 +132,7 @@ impl Store {
         .bind(key.prefix)
         .bind(key.hash)
         .bind(key.role)
+        .bind(key.project_id)
         .bind(key.expires_at)
         .fetch_one(&mut *tx)
         .await?;

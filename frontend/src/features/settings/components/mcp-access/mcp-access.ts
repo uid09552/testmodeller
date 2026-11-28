@@ -10,7 +10,11 @@ import { iconCopy, iconPlus, iconTrashcan } from '@siemens/ix-icons/icons';
 import { ApiKeysApi } from '../../../../core/api/api-keys-api';
 import { ApiError } from '../../../../core/api/api-error';
 import { ApiKey, ApiKeyCreated } from '../../../../core/api/api.types';
-import { daysLeft, mcpUrl, vscodeMcpConfig } from '../../state/mcp-config';
+import { ExplorerStore } from '../../../explorer/state/explorer.store';
+import { daysLeft, mcpUrl, uploadActionSnippet, vscodeMcpConfig } from '../../state/mcp-config';
+
+/** `Use for` value of a key for AI clients, as opposed to a project id. */
+export const FOR_MCP = 'mcp';
 
 /** Expiry choices offered when creating a key; the API allows 1–365 days. */
 export const EXPIRY_DAYS = [30, 90, 180, 365] as const;
@@ -34,7 +38,11 @@ export class McpAccessComponent implements OnInit {
   private readonly api = inject(ApiKeysApi);
   private readonly toasts = inject(ToastService);
   private readonly messages = inject(MessageService);
+  private readonly explorer = inject(ExplorerStore);
 
+  readonly projects = this.explorer.projects;
+  /** What a new key is for: `mcp`, or the id of the project whose results it uploads. */
+  readonly forWhat = signal<string>(FOR_MCP);
   readonly icons = { copy: iconCopy, add: iconPlus, revoke: iconTrashcan };
   readonly expiryDays = EXPIRY_DAYS;
 
@@ -47,6 +55,23 @@ export class McpAccessComponent implements OnInit {
 
   readonly name = signal('');
   readonly days = signal<number>(DEFAULT_DAYS);
+  /** Project of an upload key, by id, for the list. */
+  projectName(id: string | null | undefined): string {
+    return this.projects().find(p => p.id === id)?.name ?? 'a project';
+  }
+
+  setFor(event: Event): void {
+    const v = (event as CustomEvent<string | string[]>).detail;
+    const value = Array.isArray(v) ? v[0] : v;
+    this.forWhat.set(value === FOR_MCP || this.projects().some(p => p.id === value) ? value : FOR_MCP);
+  }
+
+  /** The GitHub Action step for the key just created, when it is an upload key. */
+  readonly actionSnippet = computed(() => {
+    const c = this.created();
+    return c?.projectId ? uploadActionSnippet(this.origin, c.projectId) : null;
+  });
+
   readonly canCreate = computed(() => this.name().trim().length > 0 && !this.busy());
 
   private readonly origin = typeof location === 'undefined' ? '' : location.origin;
@@ -82,7 +107,11 @@ export class McpAccessComponent implements OnInit {
     if (!this.canCreate()) return;
     this.busy.set(true);
     try {
-      const created = await this.api.create({ name: this.name().trim(), expiresInDays: this.days() });
+      const created = await this.api.create({
+        name: this.name().trim(),
+        expiresInDays: this.days(),
+        ...(this.forWhat() !== FOR_MCP ? { projectId: this.forWhat() } : {}),
+      });
       this.created.set(created);
       this.name.set('');
       const { key: _secret, ...listed } = created;

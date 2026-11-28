@@ -4,6 +4,18 @@ import { IxNumberInput } from '@siemens/ix-angular/standalone';
 import { ModelEditorStore } from '../../state/model-editor.store';
 import { PropertiesPanelComponent } from './properties-panel';
 
+// Importing iX registers its custom elements, which upgrade in jsdom and observe
+// visibility, an API jsdom does not have.
+beforeAll(() => {
+  class NoIntersectionObserver {
+    observe(): void { /* jsdom has no layout */ }
+    unobserve(): void { /* nothing observed */ }
+    disconnect(): void { /* nothing observed */ }
+    takeRecords(): [] { return []; }
+  }
+  (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver ??= NoIntersectionObserver;
+});
+
 describe('PropertiesPanelComponent transition weight (ADR 0017)', () => {
   let store: ModelEditorStore;
   let fixture: ReturnType<typeof TestBed.createComponent<PropertiesPanelComponent>>;

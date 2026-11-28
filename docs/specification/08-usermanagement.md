@@ -110,12 +110,32 @@ key in Settings and hands it to the client.
 - `/me/*` is the caller's own account, not project data, so it is exempt from
   the role-by-method rule. It is scoped by `sub` and tenant: another user's key
   id is `404`.
-- A key is accepted only by `POST /mcp`. Every other endpoint still requires
-  the JWT, so a leaked key cannot use the REST API or manage keys.
+- A key is accepted only by `POST /mcp`, except an **upload key** (below).
+  Every other endpoint still requires the JWT, so a leaked key cannot use the
+  REST API or manage keys.
 - `lastUsedAt` is updated at most once a minute per key. Keys are never
   logged; a failed key check says why, not what was sent.
 - In `--dev-mode`, `/mcp` without an `Authorization` header runs as the dev
   identity, like every other endpoint; a presented key is still checked.
+
+### Upload keys (CI)
+A pipeline has no user session, so a key can be created for one project
+(`projectId` in `POST /me/api-keys`; the creator needs the `Editor` role and
+the project must be in their tenant). Such an **upload key**:
+
+- is accepted by exactly one request, `POST /projects/{projectId}/test-results`
+  for its own project, and acts as the creator's tenant with the `Editor` role
+  on that route only; every other route, another project, and `/mcp` answer
+  `401` or `403`;
+- is otherwise like any key: shown once, stored as a hash, expiring (90 days
+  by default), revocable, counted in the 10 active keys, listed with its
+  `projectId`;
+- stops working when the project is deleted.
+
+The gateway sends a request with `Authorization: Bearer tm_…` to that one
+route without the browser handshake; the backend does the key check. The
+repository ships a GitHub Action (`.github/actions/upload-test-results`) that
+posts a JUnit or Cucumber file with such a key.
 
 ## Configuration
 

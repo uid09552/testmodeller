@@ -42,6 +42,14 @@
             <ix-button variant="secondary" [icon]="icons.copy" (click)="copy(c.key, 'API key')">Copy key</ix-button>
             <ix-button variant="tertiary" (click)="created.set(null)">Done</ix-button>
           </div>
+          @if (actionSnippet(); as snippet) {
+            <p class="typography-body-sm">
+              Store it as the secret <code class="typography-code-sm">TESTMODELLER_UPLOAD_KEY</code>, then add this step
+              after your tests:
+            </p>
+            <pre class="mcp__code typography-code-sm" tabindex="0"
+                 aria-label="GitHub Actions step"><code>{{ snippet }}</code></pre>
+          }
         </ix-message-bar>
       }
 
@@ -53,6 +61,12 @@
         <ix-input class="mcp__name" label="Key name" placeholder="e.g. VS Code on my laptop"
                   [maxLength]="80"
                   [value]="name()" (valueChange)="setName($event)" />
+        <ix-select class="mcp__for" label="Use for" [value]="forWhat()" (valueChange)="setFor($event)">
+          <ix-select-item value="mcp" label="AI clients (MCP)" />
+          @for (p of projects(); track p.id) {
+            <ix-select-item [value]="p.id" [label]="'CI: upload test results of ' + p.name" />
+          }
+        </ix-select>
         <ix-select class="mcp__expiry" label="Expires after" [value]="'' + days()"
                    (valueChange)="setDays($event)">
           @for (d of expiryDays; track d) {
@@ -86,9 +100,13 @@
                 <td>{{ k.name }}</td>
                 <td><code class="typography-code-sm">{{ k.prefix }}…</code></td>
                 <td>
-                  <ix-pill [variant]="k.role === 'Editor' ? 'accent' : 'neutral'" [outline]="k.role !== 'Editor'">
-                    {{ k.role === 'Editor' ? 'Read & write' : 'Read only' }}
-                  </ix-pill>
+                  @if (k.projectId) {
+                    <ix-pill variant="information" [outline]="true">Uploads results: {{ projectName(k.projectId) }}</ix-pill>
+                  } @else {
+                    <ix-pill [variant]="k.role === 'Editor' ? 'accent' : 'neutral'" [outline]="k.role !== 'Editor'">
+                      {{ k.role === 'Editor' ? 'Read & write' : 'Read only' }}
+                    </ix-pill>
+                  }
                 </td>
                 <td>
                   @if (k.expiresAt) {
