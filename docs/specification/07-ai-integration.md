@@ -97,6 +97,7 @@ every request, so the assistant reasons about what is on the canvas now.
 
 ## Requirements
 - Provider trait with adapters (e.g. OpenAI-compatible, Anthropic, local); selected via config.
+- Refusals: a declined request (`stop_reason: "refusal"`) fails the job as refused. For models that support it (Claude Opus 5 and 5.5, Claude Sonnet 5.5, the Fable and Mythos 5 families) the Anthropic adapter asks for server-side fallbacks (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`), so the API retries a refusal on a fallback model first; other models are sent neither.
 - Prompt templates versioned in `backend/crates/ai/prompts/`.
 - Output must be valid JSON conforming to schema; invalid -> rejected with error, one bounded retry.
 - Context sent is limited to the selected model/feature; user can preview it.

@@ -116,23 +116,54 @@ impl AnthropicProvider {
     }
 }
 
-#[async_trait]
-impl LlmProvider for AnthropicProvider {
-    async fn complete(&self, req: &LlmRequest) -> Result<String, AiError> {
-        let body = json!({
+/// Beta that enables server-side refusal fallbacks (`fallbacks: "default"`).
+const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
+
+/// Whether `model` accepts server-side refusal fallbacks. Other models reject
+/// the field, so it is sent only to these: Claude Opus 5 and 5.5, Claude
+/// Sonnet 5.5, and the Fable and Mythos 5 families.
+fn supports_server_fallback(model: &str) -> bool {
+    [
+        "claude-opus-5",
+        "claude-sonnet-5-5",
+        "claude-fable-5",
+        "claude-mythos-5",
+    ]
+    .iter()
+    .any(|p| model.starts_with(p))
+}
+
+impl AnthropicProvider {
+    /// The Messages API request body, and whether it needs [`FALLBACK_BETA`].
+    fn request_body(&self, req: &LlmRequest) -> (serde_json::Value, bool) {
+        let mut body = json!({
             "model": self.model,
             "max_tokens": req.max_tokens,
             "system": req.system,
             "messages": [{"role": "user", "content": req.user}],
-            // Route refusals to a fallback model server-side instead of failing the job.
-            "fallbacks": "default",
         });
-        let builder = self
+        let fallback = supports_server_fallback(&self.model);
+        if fallback {
+            // Route a refusal to a fallback model server-side, chosen by the
+            // refusal's category, instead of failing the job.
+            body["fallbacks"] = json!("default");
+        }
+        (body, fallback)
+    }
+}
+
+#[async_trait]
+impl LlmProvider for AnthropicProvider {
+    async fn complete(&self, req: &LlmRequest) -> Result<String, AiError> {
+        let (body, fallback) = self.request_body(req);
+        let mut builder = self
             .client
             .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("anthropic-beta", "server-side-fallback-2026-07-01");
+            .header("anthropic-version", "2023-06-01");
+        if fallback {
+            builder = builder.header("anthropic-beta", FALLBACK_BETA);
+        }
         let resp = post_json(builder, &body).await?;
         if resp["stop_reason"] == "refusal" {
             return Err(AiError::Refused);
@@ -212,6 +243,52 @@ impl LlmProvider for OpenAiCompatibleProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn anthropic(model: &str) -> AnthropicProvider {
+        AnthropicProvider::new(reqwest::Client::new(), None, "k".into(), Some(model))
+    }
+
+    fn request() -> LlmRequest {
+        LlmRequest {
+            system: "s".into(),
+            user: "u".into(),
+            max_tokens: 100,
+        }
+    }
+
+    #[test]
+    fn asks_for_server_side_fallbacks_on_models_that_accept_them() {
+        for model in [
+            "claude-opus-5-5",
+            "claude-opus-5",
+            "claude-sonnet-5-5",
+            "claude-fable-5-2",
+        ] {
+            let (body, beta) = anthropic(model).request_body(&request());
+            assert!(beta, "{model}");
+            assert_eq!(body["fallbacks"], "default", "{model}");
+        }
+    }
+
+    #[test]
+    fn leaves_fallbacks_out_for_other_models() {
+        for model in [
+            "claude-haiku-4-5",
+            "claude-sonnet-5",
+            "claude-opus-4-8",
+            "claude-haiku-5-5",
+        ] {
+            let (body, beta) = anthropic(model).request_body(&request());
+            assert!(!beta, "{model}");
+            assert!(body.get("fallbacks").is_none(), "{model}");
+        }
+    }
+
+    #[test]
+    fn the_default_model_gets_fallbacks() {
+        let p = AnthropicProvider::new(reqwest::Client::new(), None, "k".into(), None);
+        assert!(p.request_body(&request()).1);
+    }
 
     #[test]
     fn recognises_a_web_page() {
