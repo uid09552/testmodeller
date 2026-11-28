@@ -34,12 +34,20 @@ tracing-subscriber.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 thiserror.workspace = true
-testcontainers.workspace = true
-testcontainers-modules.workspace = true
+testcontainers = { workspace = true, optional = true }
+testcontainers-modules = { workspace = true, optional = true }
 quick-xml.workspace = true
 async-trait.workspace = true
 tower.workspace = true
 http-body-util.workspace = true
 
+[features]
+# `--dev-mode`: a throwaway PostgreSQL in Docker. Release images build without
+# it (`--no-default-features`), which leaves out the Docker client crates.
+default = ["dev-mode"]
+dev-mode = ["dep:testcontainers", "dep:testcontainers-modules"]
+
 [dev-dependencies]
 sqlx.workspace = true
+testcontainers.workspace = true
+testcontainers-modules.workspace = true

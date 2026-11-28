@@ -66,8 +66,11 @@ make dev-fe   # Angular dev server on :4200, proxied to the backend
 ```
 
 `--dev-mode` skips JWT validation and treats every request as an `Editor` in
-the `dev` tenant, so no identity provider is needed to develop. `make dev` does
-not read `.env`; pass the AI provider on the command line:
+the `dev` tenant, so no identity provider is needed to develop. It comes from
+the `dev-mode` cargo feature, which is on by default; the Docker image builds
+with `--no-default-features`, so the released binary has no `--dev-mode`
+database and no Docker client in it. `make dev` does not read `.env`; pass the
+AI provider on the command line:
 
 ```bash
 TM_AI_PROVIDER=ollama TM_AI_MODEL=llama3.1 make dev
