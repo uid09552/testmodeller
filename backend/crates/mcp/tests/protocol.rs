@@ -148,20 +148,21 @@ fn the_catalogue_matches_the_spec_and_marks_writes() {
     assert_eq!(
         names,
         [
-            "list_projects",
-            "search",
-            "get_model",
-            "save_model",
-            "generate_test_cases",
-            "list_test_cases",
-            "export",
-            "import_test_results",
-            "get_coverage",
-            "get_traceability",
-            "get_threat_model",
-            "request_ai_proposals",
-            "list_proposals",
-            "decide_proposal",
+            "tm_list_projects",
+            "tm_search",
+            "tm_get_model",
+            "tm_save_model",
+            "tm_generate_test_cases",
+            "tm_list_test_cases",
+            "tm_export",
+            "tm_import_test_results",
+            "tm_get_coverage",
+            "tm_get_traceability",
+            "tm_get_threat_model",
+            "tm_request_ai_proposals",
+            "tm_get_ai_job",
+            "tm_list_proposals",
+            "tm_decide_proposal",
         ]
     );
     let writes: Vec<&str> = tools
@@ -172,11 +173,11 @@ fn the_catalogue_matches_the_spec_and_marks_writes() {
     assert_eq!(
         writes,
         [
-            "save_model",
-            "generate_test_cases",
-            "import_test_results",
-            "request_ai_proposals",
-            "decide_proposal"
+            "tm_save_model",
+            "tm_generate_test_cases",
+            "tm_import_test_results",
+            "tm_request_ai_proposals",
+            "tm_decide_proposal"
         ]
     );
     let destructive: Vec<&str> = tools
@@ -184,14 +185,14 @@ fn the_catalogue_matches_the_spec_and_marks_writes() {
         .filter(|t| t["annotations"]["destructiveHint"] == true)
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    assert_eq!(destructive, ["save_model", "decide_proposal"]);
+    assert_eq!(destructive, ["tm_save_model", "tm_decide_proposal"]);
     let repeatable_writes: Vec<&str> = tools
         .iter()
         .filter(|t| t["annotations"]["readOnlyHint"] == false)
         .filter(|t| t["annotations"]["idempotentHint"] == true)
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    assert_eq!(repeatable_writes, ["import_test_results"]);
+    assert_eq!(repeatable_writes, ["tm_import_test_results"]);
     for t in &tools {
         assert_eq!(t["inputSchema"]["type"], "object", "{}", t["name"]);
         assert_eq!(t["outputSchema"]["type"], "object", "{}", t["name"]);
@@ -215,7 +216,7 @@ async fn list_projects_pages_and_attaches_each_tree() {
             },
         },
     );
-    let r = call(&fake, "list_projects", json!({})).await;
+    let r = call(&fake, "tm_list_projects", json!({})).await;
     assert_eq!(r["isError"], false);
     let projects = r["structuredContent"]["projects"].as_array().unwrap();
     assert_eq!(projects.len(), 2);
@@ -226,10 +227,15 @@ async fn list_projects_pages_and_attaches_each_tree() {
 #[tokio::test]
 async fn ids_must_be_uuids_before_any_call() {
     let fake = Fake::new(|_| ok(json!({})));
-    let r = call(&fake, "get_model", json!({ "modelId": "../projects" })).await;
+    let r = call(&fake, "tm_get_model", json!({ "modelId": "../projects" })).await;
     assert_eq!(r["isError"], true);
     assert!(r["content"][0]["text"].as_str().unwrap().contains("UUID"));
-    let r = call(&fake, "export", json!({ "projectId": P, "format": "pdf" })).await;
+    let r = call(
+        &fake,
+        "tm_export",
+        json!({ "projectId": P, "format": "pdf" }),
+    )
+    .await;
     assert_eq!(r["isError"], true);
     assert!(fake.calls().is_empty());
 }
@@ -240,7 +246,7 @@ async fn a_refused_call_is_a_tool_error_with_the_problem_detail() {
         status: 403,
         body: json!({ "detail": "the User role may not POST this resource" }),
     });
-    let r = call(&fake, "generate_test_cases", json!({ "modelId": M })).await;
+    let r = call(&fake, "tm_generate_test_cases", json!({ "modelId": M })).await;
     assert_eq!(r["isError"], true);
     let text = r["content"][0]["text"].as_str().unwrap();
     assert!(
@@ -259,7 +265,7 @@ async fn get_model_works_for_read_only_keys_without_validation() {
         _ if r.path.ends_with("/coverage") => ok(json!({ "percent": 50 })),
         _ => ok(json!({ "id": M, "name": "Login" })),
     });
-    let r = call(&fake, "get_model", json!({ "modelId": M })).await;
+    let r = call(&fake, "tm_get_model", json!({ "modelId": M })).await;
     assert_eq!(r["isError"], false);
     assert_eq!(r["structuredContent"]["model"]["name"], "Login");
     assert!(r["structuredContent"].get("validation").is_none());
@@ -273,7 +279,7 @@ async fn save_model_creates_with_short_state_keys() {
     });
     let r = call(
         &fake,
-        "save_model",
+        "tm_save_model",
         json!({
             "featureId": F, "name": "Login",
             "states": [
@@ -297,7 +303,7 @@ async fn save_model_creates_with_short_state_keys() {
 
     let r = call(
         &fake,
-        "save_model",
+        "tm_save_model",
         json!({
             "featureId": F, "name": "x", "states": [{ "id": "a", "name": "A", "kind": "initial" }],
             "transitions": [{ "from": "a", "to": "missing", "event": "e" }]
@@ -317,7 +323,7 @@ async fn save_model_replaces_with_the_current_version_and_keeps_variables() {
     });
     let r = call(
         &fake,
-        "save_model",
+        "tm_save_model",
         json!({
             "modelId": M,
             "states": [{ "id": "a", "name": "A", "kind": "initial" }],
@@ -344,20 +350,20 @@ async fn save_model_replaces_with_the_current_version_and_keeps_variables() {
 async fn coverage_needs_exactly_one_scope() {
     let fake = Fake::new(|_| ok(json!({})));
     assert_eq!(
-        call(&fake, "get_coverage", json!({})).await["isError"],
+        call(&fake, "tm_get_coverage", json!({})).await["isError"],
         true
     );
     assert_eq!(
         call(
             &fake,
-            "get_coverage",
+            "tm_get_coverage",
             json!({ "modelId": M, "featureId": F })
         )
         .await["isError"],
         true
     );
     assert_eq!(
-        call(&fake, "get_coverage", json!({ "featureId": F })).await["isError"],
+        call(&fake, "tm_get_coverage", json!({ "featureId": F })).await["isError"],
         false
     );
     assert_eq!(fake.calls()[0].path, format!("/features/{F}/coverage"));
@@ -368,7 +374,7 @@ async fn import_sends_the_file_as_raw_text() {
     let fake = Fake::new(|_| ok(json!({ "matched": 1 })));
     let r = call(
         &fake,
-        "import_test_results",
+        "tm_import_test_results",
         json!({ "projectId": P, "format": "junit", "content": "<testsuite/>", "dryRun": true }),
     )
     .await;
@@ -404,7 +410,7 @@ async fn ai_proposals_wait_for_the_job_and_never_accept() {
     });
     let r = call(
         &fake,
-        "request_ai_proposals",
+        "tm_request_ai_proposals",
         json!({ "featureId": F, "kind": "test-cases" }),
     )
     .await;
@@ -418,16 +424,114 @@ async fn decide_proposal_posts_the_decision() {
     let fake = Fake::new(|_| ok(json!({ "status": "rejected" })));
     call(
         &fake,
-        "decide_proposal",
+        "tm_decide_proposal",
         json!({ "proposalId": P, "decision": "reject" }),
     )
     .await;
     assert_eq!(fake.calls()[0].path, format!("/proposals/{P}/reject"));
     let r = call(
         &fake,
-        "decide_proposal",
+        "tm_decide_proposal",
         json!({ "proposalId": P, "decision": "reject", "payload": {} }),
     )
     .await;
     assert_eq!(r["isError"], true);
+}
+
+#[tokio::test]
+async fn lists_stop_at_the_limit_and_say_so() {
+    // Every page has two projects and another page after it.
+    let fake = Fake::new(|r| match r.path.as_str() {
+        "/projects" => ok(json!({
+            "items": [{ "id": P, "name": "A", "description": "long" }, { "id": F, "name": "B" }],
+            "nextCursor": "more"
+        })),
+        p if p.ends_with("/tree") => ok(json!({ "components": [] })),
+        _ => ApiResponse {
+            status: 404,
+            body: json!({}),
+        },
+    });
+    let r = call(&fake, "tm_list_projects", json!({ "limit": 3 })).await;
+    assert_eq!(r["isError"], false, "{r}");
+    let s = &r["structuredContent"];
+    assert_eq!(s["projects"].as_array().unwrap().len(), 3);
+    assert_eq!(s["truncated"], true);
+    // Concise by default: no description.
+    assert_eq!(s["projects"][0]["project"], json!({ "id": P, "name": "A" }));
+    // Two pages were enough for three items.
+    assert_eq!(
+        fake.calls()
+            .iter()
+            .filter(|c| c.path == "/projects")
+            .count(),
+        2
+    );
+
+    let r = call(
+        &fake,
+        "tm_list_projects",
+        json!({ "limit": 1, "detail": "full" }),
+    )
+    .await;
+    assert_eq!(
+        r["structuredContent"]["projects"][0]["project"]["description"],
+        "long"
+    );
+
+    for bad in [
+        json!({ "limit": 0 }),
+        json!({ "limit": 501 }),
+        json!({ "detail": "all" }),
+    ] {
+        let r = call(&fake, "tm_list_projects", bad.clone()).await;
+        assert_eq!(r["isError"], true, "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn concise_test_cases_keep_identity_and_last_result() {
+    let fake = Fake::new(|_| {
+        ok(json!([{
+            "id": P, "name": "Lockout", "status": "draft", "featureId": F, "threatIds": [M],
+            "steps": [{ "action": "a", "expected": "b" }], "lastResult": { "status": "failed", "message": "x" }
+        }]))
+    });
+    let r = call(&fake, "tm_list_test_cases", json!({ "modelId": M })).await;
+    assert_eq!(r["isError"], false, "{r}");
+    assert_eq!(
+        r["structuredContent"]["testCases"][0],
+        json!({ "id": P, "name": "Lockout", "status": "draft", "featureId": F,
+                "threatIds": [M], "lastResult": "failed" })
+    );
+    assert_eq!(r["structuredContent"]["truncated"], false);
+}
+
+#[tokio::test]
+async fn an_ai_job_can_be_followed_up_and_never_accepts() {
+    let fake = Fake::new(|r| match r.path.as_str() {
+        p if p == format!("/jobs/{M}") => {
+            ok(json!({ "id": M, "status": "succeeded", "proposalIds": [P] }))
+        }
+        p if p == format!("/jobs/{F}") => ok(json!({ "id": F, "status": "running" })),
+        p if p.starts_with("/proposals/") => ok(json!({ "id": P, "status": "pending" })),
+        _ => ApiResponse {
+            status: 404,
+            body: json!({}),
+        },
+    });
+    let r = call(&fake, "tm_get_ai_job", json!({ "jobId": M })).await;
+    assert_eq!(r["isError"], false, "{r}");
+    assert_eq!(r["structuredContent"]["proposals"][0]["status"], "pending");
+
+    let r = call(&fake, "tm_get_ai_job", json!({ "jobId": F })).await;
+    assert!(r["structuredContent"].get("proposals").is_none());
+    assert!(r["structuredContent"]["note"]
+        .as_str()
+        .unwrap()
+        .contains("still running"));
+
+    let r = call(&fake, "tm_get_ai_job", json!({ "jobId": "nope" })).await;
+    assert_eq!(r["isError"], true);
+    assert!(fake.calls().iter().all(|c| c.method == Method::Get));
 }

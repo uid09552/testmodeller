@@ -20,10 +20,10 @@ const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
 
 const INSTRUCTIONS: &str = "TestModeller: model-based testing. Data is organised as \
-Project > Component > Feature > Model (a state machine). Start with list_projects to find ids. \
+Project > Component > Feature > Model (a state machine). Start with tm_list_projects to find ids. \
 Test cases belong to a feature and are generated from a model's states and transitions. \
-AI proposals are never accepted automatically: request_ai_proposals creates pending proposals, \
-and only decide_proposal, after the user agrees, accepts or rejects one.";
+AI proposals are never accepted automatically: tm_request_ai_proposals creates pending proposals, \
+and only tm_decide_proposal, after the user agrees, accepts or rejects one.";
 
 fn error(id: Value, code: i64, message: impl Into<String>) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message.into() } })

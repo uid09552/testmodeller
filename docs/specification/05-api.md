@@ -47,23 +47,32 @@ error. Tools that write (marked ✎) need a key with the `Editor` role.
 
 | Tool | Arguments | Aggregates |
 | --- | --- | --- |
-| `list_projects` | – | `GET /projects` (all pages) and `GET /projects/{id}/tree` for each |
-| `search` | `projectId`, `query`, `types?` | `GET /projects/{id}/search` |
-| `get_model` | `modelId` | `GET /models/{id}`, `POST /models/{id}/validate`, `GET /models/{id}/coverage` |
-| `save_model` ✎ | `featureId` (create) or `modelId` (replace), `name`, `states`, `transitions`, `description?` | `POST /features/{id}/models`, or `GET` + `PUT /models/{id}` with the current version |
-| `generate_test_cases` ✎ | `modelId`, `criterion?` (default `transition`), `seed?`, `maxPathLength?`, `save?` | `POST /models/{id}/generate` |
-| `list_test_cases` | `featureId` or `modelId` | `GET /features/{id}/test-cases` or `GET /models/{id}/test-cases` |
-| `export` | `projectId`, `format` (`gherkin`, `csv`, `json`), `featureId?`, `componentId?` | `GET /projects/{id}/export` |
-| `import_test_results` ✎ | `projectId`, `format` (`junit`, `cucumber`), `content`, `dryRun?` | `POST /projects/{id}/test-results` |
-| `get_coverage` | one of `modelId`, `featureId`, `componentId` | `GET /{models,features,components}/{id}/coverage` |
-| `get_traceability` | `projectId` | `GET /projects/{id}/traceability` |
-| `get_threat_model` | `projectId` | `GET /projects/{id}/threat-model`, `…/summary`, `…/threats`, `…/controls` |
-| `request_ai_proposals` ✎ | `featureId`, `kind`, `modelId?`, `prompt?`, `count?` | `POST /ai/proposals`, then polls `GET /jobs/{id}` for up to 30 s |
-| `list_proposals` | `projectId`, `status?` | `GET /projects/{id}/proposals` |
-| `decide_proposal` ✎ | `proposalId`, `decision` (`accept`, `reject`), `payload?` | `POST /proposals/{id}/accept` or `/reject` |
+| `tm_list_projects` | `limit?`, `detail?` | `GET /projects` (pages up to `limit`) and `GET /projects/{id}/tree` for each |
+| `tm_search` | `projectId`, `query`, `types?`, `limit?` | `GET /projects/{id}/search` |
+| `tm_get_model` | `modelId` | `GET /models/{id}`, `POST /models/{id}/validate`, `GET /models/{id}/coverage` |
+| `tm_save_model` ✎ | `featureId` (create) or `modelId` (replace), `name`, `states`, `transitions`, `description?` | `POST /features/{id}/models`, or `GET` + `PUT /models/{id}` with the current version |
+| `tm_generate_test_cases` ✎ | `modelId`, `criterion?` (default `transition`), `seed?`, `maxPathLength?`, `save?` | `POST /models/{id}/generate` |
+| `tm_list_test_cases` | `featureId` or `modelId`, `limit?`, `detail?` | `GET /features/{id}/test-cases` or `GET /models/{id}/test-cases` |
+| `tm_export` | `projectId`, `format` (`gherkin`, `csv`, `json`), `featureId?`, `componentId?` | `GET /projects/{id}/export` |
+| `tm_import_test_results` ✎ | `projectId`, `format` (`junit`, `cucumber`), `content`, `dryRun?` | `POST /projects/{id}/test-results` |
+| `tm_get_coverage` | one of `modelId`, `featureId`, `componentId` | `GET /{models,features,components}/{id}/coverage` |
+| `tm_get_traceability` | `projectId` | `GET /projects/{id}/traceability` |
+| `tm_get_threat_model` | `projectId` | `GET /projects/{id}/threat-model`, `…/summary`, `…/threats`, `…/controls` |
+| `tm_request_ai_proposals` ✎ | `featureId`, `kind`, `modelId?`, `prompt?`, `count?` | `POST /ai/proposals`, then polls `GET /jobs/{id}` for up to 30 s; still running, it returns the `jobId` |
+| `tm_get_ai_job` | `jobId` | `GET /jobs/{id}`, and `GET /proposals/{id}` for each proposal of a succeeded job |
+| `tm_list_proposals` | `projectId`, `status?`, `limit?`, `detail?` | `GET /projects/{id}/proposals` |
+| `tm_decide_proposal` ✎ | `proposalId`, `decision` (`accept`, `reject`), `payload?` | `POST /proposals/{id}/accept` or `/reject` |
 
-No tool accepts a proposal on its own: `request_ai_proposals` only creates
-pending proposals, and `decide_proposal` is a separate, explicit call
+Names carry the `tm_` prefix so they do not collide with other servers' tools
+(`search`, `export`). Listings take `limit` (1–500, default 100) and report
+`truncated` when more exist; `detail` is `concise` (default: ids, names,
+status, latest result) or `full` (every field), to keep results within
+clients' tool-output limits. Every tool declares an `outputSchema` and the MCP
+tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`).
+
+No tool accepts a proposal on its own: `tm_request_ai_proposals` and
+`tm_get_ai_job` only return pending proposals, and `tm_decide_proposal` is a
+separate, explicit call
 (AGENTS.md rule 8).
 
 ## Conventions

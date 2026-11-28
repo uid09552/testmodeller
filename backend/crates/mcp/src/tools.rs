@@ -33,6 +33,19 @@ const MAX_PAGES: usize = 50;
 /// How long `request_ai_proposals` waits for its job.
 const JOB_WAIT: Duration = Duration::from_secs(30);
 const JOB_POLL: Duration = Duration::from_secs(1);
+/// Items a listing returns unless `limit` says otherwise, and the most it may ask for.
+const DEFAULT_LIMIT: usize = 100;
+const MAX_LIMIT: usize = 500;
+
+fn limit_prop() -> Value {
+    json!({ "type": "integer", "minimum": 1, "maximum": MAX_LIMIT, "default": DEFAULT_LIMIT,
+            "description": "Most items to return; `truncated` says whether more exist" })
+}
+
+fn detail_prop() -> Value {
+    json!({ "enum": ["concise", "full"], "default": "concise",
+            "description": "concise: ids, names and status only; full: every field" })
+}
 
 struct Tool {
     name: &'static str,
@@ -54,22 +67,25 @@ fn id_prop(what: &str) -> Value {
 
 const TOOLS: &[Tool] = &[
     Tool {
-        name: "list_projects",
+        name: "tm_list_projects",
         title: "List projects",
         description: "All projects of your tenant, each with its Component > Feature > Model tree. \
                       Use it first to find the ids the other tools take.",
         read_only: true,
         destructive: false,
         idempotent: true,
-        schema: || json!({ "type": "object", "properties": {} }),
+        schema: || {
+            json!({ "type": "object", "properties": { "limit": limit_prop(), "detail": detail_prop() } })
+        },
         output: || {
-            json!({ "type": "object", "required": ["projects"], "properties": {
+            json!({ "type": "object", "required": ["projects", "truncated"], "properties": {
             "projects": { "type": "array", "items": { "type": "object", "required": ["project", "tree"],
-                "properties": { "project": { "type": "object" }, "tree": { "type": "object" } } } } } })
+                "properties": { "project": { "type": "object" }, "tree": { "type": "object" } } } },
+            "truncated": { "type": "boolean" } } })
         },
     },
     Tool {
-        name: "search",
+        name: "tm_search",
         title: "Search a project",
         description: "Search a project's components, features, models and test cases by text.",
         read_only: true,
@@ -82,16 +98,18 @@ const TOOLS: &[Tool] = &[
                 "properties": {
                     "projectId": id_prop("Project to search"),
                     "query": { "type": "string", "minLength": 1 },
-                    "types": { "type": "array", "items": { "enum": ["component", "feature", "model", "testCase"] } }
+                    "types": { "type": "array", "items": { "enum": ["component", "feature", "model", "testCase"] } },
+                    "limit": limit_prop()
                 }
             })
         },
         output: || {
-            json!({ "type": "object", "required": ["hits"], "properties": { "hits": { "type": "array" } } })
+            json!({ "type": "object", "required": ["hits", "truncated"], "properties": {
+                "hits": { "type": "array" }, "truncated": { "type": "boolean" } } })
         },
     },
     Tool {
-        name: "get_model",
+        name: "tm_get_model",
         title: "Get a model",
         description: "A model's states and transitions, with its validation issues and its coverage.",
         read_only: true,
@@ -106,7 +124,7 @@ const TOOLS: &[Tool] = &[
         },
     },
     Tool {
-        name: "save_model",
+        name: "tm_save_model",
         title: "Create or replace a model",
         description: "Give featureId to create a model in that feature, or modelId to replace an \
                       existing model's states and transitions (its layout and variables are kept). \
@@ -151,7 +169,7 @@ const TOOLS: &[Tool] = &[
         },
     },
     Tool {
-        name: "generate_test_cases",
+        name: "tm_generate_test_cases",
         title: "Generate test cases",
         description: "Generate test cases from a model. Deterministic for model, criterion and seed. \
                       With save=true they are stored and assigned to the model.",
@@ -176,7 +194,7 @@ const TOOLS: &[Tool] = &[
         },
     },
     Tool {
-        name: "list_test_cases",
+        name: "tm_list_test_cases",
         title: "List test cases",
         description: "Test cases of a feature, or those assigned to a model. Give featureId, modelId or both.",
         read_only: true,
@@ -184,15 +202,17 @@ const TOOLS: &[Tool] = &[
         idempotent: true,
         schema: || {
             json!({ "type": "object", "properties": {
-                "featureId": id_prop("Feature"), "modelId": id_prop("Model")
+                "featureId": id_prop("Feature"), "modelId": id_prop("Model"),
+                "limit": limit_prop(), "detail": detail_prop()
             } })
         },
         output: || {
-            json!({ "type": "object", "required": ["testCases"], "properties": { "testCases": { "type": "array" } } })
+            json!({ "type": "object", "required": ["testCases", "truncated"], "properties": {
+                "testCases": { "type": "array" }, "truncated": { "type": "boolean" } } })
         },
     },
     Tool {
-        name: "export",
+        name: "tm_export",
         title: "Export test cases",
         description: "Export a project (or one feature or component) as Gherkin, CSV or JSON.",
         read_only: true,
@@ -216,7 +236,7 @@ const TOOLS: &[Tool] = &[
         },
     },
     Tool {
-        name: "import_test_results",
+        name: "tm_import_test_results",
         title: "Import test results",
         description: "Import a JUnit XML or Cucumber JSON result file into a project. Results are matched \
                       to test cases by an @tm-<test case id> tag or by name. dryRun reports without recording.",
@@ -240,7 +260,7 @@ const TOOLS: &[Tool] = &[
         },
     },
     Tool {
-        name: "get_coverage",
+        name: "tm_get_coverage",
         title: "Get coverage",
         description: "Coverage of a model, a feature or a component. Give exactly one id.",
         read_only: true,
@@ -256,7 +276,7 @@ const TOOLS: &[Tool] = &[
         },
     },
     Tool {
-        name: "get_traceability",
+        name: "tm_get_traceability",
         title: "Get traceability",
         description: "Backlog items traced to test cases, model elements and implementations, with the gaps.",
         read_only: true,
@@ -268,7 +288,7 @@ const TOOLS: &[Tool] = &[
         },
     },
     Tool {
-        name: "get_threat_model",
+        name: "tm_get_threat_model",
         title: "Get the threat model",
         description: "A project's threat model with its summary, threats and controls.",
         read_only: true,
@@ -283,10 +303,11 @@ const TOOLS: &[Tool] = &[
         },
     },
     Tool {
-        name: "request_ai_proposals",
+        name: "tm_request_ai_proposals",
         title: "Request AI proposals",
         description: "Ask TestModeller's AI for proposals for a feature. Waits up to 30 s and returns the \
-                      pending proposals. Nothing is accepted: show them to the user, then use decide_proposal.",
+                      pending proposals, or the jobId to follow with tm_get_ai_job if it is still running. \
+                      Nothing is accepted: show them to the user, then use tm_decide_proposal.",
         read_only: false,
         destructive: false,
         idempotent: false,
@@ -306,12 +327,31 @@ const TOOLS: &[Tool] = &[
         output: || {
             json!({ "type": "object", "required": ["note"], "properties": {
             "proposals": { "type": "array", "description": "Pending proposals, once the job has finished" },
+            "jobId": { "type": "string", "description": "The job, while it is still running; pass it to tm_get_ai_job" },
             "job": { "type": "object", "description": "The job, while it is still running" },
             "note": { "type": "string" } } })
         },
     },
     Tool {
-        name: "list_proposals",
+        name: "tm_get_ai_job",
+        title: "Get an AI job",
+        description: "Status of an AI job started by tm_request_ai_proposals; once it has succeeded, its \
+                      pending proposals. Nothing is accepted.",
+        read_only: true,
+        destructive: false,
+        idempotent: true,
+        schema: || {
+            json!({ "type": "object", "required": ["jobId"], "properties": { "jobId": id_prop("Job") } })
+        },
+        output: || {
+            json!({ "type": "object", "required": ["job", "note"], "properties": {
+                "job": { "type": "object" },
+                "proposals": { "type": "array", "description": "Pending proposals, once the job has succeeded" },
+                "note": { "type": "string" } } })
+        },
+    },
+    Tool {
+        name: "tm_list_proposals",
         title: "List AI proposals",
         description: "AI proposals of a project, optionally by status.",
         read_only: true,
@@ -323,16 +363,19 @@ const TOOLS: &[Tool] = &[
                 "required": ["projectId"],
                 "properties": {
                     "projectId": id_prop("Project"),
-                    "status": { "enum": ["pending", "accepted", "rejected"] }
+                    "status": { "enum": ["pending", "accepted", "rejected"] },
+                    "limit": limit_prop(),
+                    "detail": detail_prop()
                 }
             })
         },
         output: || {
-            json!({ "type": "object", "required": ["proposals"], "properties": { "proposals": { "type": "array" } } })
+            json!({ "type": "object", "required": ["proposals", "truncated"], "properties": {
+                "proposals": { "type": "array" }, "truncated": { "type": "boolean" } } })
         },
     },
     Tool {
-        name: "decide_proposal",
+        name: "tm_decide_proposal",
         title: "Accept or reject an AI proposal",
         description: "Accept (optionally with an edited payload) or reject a pending AI proposal. \
                       Only call this when the user has decided.",
@@ -381,26 +424,27 @@ pub fn catalogue() -> Vec<Value> {
 
 pub(crate) async fn run(backend: &dyn Backend, name: &str, args: &Args) -> ToolOutcome {
     let out = match name {
-        "list_projects" => list_projects(backend).await,
-        "search" => search(backend, args).await,
-        "get_model" => get_model(backend, args).await,
-        "save_model" => save_model(backend, args).await,
-        "generate_test_cases" => generate(backend, args).await,
-        "list_test_cases" => list_test_cases(backend, args).await,
-        "export" => export(backend, args).await,
-        "import_test_results" => import_results(backend, args).await,
-        "get_coverage" => coverage(backend, args).await,
-        "get_traceability" => {
+        "tm_list_projects" => list_projects(backend, args).await,
+        "tm_search" => search(backend, args).await,
+        "tm_get_model" => get_model(backend, args).await,
+        "tm_save_model" => save_model(backend, args).await,
+        "tm_generate_test_cases" => generate(backend, args).await,
+        "tm_list_test_cases" => list_test_cases(backend, args).await,
+        "tm_export" => export(backend, args).await,
+        "tm_import_test_results" => import_results(backend, args).await,
+        "tm_get_coverage" => coverage(backend, args).await,
+        "tm_get_traceability" => {
             let pid = id(args, "projectId");
             match pid {
                 Ok(pid) => get(backend, format!("/projects/{pid}/traceability")).await,
                 Err(e) => Err(e),
             }
         }
-        "get_threat_model" => threat_model(backend, args).await,
-        "request_ai_proposals" => request_proposals(backend, args).await,
-        "list_proposals" => list_proposals(backend, args).await,
-        "decide_proposal" => decide(backend, args).await,
+        "tm_get_threat_model" => threat_model(backend, args).await,
+        "tm_request_ai_proposals" => request_proposals(backend, args).await,
+        "tm_get_ai_job" => get_ai_job(backend, args).await,
+        "tm_list_proposals" => list_proposals(backend, args).await,
+        "tm_decide_proposal" => decide(backend, args).await,
         _ => return ToolOutcome::Unknown,
     };
     match out {
@@ -517,8 +561,13 @@ async fn get(backend: &dyn Backend, path: String) -> Out {
     send(backend, ApiRequest::new(Method::Get, path)).await
 }
 
-/// Follows `nextCursor` until the last page and returns all items.
-async fn all_pages(backend: &dyn Backend, request: ApiRequest) -> Result<Vec<Value>, Fail> {
+/// Follows `nextCursor` until `cap` items or the last page; also says
+/// whether more items exist than were returned.
+async fn all_pages(
+    backend: &dyn Backend,
+    request: ApiRequest,
+    cap: usize,
+) -> Result<(Vec<Value>, bool), Fail> {
     let mut items = Vec::new();
     let mut cursor: Option<String> = None;
     for _ in 0..MAX_PAGES {
@@ -534,11 +583,59 @@ async fn all_pages(backend: &dyn Backend, request: ApiRequest) -> Result<Vec<Val
             .get("nextCursor")
             .and_then(Value::as_str)
             .map(str::to_owned);
+        if items.len() > cap {
+            items.truncate(cap);
+            return Ok((items, true));
+        }
         if cursor.is_none() {
-            return Ok(items);
+            return Ok((items, false));
+        }
+        if items.len() == cap {
+            return Ok((items, true));
         }
     }
-    Ok(items)
+    Ok((items, cursor.is_some()))
+}
+
+/// `limit` (1..=MAX_LIMIT, default DEFAULT_LIMIT).
+fn limit(args: &Args) -> Result<usize, Fail> {
+    match opt_int(args, "limit")? {
+        None => Ok(DEFAULT_LIMIT),
+        Some(n) if (1..=MAX_LIMIT as i64).contains(&n) => Ok(n as usize),
+        Some(_) => Err(Fail(format!("\"limit\" must be between 1 and {MAX_LIMIT}"))),
+    }
+}
+
+/// Whether `detail` asks for every field (default: concise).
+fn full(args: &Args) -> Result<bool, Fail> {
+    Ok(choice(args, "detail", &["concise", "full"], Some("concise"))? == "full")
+}
+
+/// Keeps only `keys` of an object.
+fn pick(v: &Value, keys: &[&str]) -> Value {
+    let mut out = Map::new();
+    for k in keys {
+        if let Some(x) = v.get(*k).filter(|x| !x.is_null()) {
+            out.insert((*k).to_owned(), x.clone());
+        }
+    }
+    Value::Object(out)
+}
+
+/// The concise form of a test case: what identifies it and how it last ran.
+fn concise_test_case(tc: &Value) -> Value {
+    let mut out = pick(tc, &["id", "name", "status", "featureId", "threatIds"]);
+    if let Some(status) = tc.pointer("/lastResult/status") {
+        out["lastResult"] = status.clone();
+    }
+    out
+}
+
+/// Cuts `items` to `cap`, saying whether any were dropped.
+fn capped(mut items: Vec<Value>, cap: usize) -> (Vec<Value>, bool) {
+    let truncated = items.len() > cap;
+    items.truncate(cap);
+    (items, truncated)
 }
 
 fn uuid_of(value: &Value, key: &str) -> Result<Uuid, Fail> {
@@ -551,15 +648,22 @@ fn uuid_of(value: &Value, key: &str) -> Result<Uuid, Fail> {
 
 // ── tools ───────────────────────────────────────────────────────────────────
 
-async fn list_projects(backend: &dyn Backend) -> Out {
-    let projects = all_pages(backend, ApiRequest::new(Method::Get, "/projects")).await?;
+async fn list_projects(backend: &dyn Backend, args: &Args) -> Out {
+    let (cap, full) = (limit(args)?, full(args)?);
+    let (projects, truncated) =
+        all_pages(backend, ApiRequest::new(Method::Get, "/projects"), cap).await?;
     let mut out = Vec::with_capacity(projects.len());
     for project in projects {
         let pid = uuid_of(&project, "id")?;
         let tree = get(backend, format!("/projects/{pid}/tree")).await?;
+        let project = if full {
+            project
+        } else {
+            pick(&project, &["id", "name"])
+        };
         out.push(json!({ "project": project, "tree": tree }));
     }
-    Ok(json!({ "projects": out }))
+    Ok(json!({ "projects": out, "truncated": truncated }))
 }
 
 async fn search(backend: &dyn Backend, args: &Args) -> Out {
@@ -584,8 +688,10 @@ async fn search(backend: &dyn Backend, args: &Args) -> Out {
             request = request.query("types", list.join(","));
         }
     }
+    let cap = limit(args)?;
     let hits = send(backend, request).await?;
-    Ok(json!({ "hits": hits }))
+    let (hits, truncated) = capped(hits.as_array().cloned().unwrap_or_default(), cap);
+    Ok(json!({ "hits": hits, "truncated": truncated }))
 }
 
 async fn get_model(backend: &dyn Backend, args: &Args) -> Out {
@@ -754,18 +860,27 @@ async fn generate(backend: &dyn Backend, args: &Args) -> Out {
 }
 
 async fn list_test_cases(backend: &dyn Backend, args: &Args) -> Out {
-    let cases = match (opt_id(args, "featureId")?, opt_id(args, "modelId")?) {
+    let (cap, full) = (limit(args)?, full(args)?);
+    let (cases, truncated) = match (opt_id(args, "featureId")?, opt_id(args, "modelId")?) {
         (Some(fid), model) => {
             let mut request = ApiRequest::new(Method::Get, format!("/features/{fid}/test-cases"));
             if let Some(mid) = model {
                 request = request.query("modelId", mid.to_string());
             }
-            json!(all_pages(backend, request).await?)
+            all_pages(backend, request, cap).await?
         }
-        (None, Some(mid)) => get(backend, format!("/models/{mid}/test-cases")).await?,
+        (None, Some(mid)) => {
+            let all = get(backend, format!("/models/{mid}/test-cases")).await?;
+            capped(all.as_array().cloned().unwrap_or_default(), cap)
+        }
         (None, None) => return Err(Fail("give featureId, modelId or both".into())),
     };
-    Ok(json!({ "testCases": cases }))
+    let cases: Vec<Value> = if full {
+        cases
+    } else {
+        cases.iter().map(concise_test_case).collect()
+    };
+    Ok(json!({ "testCases": cases, "truncated": truncated }))
 }
 
 async fn export(backend: &dyn Backend, args: &Args) -> Out {
@@ -864,8 +979,9 @@ async fn request_proposals(backend: &dyn Backend, args: &Args) -> Out {
             }
             _ if waited >= JOB_WAIT => {
                 return Ok(json!({
+                    "jobId": jid,
                     "job": job,
-                    "note": "The job is still running. Call list_proposals in a moment to see its proposals."
+                    "note": "The job is still running. Call tm_get_ai_job with this jobId in a moment."
                 }))
             }
             _ => {}
@@ -875,6 +991,17 @@ async fn request_proposals(backend: &dyn Backend, args: &Args) -> Out {
         job = get(backend, format!("/jobs/{jid}")).await?;
     }
 
+    Ok(json!({
+        "proposals": proposals_of(backend, &job).await?,
+        "note": PENDING_NOTE
+    }))
+}
+
+const PENDING_NOTE: &str =
+    "These are pending. Nothing was changed. Ask the user before calling tm_decide_proposal.";
+
+/// The proposals a finished job created.
+async fn proposals_of(backend: &dyn Backend, job: &Value) -> Result<Vec<Value>, Fail> {
     let mut proposals = Vec::new();
     for pid in job
         .get("proposalIds")
@@ -886,10 +1013,30 @@ async fn request_proposals(backend: &dyn Backend, args: &Args) -> Out {
     {
         proposals.push(get(backend, format!("/proposals/{pid}")).await?);
     }
-    Ok(json!({
-        "proposals": proposals,
-        "note": "These are pending. Nothing was changed. Ask the user before calling decide_proposal."
-    }))
+    Ok(proposals)
+}
+
+async fn get_ai_job(backend: &dyn Backend, args: &Args) -> Out {
+    let jid = id(args, "jobId")?;
+    let job = get(backend, format!("/jobs/{jid}")).await?;
+    match job.get("status").and_then(Value::as_str) {
+        Some("succeeded") => Ok(json!({
+            "proposals": proposals_of(backend, &job).await?,
+            "job": job,
+            "note": PENDING_NOTE
+        })),
+        Some("failed") => {
+            let detail = job
+                .pointer("/error/detail")
+                .and_then(Value::as_str)
+                .unwrap_or("no detail");
+            Err(Fail(format!("the AI job failed: {detail}")))
+        }
+        _ => Ok(json!({
+            "job": job,
+            "note": "The job is still running. Call tm_get_ai_job again in a moment."
+        })),
+    }
 }
 
 async fn list_proposals(backend: &dyn Backend, args: &Args) -> Out {
@@ -901,7 +1048,22 @@ async fn list_proposals(backend: &dyn Backend, args: &Args) -> Out {
             choice(args, "status", &["pending", "accepted", "rejected"], None)?,
         );
     }
-    Ok(json!({ "proposals": all_pages(backend, request).await? }))
+    let (cap, full) = (limit(args)?, full(args)?);
+    let (proposals, truncated) = all_pages(backend, request, cap).await?;
+    let proposals: Vec<Value> = if full {
+        proposals
+    } else {
+        proposals
+            .iter()
+            .map(|p| {
+                pick(
+                    p,
+                    &["id", "kind", "status", "featureId", "modelId", "createdAt"],
+                )
+            })
+            .collect()
+    };
+    Ok(json!({ "proposals": proposals, "truncated": truncated }))
 }
 
 async fn decide(backend: &dyn Backend, args: &Args) -> Out {
