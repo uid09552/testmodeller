@@ -1,96 +1,104 @@
-<section class="page">
-  <header class="page__head">
+<section class="cov" aria-labelledby="cov-title">
+  <header class="cov__head">
     <div>
-      <h1 class="page__title">Coverage</h1>
-      <p class="page__sub">State and transition coverage across all models</p>
+      <h1 id="cov-title" class="typography-h2">Coverage</h1>
+      <p class="typography-body-sm cov__sub">
+        How many states and transitions each model's assigned test cases cover
+      </p>
     </div>
+    @if (projects().length > 1) {
+      <ix-select class="cov__project" label="Project" [value]="projectId() ?? ''"
+                 (valueChange)="setProject($event)">
+        @for (p of projects(); track p.id) {
+          <ix-select-item [value]="p.id" [label]="p.name" />
+        }
+      </ix-select>
+    }
   </header>
 
-  <!-- ── Gauges ──────────────────────────────────────────────────────────────── -->
-  <div class="gauges">
-    <div class="gauge-card">
-      <svg class="gauge" viewBox="0 0 100 100" aria-hidden="true">
-        <circle class="gauge__track" cx="50" cy="50" r="38" />
-        <circle class="gauge__fill gauge__fill--{{ band(statePct()) }}"
-                cx="50" cy="50" r="38"
-                [attr.stroke-dasharray]="circumference"
-                [attr.stroke-dashoffset]="dashOffset(statePct())" />
-      </svg>
-      <div class="gauge-card__center">
-        <span class="gauge-card__pct">{{ statePct() }}%</span>
-        <span class="gauge-card__lbl">States</span>
-      </div>
-      <p class="gauge-card__detail">{{ coveredStates() }} / {{ totalStates() }} covered</p>
+  @if (projects().length === 0) {
+    <ix-empty-state header="No projects yet"
+                    description="Create a project and model its features to see their coverage." />
+  } @else if (rows().length === 0) {
+    <ix-empty-state header="No models in this project"
+                    description="Add a model to a feature; its coverage by test cases shows here." />
+  } @else {
+    <div class="cov__kpis" role="group" aria-label="Project coverage">
+      <ix-kpi label="State coverage" [value]="statePct()" unit="%"
+              [state]="kpiState(statePct(), totals().states.total)"
+              [attr.aria-label]="'State coverage ' + statePct() + ' percent, '
+                + totals().states.covered + ' of ' + totals().states.total" />
+      <ix-kpi label="Transition coverage" [value]="transitionPct()" unit="%"
+              [state]="kpiState(transitionPct(), totals().transitions.total)"
+              [attr.aria-label]="'Transition coverage ' + transitionPct() + ' percent, '
+                + totals().transitions.covered + ' of ' + totals().transitions.total" />
+      <ix-kpi label="Models fully covered" [value]="totals().covered + ' / ' + totals().models" />
+      <ix-kpi label="Models not covered" [value]="totals().untested" />
     </div>
 
-    <div class="gauge-card">
-      <svg class="gauge" viewBox="0 0 100 100" aria-hidden="true">
-        <circle class="gauge__track" cx="50" cy="50" r="38" />
-        <circle class="gauge__fill gauge__fill--{{ band(transitionPct()) }}"
-                cx="50" cy="50" r="38"
-                [attr.stroke-dasharray]="circumference"
-                [attr.stroke-dashoffset]="dashOffset(transitionPct())" />
-      </svg>
-      <div class="gauge-card__center">
-        <span class="gauge-card__pct">{{ transitionPct() }}%</span>
-        <span class="gauge-card__lbl">Transitions</span>
-      </div>
-      <p class="gauge-card__detail">{{ coveredTransitions() }} / {{ totalTransitions() }} covered</p>
-    </div>
+    @if (loading()) {
+      <p class="cov__loading typography-body-sm" role="status">
+        <ix-spinner size="sm" aria-hidden="true" /> Loading coverage…
+      </p>
+    }
+    @if (totals().failed) {
+      <ix-message-bar type="warning" [persistent]="true" class="cov__notice">
+        Coverage of {{ totals().failed }} {{ totals().failed === 1 ? 'model' : 'models' }} could not be
+        loaded. Reload the page to try again; the rest is shown below.
+      </ix-message-bar>
+    }
 
-    <div class="summary-tiles">
-      <div class="stat">
-        <div class="stat__label">Models</div>
-        <div class="stat__value">{{ rows().length }}</div>
-      </div>
-      <div class="stat">
-        <div class="stat__label">Fully covered</div>
-        <div class="stat__value" style="color:var(--si-sys-color-text-success)">{{ fullyCovered() }}</div>
-      </div>
-      <div class="stat">
-        <div class="stat__label">Untested</div>
-        <div class="stat__value" style="color:var(--si-sys-color-text-danger)">{{ uncovered() }}</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Per-model table ─────────────────────────────────────────────────────── -->
-  <div class="table-wrap">
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Model</th>
-          <th>Component</th>
-          <th style="width:150px">State coverage</th>
-          <th style="width:150px">Transition coverage</th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (r of rows(); track r.model) {
-          <tr>
-            <td><strong>{{ r.model }}</strong></td>
-            <td style="color:var(--si-sys-color-text-secondary)">{{ r.component }}</td>
-            <td>
-              <div class="bar-cell">
-                <div class="bar">
-                  <div class="bar__fill bar__fill--{{ band(pct(r.statesCovered, r.states)) }}"
-                       [style.width.%]="pct(r.statesCovered, r.states)"></div>
-                </div>
-                <span class="bar-cell__txt">{{ r.statesCovered }}/{{ r.states }}</span>
-              </div>
-            </td>
-            <td>
-              <div class="bar-cell">
-                <div class="bar">
-                  <div class="bar__fill bar__fill--{{ band(pct(r.transitionsCovered, r.transitions)) }}"
-                       [style.width.%]="pct(r.transitionsCovered, r.transitions)"></div>
-                </div>
-                <span class="bar-cell__txt">{{ r.transitionsCovered }}/{{ r.transitions }}</span>
-              </div>
-            </td>
-          </tr>
-        }
-      </tbody>
-    </table>
-  </div>
+    @for (g of groups(); track g.featureId) {
+      <section class="cov__feature" [attr.aria-labelledby]="'cov-f-' + g.featureId">
+        <h2 [id]="'cov-f-' + g.featureId" class="typography-h5 cov__feature-title">
+          {{ g.feature }}
+          <span class="typography-body-sm cov__meta">{{ g.component }} ·
+            states {{ pct(g.totals.states) }}%, transitions {{ pct(g.totals.transitions) }}%</span>
+        </h2>
+        <div class="cov__table-wrap">
+          <table class="ix-table cov__table">
+            <thead>
+              <tr>
+                <th scope="col">Model</th>
+                <th scope="col">Status</th>
+                <th scope="col">States</th>
+                <th scope="col">Transitions</th>
+                <th scope="col">Uncovered</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of g.rows; track r.modelId) {
+                <tr>
+                  <th scope="row" class="cov__model">
+                    <a class="cov__link" [routerLink]="['/models', r.modelId]">{{ r.model }}</a>
+                  </th>
+                  @if (r.error) {
+                    <td colspan="4" class="typography-body-sm">{{ r.error }}</td>
+                  } @else if (r.states && r.transitions) {
+                    <td>
+                      @let l = levelOf(r)!;
+                      <ix-pill [variant]="variant[l]" [outline]="l !== 'covered'">{{ label[l] }}</ix-pill>
+                    </td>
+                    <td>
+                      <ix-progress-indicator class="cov__bar" [value]="pct(r.states)" [status]="status(r.states)"
+                                             [label]="r.states.covered + ' / ' + r.states.total"
+                                             [attr.aria-label]="'States covered: ' + r.states.covered + ' of ' + r.states.total" />
+                    </td>
+                    <td>
+                      <ix-progress-indicator class="cov__bar" [value]="pct(r.transitions)" [status]="status(r.transitions)"
+                                             [label]="r.transitions.covered + ' / ' + r.transitions.total"
+                                             [attr.aria-label]="'Transitions covered: ' + r.transitions.covered + ' of ' + r.transitions.total" />
+                    </td>
+                    <td class="typography-body-sm">{{ uncovered(r) }}</td>
+                  } @else {
+                    <td colspan="4" class="typography-body-sm cov__meta">Loading…</td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
+  }
 </section>

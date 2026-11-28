@@ -81,16 +81,4 @@ export class SettingsPageComponent implements OnInit {
       this.loading.set(false);
     }
   }
-
-  // ── Generation defaults ────────────────────────────────────────────────────
-  readonly criterion = signal<'all-states' | 'all-transitions' | 'all-paths'>('all-transitions');
-  readonly maxPathLength = signal(12);
-  readonly seed = signal('');
-
-  // ── Toggles ───────────────────────────────────────────────────────────────
-  readonly autoValidate   = signal(true);
-  readonly snapToGrid     = signal(false);
-  readonly confirmDeletes = signal(true);
-
-  toggle(s: ReturnType<typeof signal<boolean>>): void { s.update(v => !v); }
 }

@@ -1,19 +1,6 @@
-<!-- ── Editor breadcrumb / context nav ──────────────────────────────────────── -->
-<nav class="editor-breadcrumb" aria-label="Model context">
-  <span class="editor-breadcrumb__item">
-    <a routerLink="/explorer">Projects</a>
-  </span>
-  <span class="editor-breadcrumb__sep">›</span>
-  <span class="editor-breadcrumb__item">
-    <a routerLink="/explorer">My Project</a>
-  </span>
-  <span class="editor-breadcrumb__sep">›</span>
-  <span class="editor-breadcrumb__item">
-    <a routerLink="/explorer">{{ featureName() ?? 'Auth Flow' }}</a>
-  </span>
-  <span class="editor-breadcrumb__sep">›</span>
-  <span class="editor-breadcrumb__current">{{ store.name() }}</span>
-
+<!-- ── Editor strip: view switch and model actions. Where the model sits
+     (Project > Component > Feature > Model) is the top bar's breadcrumb. ── -->
+<div class="editor-breadcrumb" role="toolbar" aria-label="Model">
   <span class="editor-breadcrumb__spacer"></span>
 
   <div class="mode-switch" role="group" aria-label="View">
@@ -97,7 +84,7 @@
     Delete
   </button>
   }
-</nav>
+</div>
 
 <!-- ── Editor grid ───────────────────────────────────────────────────────────── -->
 <div class="editor-layout"

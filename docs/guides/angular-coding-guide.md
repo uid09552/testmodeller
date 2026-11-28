@@ -33,7 +33,7 @@ icons by name from `@siemens/ix-angular/standalone` and
 split it: once a lazy page uses an iX component, that component's element
 definition joins the chunk the shell already loads. Using `ix-input`,
 `ix-select` and the message service in Settings added about 30 kB gzipped to
-the initial load (1.34 MB raw, over the 1.2 MB warning). Expect the initial
+the initial load (1.37 MB raw, over the 1.2 MB warning; see issue #45). Expect the initial
 bundle to grow towards "every iX component the app uses" as pages migrate;
 revisit the budget then rather than hand-loading elements per page.
 

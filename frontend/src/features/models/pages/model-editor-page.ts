@@ -3,7 +3,7 @@ import {
   inject, OnInit, signal, untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { Router, RouterLink, ActivatedRoute } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 import { CanvasComponent } from '../components/canvas/canvas';
 import { PropertiesPanelComponent } from '../components/properties-panel/properties-panel';
 import { TestCasesPanelComponent } from '../components/test-cases-panel/test-cases-panel';
@@ -28,7 +28,7 @@ export type EditorMode = 'edit' | 'present' | 'table';
 @Component({
   selector: 'tm-model-editor-page',
   imports: [
-    RouterLink, CanvasComponent, TestCasesPanelComponent, PropertiesPanelComponent,
+    CanvasComponent, TestCasesPanelComponent, PropertiesPanelComponent,
     BottomPanelComponent, AiChatWindowComponent, ModelTableComponent,
   ],
   // Each editor instance gets its own stores. The chat store is here, not in
@@ -161,7 +161,6 @@ export class ModelEditorPageComponent implements OnInit {
   readonly confirmDelete = signal(false);
 
   /** The feature the open model belongs to, as the database has it. */
-  readonly featureName = this.remote.featureName;
   readonly featureId   = this.remote.featureId;
   /** What the stored copy is up to; the template shows failures. */
   readonly saveState   = this.remote.state;

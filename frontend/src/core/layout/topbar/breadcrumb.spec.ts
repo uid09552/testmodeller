@@ -1,8 +1,16 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { BreadcrumbComponent, buildCrumbs } from './breadcrumb';
+import { ExplorerStore } from '../../../features/explorer/state/explorer.store';
+import { BreadcrumbComponent, buildCrumbs, modelCrumbs, modelIdOf } from './breadcrumb';
+
+const PLACE = {
+  projectId: 'p1', projectName: 'Webshop',
+  componentId: 'c1', componentName: 'Checkout',
+  featureId: 'f1', featureName: 'Payment',
+  model: { id: 'm1', name: 'Card payment' },
+};
 
 @Component({ template: '' })
 class Blank {}
@@ -21,6 +29,7 @@ describe('BreadcrumbComponent', () => {
           },
           { path: 'explorer', component: Blank, data: { breadcrumb: 'Explorer' } },
         ]),
+        { provide: ExplorerStore, useValue: { modelPaths: signal([PLACE]) } },
       ],
     });
   });
@@ -65,5 +74,25 @@ describe('BreadcrumbComponent', () => {
     expect(fixture.componentInstance.crumbs()).toEqual([
       { label: 'Explorer', route: '/explorer' },
     ]);
+  });
+
+  it('shows where an open model sits in the project tree', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/models/m1');
+    const crumbs = TestBed.createComponent(BreadcrumbComponent).componentInstance.crumbs();
+    expect(crumbs.map(c => c.label)).toEqual(['Projects', 'Webshop', 'Checkout', 'Payment', 'Card payment']);
+    expect(crumbs.at(-1)?.route).toBeUndefined();
+  });
+
+  it('falls back to the route crumbs for a model the tree does not know', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/models/unknown');
+    const crumbs = TestBed.createComponent(BreadcrumbComponent).componentInstance.crumbs();
+    expect(crumbs.map(c => c.label)).toEqual(['Models', 'Model Editor']);
+  });
+
+  it('finds the model id anywhere in the chain', () => {
+    expect(modelIdOf(null)).toBeNull();
+    expect(modelCrumbs(PLACE)[0]).toEqual({ label: 'Projects', route: '/explorer' });
   });
 });
