@@ -4,11 +4,14 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
+use tm_storage::TenantScope;
 use uuid::Uuid;
 
+use crate::auth::Identity;
 use crate::dto::*;
 use crate::error::ApiResult;
 use crate::extract::{optional_json, ApiJson, ApiPath, IfMatch};
+use crate::tenant_guard::require_tenant;
 use crate::AppState;
 
 /// `GET /features/{featureId}/models`
@@ -80,12 +83,16 @@ pub async fn delete_model(
 /// `POST /models/{modelId}/duplicate`
 pub async fn duplicate_model(
     State(state): State<AppState>,
+    identity: Identity,
     ApiPath(id): ApiPath<Uuid>,
     body: Bytes,
 ) -> ApiResult<(StatusCode, Json<ModelDto>)> {
     let body: DuplicateModel = optional_json(&body)?.unwrap_or_default();
     if let Some(n) = &body.name {
         check_len("name", n, 1, 200)?;
+    }
+    if let Some(feature_id) = body.feature_id {
+        require_tenant(&state, &identity, TenantScope::Feature, feature_id).await?;
     }
     let m = state
         .store

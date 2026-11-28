@@ -69,7 +69,7 @@ pending proposals, and `decide_proposal` is a separate, explicit call
 ## Conventions
 - IDs are UUIDs; timestamps RFC 3339 UTC; fields camelCase.
 - Pagination: `?limit=&cursor=`.
-- AI endpoints may be slow: return `202` with a job resource, poll `/jobs/{id}`.
+- AI endpoints may be slow: return `202` with a job resource, poll `/jobs/{id}`. `POST /ai/proposals` is rate limited per project and per tenant (`429`, see [07-ai-integration.md](07-ai-integration.md)).
 - Concurrency: `PUT`/`PATCH` require `If-Match`; mismatch returns `412`.
 - Assignment targets must belong to a model of the test case's feature, otherwise `422`.
 - Threat model collections return plain arrays (no paging). An item path whose item belongs to another threat model returns `404`. Link lists in an input (`assetIds`, `targets`, `controlIds`, …) replace the stored links as a whole; ids outside the threat model return `422`.

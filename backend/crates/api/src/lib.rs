@@ -28,8 +28,13 @@ use crate::handlers::{
     test_results as results, threat_ai, threat_model as tmh,
 };
 
-/// Maximum request body size (imports can be large).
-const BODY_LIMIT: usize = 16 * 1024 * 1024;
+/// Maximum request body size for most routes: a model, layout or threat model.
+const BODY_LIMIT: usize = 4 * 1024 * 1024;
+/// Maximum request body size for imports and `/mcp`, which carries them.
+const IMPORT_BODY_LIMIT: usize = 16 * 1024 * 1024;
+/// Longest a request may take before it is answered with 503. AI work runs as
+/// a job, so this bounds only synchronous work: generation, export, import.
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// Shared handler state.
 #[derive(Clone)]
@@ -76,7 +81,10 @@ pub fn router(state: AppState, auth: AuthMode) -> Router {
         dev: matches!(auth, AuthMode::Dev),
         internal: api(state.clone(), AuthMode::Internal, None),
     };
-    api(state, auth, Some(mcp))
+    api(state, auth, Some(mcp)).layer(tower_http::timeout::TimeoutLayer::with_status_code(
+        axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        REQUEST_TIMEOUT,
+    ))
 }
 
 fn api(state: AppState, auth: AuthMode, mcp: Option<mcp_http::McpState>) -> Router {
@@ -190,10 +198,16 @@ fn api(state: AppState, auth: AuthMode, mcp: Option<mcp_http::McpState>) -> Rout
         .route("/features/{id}/coverage", get(tc::feature_coverage))
         .route("/components/{id}/coverage", get(tc::component_coverage))
         .route("/projects/{id}/traceability", get(tc::traceability))
-        .route("/projects/{id}/test-results", post(results::import))
+        .route(
+            "/projects/{id}/test-results",
+            post(results::import).layer(DefaultBodyLimit::max(IMPORT_BODY_LIMIT)),
+        )
         .route("/test-cases/{id}/results", get(results::history))
         .route("/projects/{id}/export", get(export::export))
-        .route("/projects/{id}/import", post(export::import))
+        .route(
+            "/projects/{id}/import",
+            post(export::import).layer(DefaultBodyLimit::max(IMPORT_BODY_LIMIT)),
+        )
         .route("/ai/proposals", post(ai::request_proposals))
         .route("/jobs/{id}", get(ai::get_job))
         .route("/projects/{id}/proposals", get(ai::list_proposals))
@@ -367,7 +381,7 @@ fn api(state: AppState, auth: AuthMode, mcp: Option<mcp_http::McpState>) -> Rout
         api = api.merge(
             Router::new()
                 .route("/mcp", post(mcp_http::post).get(mcp_http::get))
-                .layer(DefaultBodyLimit::max(BODY_LIMIT))
+                .layer(DefaultBodyLimit::max(IMPORT_BODY_LIMIT))
                 .with_state(mcp),
         );
     }

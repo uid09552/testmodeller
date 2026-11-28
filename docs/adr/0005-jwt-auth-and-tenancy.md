@@ -46,9 +46,14 @@ another tenant.
 ## Consequences
 
 - Adding a route gets tenancy and role checks for free, as long as its path
-  carries the entity id. A route that identifies its subject in the body —
-  today only `POST /ai/proposals` — must check in the handler, and the
-  middleware fails closed for any path shape it does not recognise.
+  carries the entity id. A route that names an entity in its body must check
+  it in the handler with `tenant_guard::require_tenant`: today
+  `POST /ai/proposals` (feature, model), `POST /features/{id}/move` (target
+  component), `POST /test-cases/{id}/move` (target feature) and
+  `POST /models/{id}/duplicate` (target feature); `tests/tenancy.rs` covers
+  them. Ids that point inside a threat model or a model are checked by storage
+  against their parent. The middleware fails closed for any path shape it does
+  not recognise.
 - No per-query `tenant_id = $n` predicates to forget, and no change to the
   existing queries.
 - The guard costs one small indexed lookup per request. Its join chain is at

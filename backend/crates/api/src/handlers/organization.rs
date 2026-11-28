@@ -4,13 +4,14 @@ use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
-use tm_storage::SearchType;
+use tm_storage::{SearchType, TenantScope};
 use uuid::Uuid;
 
 use crate::auth::Identity;
 use crate::dto::*;
 use crate::error::{ApiError, ApiResult};
 use crate::extract::{ApiJson, ApiPath, ApiQuery, IfMatch, Paging};
+use crate::tenant_guard::require_tenant;
 use crate::AppState;
 
 /// `GET /health`
@@ -263,9 +264,11 @@ pub async fn delete_feature(
 /// `POST /features/{featureId}/move`
 pub async fn move_feature(
     State(state): State<AppState>,
+    identity: Identity,
     ApiPath(id): ApiPath<Uuid>,
     ApiJson(body): ApiJson<MoveFeature>,
 ) -> ApiResult<Json<FeatureDto>> {
+    require_tenant(&state, &identity, TenantScope::Component, body.component_id).await?;
     let f = state.store.move_feature(id, body.component_id).await?;
     Ok(Json((&f).into()))
 }

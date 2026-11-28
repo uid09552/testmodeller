@@ -35,11 +35,24 @@ pub struct AiService {
     api_key: RwLock<Option<String>>,
     /// Seals the key for the database.
     secrets: Arc<SecretStore>,
-    /// Recent threat model requests per threat model, for the rate limit.
-    tm_requests: std::sync::Mutex<
+    /// Whether the key came from `TM_AI_API_KEY`: the server cannot drop it
+    /// when the endpoint changes, so it refuses the change instead.
+    key_from_env: std::sync::atomic::AtomicBool,
+    /// Recent requests per rate-limited scope: a project for feature jobs, a
+    /// threat model (one per project) for the threat model assistant.
+    requests: std::sync::Mutex<
         std::collections::HashMap<Uuid, std::collections::VecDeque<std::time::Instant>>,
     >,
+    /// Running jobs per tenant, capped at [`MAX_RUNNING_JOBS_PER_TENANT`].
+    job_slots: std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Semaphore>>>,
 }
+
+/// AI requests one project (or threat model) may make per [`RATE_WINDOW`].
+const REQUESTS_PER_WINDOW: usize = 10;
+/// The rate limit window.
+const RATE_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
+/// AI jobs one tenant may have running at once.
+const MAX_RUNNING_JOBS_PER_TENANT: usize = 4;
 
 /// Everything a background job needs.
 struct JobSpec {
@@ -69,15 +82,18 @@ pub struct ProposalJobRequest {
 impl AiService {
     /// Creates the service with an optional initial API key.
     pub fn new(store: Store, api_key: Option<String>, secrets: Arc<SecretStore>) -> Self {
+        let api_key = api_key.filter(|k| !k.is_empty());
         Self {
             store,
             http: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(600))
                 .build()
                 .unwrap_or_default(),
-            api_key: RwLock::new(api_key.filter(|k| !k.is_empty())),
+            key_from_env: std::sync::atomic::AtomicBool::new(api_key.is_some()),
+            api_key: RwLock::new(api_key),
             secrets,
-            tm_requests: std::sync::Mutex::default(),
+            requests: std::sync::Mutex::default(),
+            job_slots: std::sync::Mutex::default(),
         }
     }
 
@@ -137,7 +153,90 @@ impl AiService {
             .put_ai_secret(sealed.as_ref().map(|(n, c)| (n.as_slice(), c.as_slice())))
             .await?;
         *self.api_key.write().await = key;
+        // Whatever is in use now was set here, not by the environment.
+        self.key_from_env
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         Ok(())
+    }
+
+    /// Saves provider settings, never letting the stored key follow a change
+    /// of endpoint.
+    ///
+    /// The key belongs to the endpoint it was entered for. When the provider or
+    /// base URL changes and the request brings no key of its own, a stored key
+    /// is dropped, so a changed URL cannot receive it. A key from
+    /// `TM_AI_API_KEY` cannot be dropped, so such a change is refused.
+    pub async fn save_settings(
+        &self,
+        settings: &AiSettings,
+        api_key: Option<String>,
+    ) -> ApiResult<AiSettings> {
+        let current = self.store.get_ai_settings().await?;
+        let moved = current.provider != settings.provider || current.base_url != settings.base_url;
+        let env_key = self.key_from_env.load(std::sync::atomic::Ordering::Relaxed);
+        if moved && api_key.is_none() && env_key && self.secret_configured().await {
+            return Err(ApiError::bad_request(
+                "the provider key comes from TM_AI_API_KEY and cannot follow a new provider or \
+                 base URL; change them in the environment, or send apiKey with the new endpoint",
+            ));
+        }
+        let saved = self.store.put_ai_settings(settings).await?;
+        match api_key {
+            Some(key) => self.set_api_key(key).await?,
+            None if moved && self.secret_configured().await => {
+                tracing::info!("provider endpoint changed; dropped the stored API key");
+                self.set_api_key(String::new()).await?;
+            }
+            None => {}
+        }
+        Ok(saved)
+    }
+
+    /// Counts a request against `scope`'s rate limit (`what` names it in the
+    /// error), answering 429 once it is used up.
+    fn check_rate(&self, scope: Uuid, what: &str) -> ApiResult<()> {
+        let now = std::time::Instant::now();
+        let mut all = self
+            .requests
+            .lock()
+            .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "rate limiter failed"))?;
+        let q = all.entry(scope).or_default();
+        while q
+            .front()
+            .is_some_and(|t| now.duration_since(*t) > RATE_WINDOW)
+        {
+            q.pop_front();
+        }
+        if q.len() >= REQUESTS_PER_WINDOW {
+            return Err(ApiError::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                format!("too many AI requests for this {what}; try again in a minute"),
+            ));
+        }
+        q.push_back(now);
+        Ok(())
+    }
+
+    /// Takes one of `tenant`'s running-job slots, answering 429 when all are
+    /// in use. The slot is released when the returned permit is dropped.
+    fn take_job_slot(&self, tenant: &str) -> ApiResult<tokio::sync::OwnedSemaphorePermit> {
+        let slots = {
+            let mut all = self.job_slots.lock().map_err(|_| {
+                ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "job limiter failed")
+            })?;
+            Arc::clone(all.entry(tenant.to_owned()).or_insert_with(|| {
+                Arc::new(tokio::sync::Semaphore::new(MAX_RUNNING_JOBS_PER_TENANT))
+            }))
+        };
+        slots.try_acquire_owned().map_err(|_| {
+            ApiError::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                format!(
+                    "{MAX_RUNNING_JOBS_PER_TENANT} AI jobs are already running; \
+                     try again when one has finished"
+                ),
+            )
+        })
     }
 
     async fn provider(&self, settings: &AiSettings) -> Option<Box<dyn LlmProvider>> {
@@ -226,6 +325,8 @@ impl AiService {
             .filter(|t| *t > 0)
             .unwrap_or(DEFAULT_MAX_TOKENS);
 
+        self.check_rate(project_id, "project")?;
+        let slot = self.take_job_slot(tenant)?;
         let job = self.store.create_job(tenant).await?;
         let spec = JobSpec {
             job_id: job.id,
@@ -237,7 +338,10 @@ impl AiService {
             model_id: req.model_id,
         };
         let service = Arc::clone(self);
-        tokio::spawn(async move { service.run_job(spec, provider).await });
+        tokio::spawn(async move {
+            service.run_job(spec, provider).await;
+            drop(slot);
+        });
         Ok(job)
     }
 
@@ -402,11 +506,6 @@ pub fn acceptance_for(proposal: &Proposal, payload: &serde_json::Value) -> ApiRe
 // Threat model assistant (ADR 0013)
 // ---------------------------------------------------------------------------
 
-/// Requests one threat model may make per window.
-const TM_REQUESTS_PER_WINDOW: usize = 10;
-/// The rate limit window.
-const TM_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
-
 /// Validated threat model proposal request.
 pub struct TmJobRequest {
     /// What to propose.
@@ -478,29 +577,6 @@ impl AiService {
         })
     }
 
-    fn check_tm_rate(&self, threat_model: Uuid) -> ApiResult<()> {
-        let now = std::time::Instant::now();
-        let mut all = self
-            .tm_requests
-            .lock()
-            .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "rate limiter failed"))?;
-        let q = all.entry(threat_model).or_default();
-        while q
-            .front()
-            .is_some_and(|t| now.duration_since(*t) > TM_WINDOW)
-        {
-            q.pop_front();
-        }
-        if q.len() >= TM_REQUESTS_PER_WINDOW {
-            return Err(ApiError::new(
-                StatusCode::TOO_MANY_REQUESTS,
-                "too many AI requests for this threat model; try again in a minute",
-            ));
-        }
-        q.push_back(now);
-        Ok(())
-    }
-
     /// Validates a threat model request, creates a job and runs it in the background.
     pub async fn start_tm_job(
         self: &Arc<Self>,
@@ -528,7 +604,8 @@ impl AiService {
                 "targetIds: {id} is not in this threat model"
             )));
         }
-        self.check_tm_rate(threat_model)?;
+        self.check_rate(threat_model, "threat model")?;
+        let slot = self.take_job_slot(tenant)?;
         let max_tokens = settings
             .max_tokens_per_request
             .and_then(|t| u32::try_from(t).ok())
@@ -541,6 +618,7 @@ impl AiService {
             service
                 .run_tm_job(job_id, threat_model, agg, req, max_tokens, provider)
                 .await;
+            drop(slot);
         });
         Ok(job)
     }

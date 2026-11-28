@@ -74,11 +74,38 @@ fn scoped_ids(path: &str) -> Result<Vec<(TenantScope, Uuid)>, &str> {
     Ok(found)
 }
 
+/// Rejects an id from a request *body* that belongs to another tenant,
+/// reporting it as missing.
+///
+/// The guard only sees path ids. A handler whose body names another entity —
+/// `POST /ai/proposals` (feature, model), `POST /features/{id}/move` (target
+/// component), `POST /test-cases/{id}/move` (target feature) and
+/// `POST /models/{id}/duplicate` (target feature) — calls this for each one.
+pub async fn require_tenant(
+    state: &AppState,
+    identity: &Identity,
+    scope: TenantScope,
+    id: Uuid,
+) -> Result<(), ApiError> {
+    if state.store.tenant_of(scope, id).await? != identity.tenant {
+        tracing::warn!(
+            tenant = %identity.tenant,
+            entity = scope.entity(),
+            "rejected a cross-tenant body id"
+        );
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            format!("{} not found", scope.entity()),
+        ));
+    }
+    Ok(())
+}
+
 /// Rejects a request whose path names an entity in another tenant.
 ///
 /// Routes that carry no id — `/health`, `/settings/ai`, `/projects` and
-/// `POST /ai/proposals` — pass through. The last one identifies its feature in
-/// the body, so `handlers::ai` performs the same check itself.
+/// `POST /ai/proposals` — pass through. Ids in a request body are checked by
+/// the handler with [`require_tenant`].
 pub async fn guard(
     State(state): State<AppState>,
     request: Request,

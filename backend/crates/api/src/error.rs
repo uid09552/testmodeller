@@ -116,6 +116,10 @@ impl From<StorageError> for ApiError {
 
 impl From<JsonRejection> for ApiError {
     fn from(r: JsonRejection) -> Self {
+        // Everything is a 400 except a body over the route's limit.
+        if r.status() == StatusCode::PAYLOAD_TOO_LARGE {
+            return Self::new(StatusCode::PAYLOAD_TOO_LARGE, r.body_text());
+        }
         Self::bad_request(r.body_text())
     }
 }

@@ -9,12 +9,14 @@ use chrono::Utc;
 use serde::Deserialize;
 use tm_domain::{Assignment, AssignmentTarget, Audit, Origin, TestCase, TestCaseStatus};
 use tm_generation::{CoverageReport, GenerationError, GenerationOptions};
-use tm_storage::{NewAssignment, TestCaseFilter, TraceFilter, TraceGap};
+use tm_storage::{NewAssignment, TenantScope, TestCaseFilter, TraceFilter, TraceGap};
 use uuid::Uuid;
 
+use crate::auth::Identity;
 use crate::dto::*;
 use crate::error::{ApiError, ApiResult, FieldError};
 use crate::extract::{ApiJson, ApiPath, ApiQuery, IfMatch, Paging};
+use crate::tenant_guard::require_tenant;
 use crate::AppState;
 
 /// Query of `GET /features/{featureId}/test-cases`.
@@ -96,9 +98,11 @@ pub async fn delete_test_case(
 /// `POST /test-cases/{testCaseId}/move`
 pub async fn move_test_case(
     State(state): State<AppState>,
+    identity: Identity,
     ApiPath(id): ApiPath<Uuid>,
     ApiJson(body): ApiJson<MoveTestCase>,
 ) -> ApiResult<Json<TestCaseDto>> {
+    require_tenant(&state, &identity, TenantScope::Feature, body.feature_id).await?;
     let tc = state.store.move_test_case(id, body.feature_id).await?;
     Ok(Json((&tc).into()))
 }

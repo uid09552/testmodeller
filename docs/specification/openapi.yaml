@@ -573,6 +573,7 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProposalRequest' } } } }
       responses:
         '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '429': { $ref: '#/components/responses/Problem' }
         '503': { $ref: '#/components/responses/Problem' }
   /jobs/{jobId}:
     parameters: [ { name: jobId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } } ]
