@@ -45,13 +45,48 @@ async fn rpc(backend: &Fake, message: Value) -> Option<Value> {
 }
 
 async fn call(backend: &Fake, name: &str, arguments: Value) -> Value {
-    rpc(
+    let result = rpc(
         backend,
         json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": name, "arguments": arguments } }),
     )
     .await
     .unwrap()["result"]
-        .clone()
+        .clone();
+    if result["isError"] == false {
+        conforms(name, &result["structuredContent"]);
+    }
+    result
+}
+
+/// Checks `structuredContent` against the tool's `outputSchema`: an object,
+/// with every required key, and declared property types where given.
+fn conforms(name: &str, content: &Value) {
+    let tool = catalogue().into_iter().find(|t| t["name"] == name).unwrap();
+    let schema = &tool["outputSchema"];
+    assert!(
+        content.is_object(),
+        "{name}: structuredContent must be an object"
+    );
+    for key in schema["required"].as_array().into_iter().flatten() {
+        let key = key.as_str().unwrap();
+        assert!(
+            content.get(key).is_some(),
+            "{name}: missing required \"{key}\" in {content}"
+        );
+    }
+    for (key, prop) in schema["properties"].as_object().into_iter().flatten() {
+        let (Some(value), Some(ty)) = (content.get(key), prop["type"].as_str()) else {
+            continue;
+        };
+        let ok = match ty {
+            "array" => value.is_array(),
+            "object" => value.is_object(),
+            "string" => value.is_string(),
+            "boolean" => value.is_boolean(),
+            _ => true,
+        };
+        assert!(ok, "{name}: \"{key}\" should be {ty}, got {value}");
+    }
 }
 
 #[tokio::test]
@@ -144,8 +179,22 @@ fn the_catalogue_matches_the_spec_and_marks_writes() {
             "decide_proposal"
         ]
     );
+    let destructive: Vec<&str> = tools
+        .iter()
+        .filter(|t| t["annotations"]["destructiveHint"] == true)
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(destructive, ["save_model", "decide_proposal"]);
+    let repeatable_writes: Vec<&str> = tools
+        .iter()
+        .filter(|t| t["annotations"]["readOnlyHint"] == false)
+        .filter(|t| t["annotations"]["idempotentHint"] == true)
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(repeatable_writes, ["import_test_results"]);
     for t in &tools {
         assert_eq!(t["inputSchema"]["type"], "object", "{}", t["name"]);
+        assert_eq!(t["outputSchema"]["type"], "object", "{}", t["name"]);
     }
 }
 

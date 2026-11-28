@@ -39,7 +39,13 @@ struct Tool {
     title: &'static str,
     description: &'static str,
     read_only: bool,
+    /// Changes or removes existing data (only meaningful when not read-only).
+    destructive: bool,
+    /// Calling it again with the same arguments changes nothing more.
+    idempotent: bool,
     schema: fn() -> Value,
+    /// Shape of `structuredContent` (always an object; see `protocol::wrap`).
+    output: fn() -> Value,
 }
 
 fn id_prop(what: &str) -> Value {
@@ -53,13 +59,22 @@ const TOOLS: &[Tool] = &[
         description: "All projects of your tenant, each with its Component > Feature > Model tree. \
                       Use it first to find the ids the other tools take.",
         read_only: true,
+        destructive: false,
+        idempotent: true,
         schema: || json!({ "type": "object", "properties": {} }),
+        output: || {
+            json!({ "type": "object", "required": ["projects"], "properties": {
+            "projects": { "type": "array", "items": { "type": "object", "required": ["project", "tree"],
+                "properties": { "project": { "type": "object" }, "tree": { "type": "object" } } } } } })
+        },
     },
     Tool {
         name: "search",
         title: "Search a project",
         description: "Search a project's components, features, models and test cases by text.",
         read_only: true,
+        destructive: false,
+        idempotent: true,
         schema: || {
             json!({
                 "type": "object",
@@ -71,13 +86,24 @@ const TOOLS: &[Tool] = &[
                 }
             })
         },
+        output: || {
+            json!({ "type": "object", "required": ["hits"], "properties": { "hits": { "type": "array" } } })
+        },
     },
     Tool {
         name: "get_model",
         title: "Get a model",
         description: "A model's states and transitions, with its validation issues and its coverage.",
         read_only: true,
+        destructive: false,
+        idempotent: true,
         schema: || json!({ "type": "object", "required": ["modelId"], "properties": { "modelId": id_prop("Model") } }),
+        output: || {
+            json!({ "type": "object", "required": ["model"], "properties": {
+            "model": { "type": "object" },
+            "validation": { "type": "array", "description": "Absent for a read-only key" },
+            "coverage": { "type": "object" } } })
+        },
     },
     Tool {
         name: "save_model",
@@ -87,6 +113,8 @@ const TOOLS: &[Tool] = &[
                       State ids may be short keys such as \"start\"; transitions refer to them in \
                       from/to, and new UUIDs are assigned. Exactly one state must be initial.",
         read_only: false,
+        destructive: true,
+        idempotent: false,
         schema: || {
             json!({
                 "type": "object",
@@ -116,6 +144,11 @@ const TOOLS: &[Tool] = &[
                 }
             })
         },
+        output: || {
+            json!({ "type": "object", "required": ["created", "model"], "properties": {
+            "created": { "type": "boolean", "description": "false when an existing model was replaced" },
+            "model": { "type": "object" } } })
+        },
     },
     Tool {
         name: "generate_test_cases",
@@ -123,6 +156,8 @@ const TOOLS: &[Tool] = &[
         description: "Generate test cases from a model. Deterministic for model, criterion and seed. \
                       With save=true they are stored and assigned to the model.",
         read_only: false,
+        destructive: false,
+        idempotent: false,
         schema: || {
             json!({
                 "type": "object",
@@ -136,16 +171,24 @@ const TOOLS: &[Tool] = &[
                 }
             })
         },
+        output: || {
+            json!({ "type": "object", "description": "The generation result: test cases and coverage" })
+        },
     },
     Tool {
         name: "list_test_cases",
         title: "List test cases",
         description: "Test cases of a feature, or those assigned to a model. Give featureId, modelId or both.",
         read_only: true,
+        destructive: false,
+        idempotent: true,
         schema: || {
             json!({ "type": "object", "properties": {
                 "featureId": id_prop("Feature"), "modelId": id_prop("Model")
             } })
+        },
+        output: || {
+            json!({ "type": "object", "required": ["testCases"], "properties": { "testCases": { "type": "array" } } })
         },
     },
     Tool {
@@ -153,6 +196,8 @@ const TOOLS: &[Tool] = &[
         title: "Export test cases",
         description: "Export a project (or one feature or component) as Gherkin, CSV or JSON.",
         read_only: true,
+        destructive: false,
+        idempotent: true,
         schema: || {
             json!({
                 "type": "object",
@@ -165,6 +210,10 @@ const TOOLS: &[Tool] = &[
                 }
             })
         },
+        output: || {
+            json!({ "type": "object", "description": "JSON export as an object; Gherkin and CSV as text in result",
+            "properties": { "result": { "type": "string" } } })
+        },
     },
     Tool {
         name: "import_test_results",
@@ -172,6 +221,8 @@ const TOOLS: &[Tool] = &[
         description: "Import a JUnit XML or Cucumber JSON result file into a project. Results are matched \
                       to test cases by an @tm-<test case id> tag or by name. dryRun reports without recording.",
         read_only: false,
+        destructive: false,
+        idempotent: true,
         schema: || {
             json!({
                 "type": "object",
@@ -184,16 +235,24 @@ const TOOLS: &[Tool] = &[
                 }
             })
         },
+        output: || {
+            json!({ "type": "object", "description": "Import report: matched, unmatched and recorded results" })
+        },
     },
     Tool {
         name: "get_coverage",
         title: "Get coverage",
         description: "Coverage of a model, a feature or a component. Give exactly one id.",
         read_only: true,
+        destructive: false,
+        idempotent: true,
         schema: || {
             json!({ "type": "object", "properties": {
                 "modelId": id_prop("Model"), "featureId": id_prop("Feature"), "componentId": id_prop("Component")
             } })
+        },
+        output: || {
+            json!({ "type": "object" })
         },
     },
     Tool {
@@ -201,14 +260,27 @@ const TOOLS: &[Tool] = &[
         title: "Get traceability",
         description: "Backlog items traced to test cases, model elements and implementations, with the gaps.",
         read_only: true,
+        destructive: false,
+        idempotent: true,
         schema: || json!({ "type": "object", "required": ["projectId"], "properties": { "projectId": id_prop("Project") } }),
+        output: || {
+            json!({ "type": "object", "description": "Backlog items with their test cases, model elements and gaps" })
+        },
     },
     Tool {
         name: "get_threat_model",
         title: "Get the threat model",
         description: "A project's threat model with its summary, threats and controls.",
         read_only: true,
+        destructive: false,
+        idempotent: true,
         schema: || json!({ "type": "object", "required": ["projectId"], "properties": { "projectId": id_prop("Project") } }),
+        output: || {
+            json!({ "type": "object", "required": ["threatModel", "summary", "threats", "controls"], "properties": {
+            "threatModel": { "type": "object" }, "summary": { "type": "object" },
+            "threats": { "type": "array" },
+                    "controls": { "type": "array" } } })
+        },
     },
     Tool {
         name: "request_ai_proposals",
@@ -216,6 +288,8 @@ const TOOLS: &[Tool] = &[
         description: "Ask TestModeller's AI for proposals for a feature. Waits up to 30 s and returns the \
                       pending proposals. Nothing is accepted: show them to the user, then use decide_proposal.",
         read_only: false,
+        destructive: false,
+        idempotent: false,
         schema: || {
             json!({
                 "type": "object",
@@ -229,12 +303,20 @@ const TOOLS: &[Tool] = &[
                 }
             })
         },
+        output: || {
+            json!({ "type": "object", "required": ["note"], "properties": {
+            "proposals": { "type": "array", "description": "Pending proposals, once the job has finished" },
+            "job": { "type": "object", "description": "The job, while it is still running" },
+            "note": { "type": "string" } } })
+        },
     },
     Tool {
         name: "list_proposals",
         title: "List AI proposals",
         description: "AI proposals of a project, optionally by status.",
         read_only: true,
+        destructive: false,
+        idempotent: true,
         schema: || {
             json!({
                 "type": "object",
@@ -245,6 +327,9 @@ const TOOLS: &[Tool] = &[
                 }
             })
         },
+        output: || {
+            json!({ "type": "object", "required": ["proposals"], "properties": { "proposals": { "type": "array" } } })
+        },
     },
     Tool {
         name: "decide_proposal",
@@ -252,6 +337,8 @@ const TOOLS: &[Tool] = &[
         description: "Accept (optionally with an edited payload) or reject a pending AI proposal. \
                       Only call this when the user has decided.",
         read_only: false,
+        destructive: true,
+        idempotent: false,
         schema: || {
             json!({
                 "type": "object",
@@ -262,6 +349,9 @@ const TOOLS: &[Tool] = &[
                     "payload": { "type": "object", "description": "Edited payload, accept only" }
                 }
             })
+        },
+        output: || {
+            json!({ "type": "object", "description": "The decided proposal" })
         },
     },
 ];
@@ -276,10 +366,12 @@ pub fn catalogue() -> Vec<Value> {
                 "title": t.title,
                 "description": t.description,
                 "inputSchema": (t.schema)(),
+                "outputSchema": (t.output)(),
                 "annotations": {
                     "title": t.title,
                     "readOnlyHint": t.read_only,
-                    "destructiveHint": false,
+                    "destructiveHint": !t.read_only && t.destructive,
+                    "idempotentHint": t.read_only || t.idempotent,
                     "openWorldHint": false
                 }
             })
