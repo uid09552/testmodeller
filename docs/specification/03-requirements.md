@@ -31,7 +31,7 @@ related: [00-overview.md, 05-api.md, 06-ui.md, 07-ai-integration.md]
 - FR-021 Generation is deterministic for given model, criterion, seed.
 - FR-022 Show coverage achieved per model, feature and component.
 - FR-023 Regenerate and diff against existing test cases.
-- FR-024 Export test cases as JSON, CSV, Gherkin.
+- FR-024 Export test cases as JSON, CSV, Gherkin, or a Playwright test skeleton (one `.spec.ts`; each test title carries the `@tm-<id>` tag so imported results match; steps are `test.step` stubs to implement).
 
 ### Traceability
 - FR-025 A test case has an optional implementation link and an optional backlog item link, each a full http(s) URL stored as its own field.

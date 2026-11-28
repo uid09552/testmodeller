@@ -214,7 +214,7 @@ const TOOLS: &[Tool] = &[
     Tool {
         name: "tm_export",
         title: "Export test cases",
-        description: "Export a project (or one feature or component) as Gherkin, CSV or JSON.",
+        description: "Export a project (or one feature or component) as Gherkin, CSV, JSON or a Playwright test skeleton.",
         read_only: true,
         destructive: false,
         idempotent: true,
@@ -224,7 +224,7 @@ const TOOLS: &[Tool] = &[
                 "required": ["projectId", "format"],
                 "properties": {
                     "projectId": id_prop("Project"),
-                    "format": { "enum": ["gherkin", "csv", "json"] },
+                    "format": { "enum": ["gherkin", "csv", "json", "playwright"] },
                     "featureId": id_prop("Only this feature"),
                     "componentId": id_prop("Only this component")
                 }

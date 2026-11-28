@@ -548,7 +548,7 @@ paths:
       tags: [Export]
       summary: Export project data
       parameters:
-        - { name: format, in: query, required: true, schema: { type: string, enum: [json, csv, gherkin] } }
+        - { name: format, in: query, required: true, schema: { type: string, enum: [json, csv, gherkin, playwright] } }
         - { name: featureId, in: query, schema: { $ref: '#/components/schemas/Id' } }
         - { name: componentId, in: query, schema: { $ref: '#/components/schemas/Id' } }
       responses:
@@ -558,6 +558,7 @@ paths:
             application/json: { schema: { type: object } }
             text/csv: { schema: { type: string } }
             text/plain: { schema: { type: string } }
+            text/typescript: { schema: { type: string } }
   /projects/{projectId}/import:
     parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
     post:

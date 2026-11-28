@@ -31,3 +31,4 @@ Use [0000-template.md](0000-template.md). Number sequentially.
 | [0017](0017-more-generation-strategies.md) | Prime paths, reach-element and weighted random walks as generation criteria | Accepted |
 | [0018](0018-upload-scoped-api-keys.md) | Upload-scoped API keys let CI post test results | Accepted |
 | [0019](0019-ai-history-retention.md) | AI jobs and decided proposals are deleted after a retention period | Accepted |
+| [0020](0020-playwright-export.md) | Playwright test skeletons as an export format | Accepted |

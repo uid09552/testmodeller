@@ -26,7 +26,7 @@ REST/JSON under `/api/v1`. Errors use RFC 7807 problem details. Updates of versi
 | Coverage | Per model, feature, component; stale generated test cases of a model |
 | TestResults | Import JUnit XML / Cucumber JSON results for a project, result history per test case |
 | Traceability | Read-only trace of backlog items to test cases, model elements and implementation links, with gaps |
-| Export | JSON/CSV/Gherkin export, JSON import |
+| Export | JSON/CSV/Gherkin/Playwright export, JSON import |
 | AI | Async proposal jobs, list/accept/reject proposals |
 | Settings | AI provider settings |
 | ThreatModel | One threat model per project (`/projects/{id}/threat-model`); under `/threat-models/{id}`: scope and risk thresholds, diagram `layout` (opaque, own `layoutVersion`), summary, and CRUD of zones, architecture components, assets, data flows, threats, controls and security tests; suggest threats (STRIDE rules), bulk status, generate security tests, manual results, convert a security test into a feature test case. See [09-threat-modeling.md](09-threat-modeling.md) |
@@ -53,7 +53,7 @@ error. Tools that write (marked ✎) need a key with the `Editor` role.
 | `tm_save_model` ✎ | `featureId` (create) or `modelId` (replace), `name`, `states`, `transitions`, `description?` | `POST /features/{id}/models`, or `GET` + `PUT /models/{id}` with the current version |
 | `tm_generate_test_cases` ✎ | `modelId`, `criterion?` (default `transition`), `seed?`, `maxPathLength?`, `save?` | `POST /models/{id}/generate` |
 | `tm_list_test_cases` | `featureId` or `modelId`, `limit?`, `detail?` | `GET /features/{id}/test-cases` or `GET /models/{id}/test-cases` |
-| `tm_export` | `projectId`, `format` (`gherkin`, `csv`, `json`), `featureId?`, `componentId?` | `GET /projects/{id}/export` |
+| `tm_export` | `projectId`, `format` (`gherkin`, `csv`, `json`, `playwright`), `featureId?`, `componentId?` | `GET /projects/{id}/export` |
 | `tm_import_test_results` ✎ | `projectId`, `format` (`junit`, `cucumber`), `content`, `dryRun?` | `POST /projects/{id}/test-results` |
 | `tm_get_coverage` | one of `modelId`, `featureId`, `componentId` | `GET /{models,features,components}/{id}/coverage` |
 | `tm_get_traceability` | `projectId` | `GET /projects/{id}/traceability` |
