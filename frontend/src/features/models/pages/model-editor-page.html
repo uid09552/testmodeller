@@ -54,6 +54,10 @@
     </svg>
   </button>
 
+  @if (openModelId() && mode() !== 'present') {
+    <ix-button variant="tertiary" [icon]="generateIcon" (click)="openGenerate()">Generate test cases</ix-button>
+  }
+
   <button class="editor-breadcrumb__btn editor-breadcrumb__btn--save"
           [disabled]="!store.dirty() || saving()"
           (click)="save()">

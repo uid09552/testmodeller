@@ -1,0 +1,22 @@
+.gen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--si-sys-sizing-spacing-y-40);
+
+  &__muted { color: var(--si-sys-color-text-secondary); }
+
+  &__result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--si-sys-sizing-spacing-y-20);
+    padding-top: var(--si-sys-sizing-spacing-y-20);
+    border-top: var(--si-sys-sizing-border-width-default) solid var(--si-sys-color-border-4);
+  }
+
+  &__list {
+    margin: 0;
+    padding-inline-start: var(--si-sys-sizing-spacing-x-60);
+    max-height: var(--si-sys-sizing-size-200);
+    overflow-y: auto;
+  }
+}

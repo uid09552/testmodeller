@@ -16,6 +16,11 @@ import { OrgApi } from '../../../core/api/org-api';
 import { ModelPersistenceService } from '../state/model-persistence';
 import { ExplorerStore } from '../../explorer/state/explorer.store';
 import { EDITOR_PROJECT_ID } from '../../threat-model/state/project-threats';
+import { IxButton, ModalService, ToastService } from '@siemens/ix-angular/standalone';
+import { iconPlay } from '@siemens/ix-icons/icons';
+import {
+  GenerateDialogComponent, GenerateDialogData, GenerateDialogResult,
+} from '../components/generate-dialog/generate-dialog';
 import { readJson, writeJson } from '../../../core/persistence/local-store';
 
 function clamp(v: number, min: number, max: number): number {
@@ -29,7 +34,7 @@ export type EditorMode = 'edit' | 'present' | 'table';
 @Component({
   selector: 'tm-model-editor-page',
   imports: [
-    CanvasComponent, TestCasesPanelComponent, PropertiesPanelComponent,
+    IxButton, CanvasComponent, TestCasesPanelComponent, PropertiesPanelComponent,
     BottomPanelComponent, AiChatWindowComponent, ModelTableComponent,
   ],
   // Each editor instance gets its own stores. The chat store is here, not in
@@ -328,6 +333,34 @@ export class ModelEditorPageComponent implements OnInit {
   }
 
   keepMine(): Promise<void> { return this.remote.keepMine(); }
+
+  readonly generateIcon = iconPlay;
+  private readonly modals = inject(ModalService);
+  private readonly toasts = inject(ToastService);
+
+  /**
+   * "Generate test cases" (06-ui.md): saves pending edits first, because
+   * generation reads the stored model, then reloads the test cases it stored.
+   */
+  async openGenerate(): Promise<void> {
+    const id = this.modelId();
+    if (!id) return;
+    if (this.store.dirty()) await this.save();
+    const instance = await this.modals.open<GenerateDialogData, GenerateDialogResult | null>({
+      content: GenerateDialogComponent,
+      data: { modelId: id, modelName: this.store.name() },
+      size: '600',
+    });
+    instance.onClose.once(async result => {
+      if (!result?.saved.length) return;
+      const loaded = await this.remote.open(id);
+      if (loaded && this.modelId() === id) this.store.loadFrom(loaded);
+      void this.toasts.show({
+        type: 'success',
+        message: `${result.saved.length} test case${result.saved.length === 1 ? '' : 's'} generated and saved.`,
+      });
+    });
+  }
 
   async save(): Promise<void> {
     this.saving.set(true);
