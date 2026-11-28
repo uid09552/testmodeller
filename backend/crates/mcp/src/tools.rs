@@ -148,7 +148,8 @@ const TOOLS: &[Tool] = &[
                             "id": { "type": "string", "description": "UUID or a short key" },
                             "name": { "type": "string" },
                             "kind": { "enum": ["initial", "normal", "final"] },
-                            "description": { "type": "string" }
+                            "description": { "type": "string" },
+                            "requirements": { "type": "array", "items": { "type": "string" }, "description": "Backlog URLs or short keys the state covers" }
                         }
                     } },
                     "transitions": { "type": "array", "items": {
@@ -156,7 +157,8 @@ const TOOLS: &[Tool] = &[
                         "properties": {
                             "from": { "type": "string" }, "to": { "type": "string" },
                             "event": { "type": "string" }, "guard": { "type": "string" },
-                            "action": { "type": "string" }, "expected": { "type": "string" }
+                            "action": { "type": "string" }, "expected": { "type": "string" },
+                            "requirements": { "type": "array", "items": { "type": "string" }, "description": "Backlog URLs or short keys the transition covers" }
                         }
                     } }
                 }
@@ -182,7 +184,7 @@ const TOOLS: &[Tool] = &[
                 "required": ["modelId"],
                 "properties": {
                     "modelId": id_prop("Model"),
-                    "criterion": { "enum": ["state", "transition", "transition-pair", "bounded-paths"], "default": "transition" },
+                    "criterion": { "enum": ["state", "transition", "transition-pair", "bounded-paths", "requirement"], "default": "transition" },
                     "seed": { "type": "integer" },
                     "maxPathLength": { "type": "integer", "minimum": 1, "description": "Required for bounded-paths" },
                     "save": { "type": "boolean", "default": false }
@@ -838,7 +840,7 @@ fn graph(args: &Args) -> Result<(Vec<Value>, Vec<Value>), Fail> {
             "name": s.get("name").cloned().unwrap_or(Value::Null),
             "kind": s.get("kind").cloned().unwrap_or(Value::Null),
         });
-        for field in ["description", "position"] {
+        for field in ["description", "position", "requirements"] {
             if let Some(v) = s.get(field) {
                 state[field] = v.clone();
             }
@@ -870,7 +872,7 @@ fn graph(args: &Args) -> Result<(Vec<Value>, Vec<Value>), Fail> {
         {
             transition["id"] = json!(tid);
         }
-        for field in ["guard", "action", "expected"] {
+        for field in ["guard", "action", "expected", "requirements"] {
             if let Some(v) = t.get(field) {
                 transition[field] = v.clone();
             }
@@ -944,7 +946,13 @@ async fn generate(backend: &dyn Backend, args: &Args) -> Out {
     let criterion = choice(
         args,
         "criterion",
-        &["state", "transition", "transition-pair", "bounded-paths"],
+        &[
+            "state",
+            "transition",
+            "transition-pair",
+            "bounded-paths",
+            "requirement",
+        ],
         Some("transition"),
     )?;
     let mut body =
@@ -1513,7 +1521,7 @@ async fn patch_model(backend: &dyn Backend, args: &Args) -> Out {
             })
         };
         let mut transition = json!({ "id": Uuid::new_v4(), "from": end("from")?, "to": end("to")?, "event": t.get("event") });
-        for field in ["guard", "action", "expected"] {
+        for field in ["guard", "action", "expected", "requirements"] {
             if let Some(v) = t.get(field) {
                 transition[field] = v.clone();
             }

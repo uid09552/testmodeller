@@ -132,6 +132,7 @@ mod tests {
             description: None,
             kind,
             position: None,
+            requirements: Vec::new(),
         }
     }
 
@@ -145,6 +146,7 @@ mod tests {
             action: None,
             expected: None,
             weight: None,
+            requirements: Vec::new(),
         }
     }
 

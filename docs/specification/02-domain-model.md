@@ -30,9 +30,9 @@ All entities: `id` (UUID), `name`, `description`, `createdAt`, `updatedAt`, `ver
 - **Component**: `projectId`
 - **Feature**: `componentId`, `scenarioDescription` (markdown text describing the scenarios), `tags[]`
 - **Model**: `featureId`, `variables[]`, `status` (draft|ready); a state machine formerly called "scenario"; `layout?`: the editor's presentation (opaque to the backend, kept in versions, duplicates and JSON export), never used by validation, generation or coverage
-- **State**: `modelId`, `kind` (normal|initial|final), `position {x,y}`
-- **Transition** (model step): `modelId`, `from`, `to`, `event`, `guard?`, `action?`, `expected?`, `weight?` (relative likelihood in a random walk; default 1)
-- **TestCase**: `featureId`, `steps[]`, `status`, `priority`, `tags[]`, `origin` (manual|generated|ai), `generatedFromModelId?`, `implementationUrl?`, `backlogUrl?` (http(s), max 2048 chars). A *requirement* is a backlog item identified by its normalised `backlogUrl`; there is no separate requirement entity.
+- **State**: `modelId`, `kind` (normal|initial|final), `position {x,y}`, `requirements[]?` (backlog URLs or short keys such as `REQ-12`; at most 50, each at most 2048 characters; trimmed, blanks and duplicates dropped)
+- **Transition** (model step): `modelId`, `from`, `to`, `event`, `guard?`, `action?`, `expected?`, `weight?` (relative likelihood in a random walk; default 1), `requirements[]?` (as for states)
+- **TestCase**: `featureId`, `steps[]`, `status`, `priority`, `tags[]`, `origin` (manual|generated|ai), `generatedFromModelId?`, `implementationUrl?`, `backlogUrl?` (http(s), max 2048 chars). A *requirement* is a backlog item identified by its normalised `backlogUrl`, or a tag in a state's or transition's `requirements[]` (compared as trimmed text); there is no separate requirement entity. A tag is covered when a test case is assigned to a tagged element or links the tag as its `backlogUrl`.
 - **TestResult**: `testCaseId`, `runId`, `status` (passed|failed|skipped|error), `durationMs?`, `message?`, `executedAt`, `source`. Imported, never edited; one per test case and run. A test case's `lastResult` is its newest by `executedAt` (ties by import time). Deleting the test case deletes its results.
 - **TestStep**: `order`, `action`, `expected`
 - **Assignment**: links a TestCase to a State or Transition (optionally a test step) of a Model of the same feature

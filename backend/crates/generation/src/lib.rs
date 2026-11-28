@@ -117,6 +117,12 @@ pub struct CoverageReport {
     pub uncovered_state_ids: Vec<Uuid>,
     /// Transitions not covered, in model order.
     pub uncovered_transition_ids: Vec<Uuid>,
+    /// Distinct requirement tags covered: some element carrying the tag is covered.
+    pub requirements_covered: usize,
+    /// Distinct requirement tags in the model.
+    pub requirements_total: usize,
+    /// Requirement tags no covered element carries, in model order.
+    pub uncovered_requirements: Vec<String>,
 }
 
 impl CoverageReport {
@@ -138,7 +144,37 @@ impl CoverageReport {
             .map(|t| t.id)
             .filter(|id| !covered_transitions.contains(id))
             .collect();
+        let mut tags: Vec<&str> = Vec::new();
+        let carriers = graph
+            .states
+            .iter()
+            .map(|s| (covered_states.contains(&s.id), &s.requirements))
+            .chain(
+                graph
+                    .transitions
+                    .iter()
+                    .map(|t| (covered_transitions.contains(&t.id), &t.requirements)),
+            );
+        let mut covered_tags: HashSet<&str> = HashSet::new();
+        for (covered, reqs) in carriers {
+            for r in reqs {
+                if !tags.contains(&r.as_str()) {
+                    tags.push(r);
+                }
+                if covered {
+                    covered_tags.insert(r);
+                }
+            }
+        }
+        let uncovered_requirements: Vec<String> = tags
+            .iter()
+            .filter(|t| !covered_tags.contains(*t))
+            .map(|t| (*t).to_owned())
+            .collect();
         Self {
+            requirements_covered: tags.len() - uncovered_requirements.len(),
+            requirements_total: tags.len(),
+            uncovered_requirements,
             states_covered: graph.states.len() - uncovered_state_ids.len(),
             states_total: graph.states.len(),
             transitions_covered: graph.transitions.len() - uncovered_transition_ids.len(),
@@ -157,6 +193,10 @@ impl CoverageReport {
         self.uncovered_state_ids.extend(other.uncovered_state_ids);
         self.uncovered_transition_ids
             .extend(other.uncovered_transition_ids);
+        self.requirements_covered += other.requirements_covered;
+        self.requirements_total += other.requirements_total;
+        self.uncovered_requirements
+            .extend(other.uncovered_requirements);
     }
 }
 
@@ -384,6 +424,7 @@ impl<'a> Machine<'a> {
             CoverageCriterion::BoundedPaths
             | CoverageCriterion::PrimePaths
             | CoverageCriterion::ReachElement
+            | CoverageCriterion::Requirement
             | CoverageCriterion::Random => {}
         }
         set
@@ -409,6 +450,7 @@ impl<'a> Machine<'a> {
             CoverageCriterion::BoundedPaths
             | CoverageCriterion::PrimePaths
             | CoverageCriterion::ReachElement
+            | CoverageCriterion::Requirement
             | CoverageCriterion::Random => Vec::new(),
         }
     }
@@ -468,16 +510,26 @@ impl<'a> Machine<'a> {
 
     /// The shortest path that reaches `target`, continued to a final state or dead end.
     fn path_through(&self, target: Target, max_depth: usize) -> Result<Vec<usize>, SkippedPath> {
+        self.path_through_any(&[target], &target_label_of(self, target), max_depth)
+    }
+
+    /// Shortest path to the nearest of `targets`, then on to an end state.
+    fn path_through_any(
+        &self,
+        targets: &[Target],
+        label: &str,
+        max_depth: usize,
+    ) -> Result<Vec<usize>, SkippedPath> {
         let found = self.search(&self.start(), max_depth, |prev, n| {
-            self.target_reached(target, n, prev)
+            targets.iter().any(|&t| self.target_reached(t, n, prev))
         });
         let Some((mut path, end)) = found else {
             return Err(SkippedPath {
-                transition_ids: self.target_transition_ids(target),
-                reason: format!(
-                    "{} is unreachable or infeasible within {max_depth} steps",
-                    self.target_label(target)
-                ),
+                transition_ids: targets
+                    .iter()
+                    .flat_map(|&t| self.target_transition_ids(t))
+                    .collect(),
+                reason: format!("{label} is unreachable or infeasible within {max_depth} steps"),
             });
         };
         let remaining = max_depth.saturating_sub(path.len());
@@ -485,6 +537,52 @@ impl<'a> Machine<'a> {
             path.extend(tail);
         }
         Ok(path)
+    }
+
+    /// One shortest path per distinct requirement tag, to the nearest element carrying it.
+    /// Tags whose elements cannot be reached are reported; identical paths are kept once.
+    fn cover_requirements(&self, max_depth: usize) -> (Vec<Vec<usize>>, Vec<SkippedPath>) {
+        let mut tags: Vec<&str> = Vec::new();
+        let elements = self
+            .graph
+            .states
+            .iter()
+            .flat_map(|s| s.requirements.iter())
+            .chain(
+                self.graph
+                    .transitions
+                    .iter()
+                    .flat_map(|t| t.requirements.iter()),
+            );
+        for tag in elements {
+            if !tags.contains(&tag.as_str()) {
+                tags.push(tag);
+            }
+        }
+        let mut paths: Vec<Vec<usize>> = Vec::new();
+        let mut skipped = Vec::new();
+        for tag in tags {
+            let targets: Vec<Target> = (0..self.graph.states.len())
+                .filter(|&i| self.graph.states[i].requirements.iter().any(|r| r == tag))
+                .map(Target::State)
+                .chain(
+                    (0..self.graph.transitions.len())
+                        .filter(|&i| {
+                            self.graph.transitions[i]
+                                .requirements
+                                .iter()
+                                .any(|r| r == tag)
+                        })
+                        .map(Target::Transition),
+                )
+                .collect();
+            match self.path_through_any(&targets, &format!("requirement '{tag}'"), max_depth) {
+                Ok(p) if !paths.contains(&p) => paths.push(p),
+                Ok(_) => {}
+                Err(skip) => skipped.push(skip),
+            }
+        }
+        (paths, skipped)
     }
 
     /// Drops paths whose targets are all covered by other kept paths.
@@ -811,6 +909,10 @@ impl<'a> Machine<'a> {
     }
 }
 
+fn target_label_of(machine: &Machine<'_>, target: Target) -> String {
+    machine.target_label(target)
+}
+
 /// Generates paths covering the criterion. Deterministic for graph, options and seed (FR-020, FR-021).
 pub fn generate(
     graph: &ModelGraph,
@@ -847,6 +949,9 @@ pub fn generate(
                 Ok(path) => (vec![path], Vec::new()),
                 Err(skip) => (Vec::new(), vec![skip]),
             }
+        }
+        CoverageCriterion::Requirement => {
+            machine.cover_requirements(options.max_path_length.unwrap_or(default_depth))
         }
         CoverageCriterion::Random => machine.random_walks(
             options.seed,
@@ -975,6 +1080,7 @@ mod tests {
             description: None,
             kind,
             position: None,
+            requirements: Vec::new(),
         }
     }
 
@@ -988,6 +1094,7 @@ mod tests {
             action: None,
             expected: None,
             weight: None,
+            requirements: Vec::new(),
         }
     }
 
@@ -1109,6 +1216,41 @@ mod tests {
             .iter()
             .map(|id| g.transition(*id).unwrap().event.clone())
             .collect()
+    }
+
+    #[test]
+    fn requirement_gives_one_shortest_path_per_tag() {
+        let mut g = loop_model();
+        g.transitions[1].requirements = vec!["REQ-1".into()]; // ab
+        g.transitions[3].requirements = vec!["REQ-2".into(), "REQ-1".into()]; // finish
+        g.states[2].requirements = vec!["REQ-3".into()]; // B
+        let out = generate(&g, opts(CoverageCriterion::Requirement, 0)).unwrap();
+        assert!(out.skipped.is_empty());
+        // REQ-1: the nearest carrier is `finish` (begin, finish); REQ-2 is the same path,
+        // kept once; REQ-3 needs B (begin, ab).
+        let all: Vec<Vec<String>> = out.paths.iter().map(|p| events(&g, p)).collect();
+        assert_eq!(all.len(), 2, "{all:?}");
+        assert!(all.iter().any(|e| e[..2] == ["begin", "finish"]));
+        assert!(all.iter().any(|e| e[..2] == ["begin", "ab"]));
+    }
+
+    #[test]
+    fn requirement_without_tags_is_empty_and_unreachable_tags_are_reported() {
+        let g = loop_model();
+        let out = generate(&g, opts(CoverageCriterion::Requirement, 0)).unwrap();
+        assert!(out.paths.is_empty() && out.skipped.is_empty());
+
+        let mut g = loop_model();
+        g.transitions[1].guard = Some("flag".into());
+        g.variables = vec![Variable {
+            name: "flag".into(),
+            var_type: VariableType::Boolean,
+            initial: None,
+        }];
+        g.states[2].requirements = vec!["REQ-9".into()]; // B, behind the false guard
+        let out = generate(&g, opts(CoverageCriterion::Requirement, 0)).unwrap();
+        assert!(out.paths.is_empty());
+        assert!(out.skipped[0].reason.contains("REQ-9"));
     }
 
     #[test]

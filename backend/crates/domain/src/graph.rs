@@ -69,6 +69,9 @@ pub struct State {
     /// Canvas position.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<Position>,
+    /// Requirements this state covers: backlog URLs or short keys (ADR 0021).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requirements: Vec<String>,
 }
 
 /// Edge of a model (model step).
@@ -95,7 +98,15 @@ pub struct Transition {
     /// Relative likelihood in a `random` walk (default 1; 0 is never taken).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weight: Option<u32>,
+    /// Requirements this transition covers: backlog URLs or short keys (ADR 0021).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requirements: Vec<String>,
 }
+
+/// Most requirement tags on one state or transition, and the longest tag.
+pub const MAX_REQUIREMENTS: usize = 50;
+/// Longest requirement tag in characters.
+pub const MAX_REQUIREMENT_LEN: usize = 2048;
 
 /// Largest transition weight.
 pub const MAX_WEIGHT: u32 = 1000;

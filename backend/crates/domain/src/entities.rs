@@ -112,6 +112,7 @@ string_enum!(
         PrimePaths => "prime-paths",
         ReachElement => "reach-element",
         Random => "random",
+        Requirement => "requirement",
     }
 );
 
