@@ -72,6 +72,8 @@ services:
       TM_TENANT_CLAIM: ${TM_TENANT_CLAIM:-tenant}
       TM_ROLE_CLAIM: ${TM_ROLE_CLAIM:-roles}
       TM_JWT_ISSUER: ${TM_JWT_ISSUER:-}
+      TM_PUBLIC_URL: ${TM_PUBLIC_URL:-}
+      TM_MCP_OAUTH_ISSUER: ${TM_MCP_OAUTH_ISSUER:-}
       TM_JWT_AUDIENCE: ${TM_JWT_AUDIENCE:-}
       RUST_LOG: ${RUST_LOG:-info,tm_api=debug}
     # Lets TM_AI_BASE_URL reach an Ollama running on this machine as

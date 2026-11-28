@@ -87,6 +87,16 @@ pub struct Config {
     #[arg(long, env = "TM_JWT_ISSUER")]
     pub jwt_issuer: Option<String>,
 
+    /// Public base URL of this deployment, such as `https://tm.example.com`. Needed with
+    /// `--mcp-oauth-issuer`.
+    #[arg(long, env = "TM_PUBLIC_URL")]
+    pub public_url: Option<String>,
+
+    /// Issuer URL of an authorization server to advertise for `/mcp` in the OAuth protected
+    /// resource metadata (RFC 9728). Metadata only: `/mcp` still takes API keys.
+    #[arg(long, env = "TM_MCP_OAUTH_ISSUER")]
+    pub mcp_oauth_issuer: Option<String>,
+
     /// Expected token audience; not checked when unset.
     #[arg(long, env = "TM_JWT_AUDIENCE")]
     pub jwt_audience: Option<String>,
@@ -107,6 +117,30 @@ pub struct Config {
 }
 
 impl Config {
+    /// The OAuth protected resource metadata to serve, if `--mcp-oauth-issuer` is set.
+    ///
+    /// Compose passes unset variables as empty strings, which mean "not set".
+    pub fn mcp_oauth_resource(&self) -> anyhow::Result<Option<crate::mcp_http::OAuthResource>> {
+        fn clean(v: &Option<String>) -> Option<&str> {
+            v.as_deref().map(str::trim).filter(|v| !v.is_empty())
+        }
+        let Some(issuer) = clean(&self.mcp_oauth_issuer) else {
+            return Ok(None);
+        };
+        let Some(public) = clean(&self.public_url) else {
+            anyhow::bail!("TM_MCP_OAUTH_ISSUER needs TM_PUBLIC_URL, the deployment's public URL");
+        };
+        for (name, url) in [("TM_MCP_OAUTH_ISSUER", issuer), ("TM_PUBLIC_URL", public)] {
+            if !(url.starts_with("https://") || url.starts_with("http://")) {
+                anyhow::bail!("{name} must be an http(s) URL, got {url}");
+            }
+        }
+        Ok(Some(crate::mcp_http::OAuthResource {
+            public_url: public.trim_end_matches('/').to_owned(),
+            authorization_server: issuer.to_owned(),
+        }))
+    }
+
     /// AI settings from the environment, or `None` when `TM_AI_PROVIDER` is
     /// unset and the stored settings apply.
     ///

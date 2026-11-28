@@ -35,3 +35,4 @@ Use [0000-template.md](0000-template.md). Number sequentially.
 | [0021](0021-requirement-tags.md) | Requirement tags on states and transitions drive generation, coverage and traceability | Accepted |
 | [0022](0022-sneak-path-tests.md) | Sneak-path tests for events a state does not allow | Accepted |
 | [0023](0023-step-data.md) | Generated steps carry the variable values they start with | Accepted |
+| [0024](0024-mcp-stateless-revision.md) | MCP stateless revision 2026-07-28 and OAuth metadata | Accepted |

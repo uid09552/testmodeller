@@ -709,3 +709,203 @@ async fn patch_model_adds_and_removes_and_drops_dangling_transitions() {
     assert_eq!(r["isError"], true);
     assert!(fake.calls().iter().all(|c| c.method != Method::Put));
 }
+
+// ── The stateless revision 2026-07-28 (ADR 0024) ─────────────────────────────
+
+fn meta() -> Value {
+    json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": { "name": "test" }
+    })
+}
+
+fn stateless_headers(method: &str, name: Option<&str>) -> tm_mcp::RequestHeaders {
+    tm_mcp::RequestHeaders {
+        protocol_version: Some("2026-07-28".into()),
+        method: Some(method.into()),
+        name: name.map(str::to_owned),
+    }
+}
+
+async fn http(fake: &Fake, headers: &tm_mcp::RequestHeaders, message: Value) -> tm_mcp::Reply {
+    tm_mcp::handle_http(fake, headers, message.to_string().as_bytes()).await
+}
+
+#[tokio::test]
+async fn discover_lists_versions_and_caching_without_a_handshake() {
+    let fake = Fake::new(|_| ok(json!({})));
+    let r = http(
+        &fake,
+        &stateless_headers("server/discover", None),
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "server/discover", "params": { "_meta": meta() } }),
+    )
+    .await;
+    assert_eq!(r.status, 200);
+    let res = &r.body.unwrap()["result"];
+    assert_eq!(res["resultType"], "complete");
+    assert_eq!(res["supportedVersions"][0], "2026-07-28");
+    assert!(res["supportedVersions"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("2025-06-18")));
+    assert!(res["ttlMs"].as_i64().unwrap() >= 0);
+    assert!(["public", "private"].contains(&res["cacheScope"].as_str().unwrap()));
+    assert_eq!(
+        res["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+        "testmodeller"
+    );
+    // Old clients can still ask for discovery without any version.
+    let r = http(
+        &fake,
+        &tm_mcp::RequestHeaders::default(),
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "server/discover" }),
+    )
+    .await;
+    assert_eq!(r.status, 200);
+}
+
+#[tokio::test]
+async fn stateless_lists_and_calls_carry_resulttype_and_cache_hints() {
+    let fake = Fake::new(|_| ok(json!({ "items": [], "nextCursor": null })));
+    let r = http(
+        &fake,
+        &stateless_headers("tools/list", None),
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": { "_meta": meta() } }),
+    )
+    .await;
+    let res = r.body.unwrap()["result"].clone();
+    assert_eq!(res["resultType"], "complete");
+    assert_eq!(
+        res["tools"].as_array().unwrap().len(),
+        tm_mcp::catalogue().len()
+    );
+    assert!(res["ttlMs"].is_i64() && res["cacheScope"].is_string());
+
+    let r = http(
+        &fake,
+        &stateless_headers("tools/call", Some("tm_list_projects")),
+        json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                "params": { "_meta": meta(), "name": "tm_list_projects", "arguments": {} } }),
+    )
+    .await;
+    assert_eq!(r.status, 200);
+    let res = r.body.unwrap()["result"].clone();
+    assert_eq!(res["resultType"], "complete");
+    assert_eq!(res["isError"], false);
+}
+
+#[tokio::test]
+async fn stateless_requests_are_checked_against_their_headers() {
+    let fake = Fake::new(|_| ok(json!({})));
+    let list = |m: Value| json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": { "_meta": m } });
+    let code = |r: &tm_mcp::Reply| r.body.as_ref().unwrap()["error"]["code"].as_i64().unwrap();
+
+    // No MCP-Protocol-Version header, or a different one, or no Mcp-Method.
+    let mut h = stateless_headers("tools/list", None);
+    h.protocol_version = None;
+    let r = http(&fake, &h, list(meta())).await;
+    assert_eq!((r.status, code(&r)), (400, -32020));
+    let mut h = stateless_headers("tools/list", None);
+    h.protocol_version = Some("2025-06-18".into());
+    let r = http(&fake, &h, list(meta())).await;
+    assert_eq!((r.status, code(&r)), (400, -32020));
+    let r = http(&fake, &stateless_headers("tools/call", None), list(meta())).await;
+    assert_eq!((r.status, code(&r)), (400, -32020));
+
+    // tools/call needs Mcp-Name equal to the tool name.
+    let call = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": { "_meta": meta(), "name": "tm_list_projects" } });
+    let r = http(
+        &fake,
+        &stateless_headers("tools/call", Some("tm_search")),
+        call,
+    )
+    .await;
+    assert_eq!((r.status, code(&r)), (400, -32020));
+
+    // Required _meta missing.
+    let r = http(
+        &fake,
+        &stateless_headers("tools/list", None),
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+    )
+    .await;
+    assert_eq!((r.status, code(&r)), (400, -32602));
+
+    // Removed methods are unknown: initialize and ping.
+    for m in ["initialize", "ping"] {
+        let r = http(
+            &fake,
+            &stateless_headers(m, None),
+            json!({ "jsonrpc": "2.0", "id": 1, "method": m, "params": { "_meta": meta() } }),
+        )
+        .await;
+        assert_eq!((r.status, code(&r)), (404, -32601), "{m}");
+    }
+
+    // A notification is accepted without a body.
+    let r = http(
+        &fake,
+        &stateless_headers("notifications/cancelled", None),
+        json!({ "jsonrpc": "2.0", "method": "notifications/cancelled", "params": { "_meta": meta() } }),
+    )
+    .await;
+    assert_eq!((r.status, r.body), (202, None));
+}
+
+#[tokio::test]
+async fn an_unknown_version_is_refused_with_the_supported_ones() {
+    let fake = Fake::new(|_| ok(json!({})));
+    let r = http(
+        &fake,
+        &tm_mcp::RequestHeaders {
+            protocol_version: Some("2031-01-01".into()),
+            method: Some("tools/list".into()),
+            name: None,
+        },
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+    )
+    .await;
+    assert_eq!(r.status, 400);
+    let e = &r.body.unwrap()["error"];
+    assert_eq!(e["code"], -32022);
+    assert_eq!(e["data"]["requested"], "2031-01-01");
+    assert!(e["data"]["supported"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("2026-07-28")));
+}
+
+#[tokio::test]
+async fn earlier_revisions_keep_their_handshake_with_or_without_the_version_header() {
+    let fake = Fake::new(|_| ok(json!({})));
+    let legacy = tm_mcp::RequestHeaders {
+        protocol_version: Some("2025-06-18".into()),
+        method: None,
+        name: None,
+    };
+    let r = http(
+        &fake,
+        &legacy,
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": { "protocolVersion": "2025-06-18", "capabilities": {} } }),
+    )
+    .await;
+    assert_eq!(r.status, 200);
+    assert_eq!(r.body.unwrap()["result"]["protocolVersion"], "2025-06-18");
+    let r = http(
+        &fake,
+        &legacy,
+        json!({ "jsonrpc": "2.0", "id": 2, "method": "ping" }),
+    )
+    .await;
+    assert_eq!(r.status, 200);
+    let r = http(
+        &fake,
+        &tm_mcp::RequestHeaders::default(),
+        json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" }),
+    )
+    .await;
+    assert!(r.body.unwrap()["result"].get("resultType").is_none());
+}

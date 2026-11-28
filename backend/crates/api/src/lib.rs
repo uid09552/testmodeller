@@ -43,6 +43,8 @@ pub struct AppState {
     pub store: Store,
     /// AI orchestration.
     pub ai: Arc<AiService>,
+    /// OAuth protected resource metadata of `/mcp`, when configured (ADR 0024).
+    pub oauth: Option<Arc<mcp_http::OAuthResource>>,
 }
 
 impl AppState {
@@ -56,7 +58,14 @@ impl AppState {
         Self {
             ai: Arc::new(AiService::new(store.clone(), ai_api_key, secrets)),
             store,
+            oauth: None,
         }
+    }
+
+    /// Advertises an authorization server for `/mcp` (metadata only).
+    pub fn with_oauth(mut self, oauth: mcp_http::OAuthResource) -> Self {
+        self.oauth = Some(Arc::new(oauth));
+        self
     }
 }
 
@@ -80,11 +89,24 @@ pub fn router(state: AppState, auth: AuthMode) -> Router {
         store: state.store.clone(),
         dev: matches!(auth, AuthMode::Dev),
         internal: api(state.clone(), AuthMode::Internal, None),
+        oauth: state.oauth.clone(),
     };
-    api(state, auth, Some(mcp)).layer(tower_http::timeout::TimeoutLayer::with_status_code(
-        axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        REQUEST_TIMEOUT,
-    ))
+    let well_known = Router::new()
+        .route(
+            "/.well-known/oauth-protected-resource",
+            get(mcp_http::protected_resource),
+        )
+        .route(
+            "/.well-known/oauth-protected-resource/api/v1/mcp",
+            get(mcp_http::protected_resource),
+        )
+        .with_state(mcp.clone());
+    api(state, auth, Some(mcp)).merge(well_known).layer(
+        tower_http::timeout::TimeoutLayer::with_status_code(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            REQUEST_TIMEOUT,
+        ),
+    )
 }
 
 fn api(state: AppState, auth: AuthMode, mcp: Option<mcp_http::McpState>) -> Router {

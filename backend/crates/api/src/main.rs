@@ -174,7 +174,10 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    let state = AppState::new(store, config.ai_api_key.clone(), Arc::new(secrets));
+    let mut state = AppState::new(store, config.ai_api_key.clone(), Arc::new(secrets));
+    if let Some(oauth) = config.mcp_oauth_resource()? {
+        state = state.with_oauth(oauth);
+    }
     state.ai.load_persisted_key().await;
 
     let mut app = router(state, auth_mode(auth)).layer(TraceLayer::new_for_http());

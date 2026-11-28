@@ -37,7 +37,7 @@ REST/JSON under `/api/v1`. Errors use RFC 7807 problem details. Updates of versi
 ## MCP tools
 
 `POST /api/v1/mcp` speaks MCP over Streamable HTTP: JSON-RPC 2.0 in the body, a
-JSON response (no SSE stream; `GET` is `405`), protocol version `2025-06-18`.
+JSON response (no SSE stream; `GET` is `405`). Two protocol eras are served: the handshake revisions (`2025-06-18` preferred, `2025-03-26`, `2024-11-05`) and the stateless revision `2026-07-28` (no `initialize`, no sessions, no `ping`; `server/discover`; the version, `Mcp-Method` and `Mcp-Name` in headers; `resultType` on results). The era is taken from `_meta` or `MCP-Protocol-Version`; a request that names neither is a handshake-era request. See [ADR 0024](../adr/0024-mcp-stateless-revision.md).
 It is authenticated with an API key (`Authorization: Bearer tm_…`), never a
 JWT. Each tool is a task-level aggregate of the REST operations above and runs
 them in-process as the key's tenant and role, so the tenant guard, the role rule,

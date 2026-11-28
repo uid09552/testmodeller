@@ -118,7 +118,11 @@ key in Settings and hands it to the client.
 - In `--dev-mode`, `/mcp` without an `Authorization` header runs as the dev
   identity, like every other endpoint; a presented key is still checked.
 
-### Upload keys (CI)
+### MCP and OAuth metadata
+
+`/mcp` accepts API keys only. When `TM_MCP_OAUTH_ISSUER` and `TM_PUBLIC_URL` are set, the server also publishes OAuth protected resource metadata (RFC 9728) at `/.well-known/oauth-protected-resource` and adds `resource_metadata` to the `WWW-Authenticate` header of a `401` from `/mcp`, so a client can discover the authorization server. Tokens of that server are not accepted yet ([ADR 0024](../adr/0024-mcp-stateless-revision.md)).
+
+## Upload keys (CI)
 A pipeline has no user session, so a key can be created for one project
 (`projectId` in `POST /me/api-keys`; the creator needs the `Editor` role and
 the project must be in their tenant). Such an **upload key**:
