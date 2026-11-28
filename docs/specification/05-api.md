@@ -8,7 +8,7 @@ related: [02-domain-model.md, 06-ui.md, 07-ai-integration.md]
 
 # API
 
-REST/JSON under `/api/v1`. Errors use RFC 7807 problem details. Updates require `If-Match: <version>`.
+REST/JSON under `/api/v1`. Errors use RFC 7807 problem details. Updates of versioned entities require `If-Match: <version>` (exceptions below).
 
 **The source of truth is [openapi.yaml](openapi.yaml). It must not be changed without explicit user approval.**
 
@@ -70,7 +70,10 @@ pending proposals, and `decide_proposal` is a separate, explicit call
 - IDs are UUIDs; timestamps RFC 3339 UTC; fields camelCase.
 - Pagination: `?limit=&cursor=`.
 - AI endpoints may be slow: return `202` with a job resource, poll `/jobs/{id}`. `POST /ai/proposals` is rate limited per project and per tenant (`429`, see [07-ai-integration.md](07-ai-integration.md)).
-- Concurrency: `PUT`/`PATCH` require `If-Match`; mismatch returns `412`.
+- Concurrency: `PUT`/`PATCH` of a versioned entity require `If-Match`; mismatch returns `412`. Exceptions, which take no `If-Match`:
+  - `PATCH /states/{id}` and `PATCH /transitions/{id}`: fine-grained edits of one element; the model's own version still guards `PUT /models/{id}`.
+  - `PUT /test-cases/{id}/assignments`, `PUT /states/{id}/test-cases/{tcId}` and `PUT /transitions/{id}/test-cases/{tcId}`: assignment links, which carry no version; the assign and unassign calls are idempotent.
+  - `PUT /settings/ai`: a singleton without a version; the last write wins.
 - Assignment targets must belong to a model of the test case's feature, otherwise `422`.
 - Threat model collections return plain arrays (no paging). An item path whose item belongs to another threat model returns `404`. Link lists in an input (`assetIds`, `targets`, `controlIds`, …) replace the stored links as a whole; ids outside the threat model return `422`.
 - Evidence (`/controls/{id}/evidence`, `/security-tests/{id}/results/{rid}/evidence`, `DELETE /evidence/{id}`) holds references only. Setting a control to `verified` without evidence returns `422`; deleting the last evidence of a verified control sets it to `implemented`. Baselines (`/baselines`, `/baselines/{id}`, `/baselines/{id}/compare`) are immutable; a duplicate name returns `409`, more than 50 per threat model `422`. Accepting a threat needs `acceptedBy`, `acceptanceRationale` and `acceptanceExpires` (after today, at most 3 years ahead), otherwise `422`.
