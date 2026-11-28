@@ -26,10 +26,10 @@
 
   <div class="toolbar__group edit-only">
     <button class="tb-btn tb-btn--icon" title="Undo (Ctrl+Z)" [disabled]="!store.canUndo()" (click)="store.undo()" aria-label="Undo">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
     </button>
     <button class="tb-btn tb-btn--icon" title="Redo (Ctrl+Y)" [disabled]="!store.canRedo()" (click)="store.redo()" aria-label="Redo">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>
     </button>
   </div>
 
@@ -37,11 +37,11 @@
 
   <div class="toolbar__group">
     <button class="tb-btn tb-btn--icon" title="Zoom out" (click)="zoomOut()" aria-label="Zoom out">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </button>
     <span class="tb-zoom-label">{{ (zoom() * 100).toFixed(0) }}%</span>
     <button class="tb-btn tb-btn--icon" title="Zoom in" (click)="zoomIn()" aria-label="Zoom in">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </button>
     <button class="tb-btn tb-btn--icon" title="Centre the diagram (or double-click the canvas)"
             (click)="centerView()" aria-label="Centre the diagram">
@@ -157,7 +157,7 @@
       {{ store.warningCount() }} warning{{ store.warningCount() === 1 ? '' : 's' }}
     </button>
   } @else {
-    <span class="badge badge--status badge--ok" aria-hidden="true">✓ Valid</span>
+    <span class="badge badge--status badge--ok" role="status">✓ Valid</span>
   }
 
   @if (store.dirty()) {
@@ -175,7 +175,11 @@
      (drop)="onCanvasDrop($event)"
      [style.cursor]="canvasCursor()"
      tabindex="0"
-     aria-label="Model canvas. Tab moves between states, arrow keys move the selection, ? lists all shortcuts.">
+     role="application"
+     aria-roledescription="state machine editor"
+     aria-label="Model canvas. Tab moves between states, arrow keys move the selection, Shift+F10 opens the menu of the selection, ? lists all shortcuts.">
+
+  <div class="sr-only" aria-live="polite" aria-atomic="true">{{ announcement() }}</div>
 
   @if (store.highlight(); as hl) {
     <div class="path-banner" role="status">
@@ -201,9 +205,7 @@
 
   <svg #svgCanvas class="canvas-svg"
        (mousedown)="onBgMouseDown($event)"
-       (dblclick)="onBgDblClick($event)"
-       role="application"
-       aria-label="State machine canvas. Double-click empty space to centre the diagram.">
+       (dblclick)="onBgDblClick($event)">
 
     <defs>
       <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -580,22 +582,22 @@
               [attr.aria-label]="item.label">
         @switch (item.kind) {
           @case ('initial') {
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
               <circle cx="12" cy="12" r="8" fill="var(--si-sys-color-background-accent)" stroke="var(--si-sys-color-border-accent-active)"/>
             </svg>
           }
           @case ('regular') {
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
               <rect x="3" y="7" width="18" height="10" rx="2" fill="var(--si-sys-color-background-1)"/>
             </svg>
           }
           @case ('decision') {
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
               <polygon points="12,4 20,12 12,20 4,12" fill="var(--si-sys-color-background-warning-subtle)" stroke="var(--si-sys-color-border-warning)"/>
             </svg>
           }
           @default {
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
               <rect x="3" y="7" width="18" height="10" rx="2" fill="var(--si-sys-color-background-1)" stroke="var(--si-sys-color-border-success)"/>
               <rect x="5.5" y="9.5" width="13" height="5" rx="1" fill="none" stroke="var(--si-sys-color-border-success)" stroke-width="1.2"/>
             </svg>
@@ -615,11 +617,11 @@
               [title]="item.label + ' — drag onto the canvas'"
               [attr.aria-label]="item.label">
         @if (item.kind === 'note') {
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--si-sys-color-border-caution)" stroke-width="1.6" stroke-linejoin="round">
+          <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--si-sys-color-border-caution)" stroke-width="1.6" stroke-linejoin="round">
             <path d="M4 4h12l4 4v12H4z" fill="var(--si-sys-color-background-caution-subtle)"/><path d="M16 4v4h4"/>
           </svg>
         } @else {
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M5 6h14M12 6v13M9 19h6"/>
           </svg>
         }
@@ -636,7 +638,7 @@
 
       @for (a of alignActions; track a.mode) {
         <button class="selbar__btn" [title]="a.label" (click)="alignSelection(a.mode)">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path [attr.d]="a.path" />
           </svg>
@@ -653,7 +655,7 @@
                   [title]="c.value ? 'Border: ' + c.name : 'Default border'"
                   (click)="applySelectionColor(c.value)">
             @if (c.value === null) {
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                    stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
             }
           </button>
@@ -664,7 +666,7 @@
 
       <button class="selbar__btn selbar__btn--wide" title="Group selection (Ctrl+G)"
               (click)="groupSelection()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <rect x="2" y="2" width="20" height="20" rx="3" stroke-dasharray="3 3"/>
           <rect x="6" y="6" width="5" height="5" rx="1"/><rect x="13" y="13" width="5" height="5" rx="1"/>
@@ -674,7 +676,7 @@
 
       <button class="selbar__btn selbar__btn--danger" title="Delete selection (Del)"
               (click)="deleteSelected()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="3 6 5 6 21 6"/>
           <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
@@ -695,6 +697,9 @@
 @if (contextMenu(); as menu) {
   <div class="ctx-menu"
          role="menu"
+         aria-label="Actions"
+         tabindex="-1"
+         (keydown)="onMenuKeyDown($event)"
          [style.left.px]="menu.screenX"
          [style.top.px]="menu.screenY">
 
@@ -707,51 +712,51 @@
           </span>
         </div>
         <div class="ctx-sep"></div>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('rename-node')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('rename-node')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Rename
           <span class="ctx-shortcut">F2</span>
         </button>
         <div class="ctx-sep"></div>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('set-initial')"
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('set-initial')"
                 [class.ctx-item--checked]="store.nodeById(menu.targetId!)?.kind === 'initial'">
           <span class="ctx-dot ctx-dot--initial"></span> Set as Initial
         </button>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('set-regular')"
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('set-regular')"
                 [class.ctx-item--checked]="store.nodeById(menu.targetId!)?.kind === 'regular'">
           <span class="ctx-dot ctx-dot--regular"></span> Set as Regular
         </button>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('set-final')"
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('set-final')"
                 [class.ctx-item--checked]="store.nodeById(menu.targetId!)?.kind === 'final'">
           <span class="ctx-dot ctx-dot--final"></span> Set as Final
         </button>
         <div class="ctx-sep"></div>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('add-transition')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('add-transition')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
           Add Transition
         </button>
         @for (sh of shapes; track sh.value) {
-          <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('shape-' + sh.value)"
+          <button class="ctx-item" role="menuitem" (click)="runMenuAction('shape-' + sh.value)"
                   [class.ctx-item--checked]="store.nodeById(menu.targetId!)?.shape === sh.value">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path [attr.d]="shapeIcon(sh.value).d" [attr.transform]="shapeIcon(sh.value).transform" />
             </svg>
             Make {{ sh.label }}
           </button>
         }
         <div class="ctx-sep"></div>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('add-test')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4"/></svg>
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('add-test')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4"/></svg>
           Add Test Case
         </button>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('duplicate-node')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('duplicate-node')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Duplicate
           <span class="ctx-shortcut">Ctrl+D</span>
         </button>
         <div class="ctx-sep"></div>
-        <button class="ctx-item ctx-item--danger" role="menuitem" (mousedown)="runMenuAction('delete-node')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        <button class="ctx-item ctx-item--danger" role="menuitem" (click)="runMenuAction('delete-node')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           Delete State
           <span class="ctx-shortcut">Del</span>
         </button>
@@ -760,91 +765,91 @@
       @if (menu.type === 'edge') {
         <div class="ctx-header">
           {{ nodeFromLabel(store.edgeById(menu.targetId!)?.fromId ?? '') }}
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
           {{ nodeFromLabel(store.edgeById(menu.targetId!)?.toId ?? '') }}
         </div>
         <div class="ctx-sep"></div>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('rename-edge')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('rename-edge')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Edit Label / Guard
         </button>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('reverse-edge')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('reverse-edge')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
           Reverse Direction
         </button>
         <div class="ctx-sep"></div>
         @if (store.edgeById(menu.targetId!); as me) {
           @if (me.fromId !== me.toId) {
-            <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('add-bend-point')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20 12 6l9 14"/><circle cx="12" cy="6" r="2"/></svg>
+            <button class="ctx-item" role="menuitem" (click)="runMenuAction('add-bend-point')">
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20 12 6l9 14"/><circle cx="12" cy="6" r="2"/></svg>
               Add Bend Point
               <span class="ctx-shortcut">Alt+Click</span>
             </button>
           }
           @if (me.routing === 'orthogonal') {
-            <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('routing-curved')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20C3 9 21 15 21 4"/></svg>
+            <button class="ctx-item" role="menuitem" (click)="runMenuAction('routing-curved')">
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20C3 9 21 15 21 4"/></svg>
               Curved Routing
             </button>
           } @else if (me.fromId !== me.toId) {
-            <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('routing-orthogonal')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h9V4h9"/></svg>
+            <button class="ctx-item" role="menuitem" (click)="runMenuAction('routing-orthogonal')">
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h9V4h9"/></svg>
               Right-Angle Routing
             </button>
           }
           @if (me.curve || me.waypoints?.length) {
-            <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('straighten')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="20" x2="21" y2="4"/></svg>
+            <button class="ctx-item" role="menuitem" (click)="runMenuAction('straighten')">
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="20" x2="21" y2="4"/></svg>
               Straighten
             </button>
           }
           @if (me.labelOffset) {
-            <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('reset-label')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+            <button class="ctx-item" role="menuitem" (click)="runMenuAction('reset-label')">
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
               Reset Label Position
             </button>
           }
         }
         <div class="ctx-sep"></div>
-        <button class="ctx-item ctx-item--danger" role="menuitem" (mousedown)="runMenuAction('delete-edge')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        <button class="ctx-item ctx-item--danger" role="menuitem" (click)="runMenuAction('delete-edge')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           Delete Transition
           <span class="ctx-shortcut">Del</span>
         </button>
       }
 
       @if (menu.type === 'group') {
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('group-select-members')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="3" stroke-dasharray="3 3"/><rect x="6" y="6" width="5" height="5" rx="1"/><rect x="13" y="13" width="5" height="5" rx="1"/></svg>
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('group-select-members')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="3" stroke-dasharray="3 3"/><rect x="6" y="6" width="5" height="5" rx="1"/><rect x="13" y="13" width="5" height="5" rx="1"/></svg>
           Select Members
         </button>
         @if (store.groupById(menu.targetId!)?.collapsed) {
-          <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('group-expand')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
+          <button class="ctx-item" role="menuitem" (click)="runMenuAction('group-expand')">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
             Expand Group
           </button>
         } @else {
-          <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('group-collapse')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8"/></svg>
+          <button class="ctx-item" role="menuitem" (click)="runMenuAction('group-collapse')">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8"/></svg>
             Collapse Group
           </button>
         }
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('group-fit')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/></svg>
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('group-fit')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/></svg>
           Fit to Contents
         </button>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('group-recolor')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18"/></svg>
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('group-recolor')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18"/></svg>
           Next Colour
         </button>
         <div class="ctx-sep"></div>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('ungroup')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 14h6v6h-6"/></svg>
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('ungroup')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 14h6v6h-6"/></svg>
           Ungroup <span class="ctx-shortcut">keeps states</span>
         </button>
         <div class="ctx-sep"></div>
-        <button class="ctx-item ctx-item--danger" role="menuitem" (mousedown)="runMenuAction('group-delete-all')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        <button class="ctx-item ctx-item--danger" role="menuitem" (click)="runMenuAction('group-delete-all')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
           Delete Group &amp; States
         </button>
       }
@@ -853,24 +858,24 @@
         <div class="ctx-header">Canvas</div>
         @if (store.nodes().length > 1) {
           <div class="ctx-sep"></div>
-          <button class="ctx-item" role="menuitem" (mousedown)="store.selectAll(); closeContextMenu()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/></svg>
+          <button class="ctx-item" role="menuitem" (click)="store.selectAll(); closeContextMenu()">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/></svg>
             Select All <span class="ctx-shortcut">Ctrl+A</span>
           </button>
         }
         <div class="ctx-sep"></div>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('add-state')">
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('add-state')">
           <span class="ctx-dot ctx-dot--regular"></span> Add State here
         </button>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('add-initial')">
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('add-initial')">
           <span class="ctx-dot ctx-dot--initial"></span> Add Initial State here
         </button>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('add-final')">
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('add-final')">
           <span class="ctx-dot ctx-dot--final"></span> Add Final State here
         </button>
         <div class="ctx-sep"></div>
-        <button class="ctx-item" role="menuitem" (mousedown)="runMenuAction('reset-view')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        <button class="ctx-item" role="menuitem" (click)="runMenuAction('reset-view')">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
           Reset View
         </button>
       }

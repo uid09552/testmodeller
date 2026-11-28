@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { toApiError } from './api-error';
 import {
-  AiSettings, Job, Proposal, ProposalRequest,
+  AiSettings, Job, Proposal, ProposalRequest, ProposalStatus,
 } from './api.types';
 
 /** Base path of the API; the dev server proxies it (frontend/proxy.conf.json). */
@@ -34,6 +34,23 @@ export class AiApi {
   /** `GET /jobs/{id}` */
   async getJob(id: string): Promise<Job> {
     return this.call(() => firstValueFrom(this.http.get<Job>(`${BASE}/jobs/${id}`)));
+  }
+
+  /** `GET /projects/{id}/proposals`, every page, newest first as the server sends them. */
+  async listProposals(projectId: string, status?: ProposalStatus): Promise<Proposal[]> {
+    const items: Proposal[] = [];
+    let cursor: string | null = null;
+    do {
+      const params: Record<string, string> = { limit: '200' };
+      if (status) params['status'] = status;
+      if (cursor) params['cursor'] = cursor;
+      const page: { items: Proposal[]; nextCursor?: string | null } = await this.call(() => firstValueFrom(
+        this.http.get<{ items: Proposal[]; nextCursor?: string | null }>(
+          `${BASE}/projects/${projectId}/proposals`, { params })));
+      items.push(...page.items);
+      cursor = page.nextCursor ?? null;
+    } while (cursor);
+    return items;
   }
 
   /** `GET /proposals/{id}` */

@@ -1,98 +1,77 @@
-<section class="page">
-  <header class="page__head">
+<section class="props" aria-labelledby="props-title">
+  <header class="props__head">
     <div>
-      <h1 class="page__title">AI Proposals</h1>
-      <p class="page__sub">
+      <h1 id="props-title" class="typography-h2">AI proposals</h1>
+      <p class="typography-body-sm props__sub">
         {{ pendingCount() }} proposal{{ pendingCount() === 1 ? '' : 's' }} awaiting review
       </p>
     </div>
+    <div class="props__filters">
+      @if (projects().length > 1) {
+        <ix-select label="Project" [value]="projectId() ?? ''" (valueChange)="setProject($event)">
+          @for (p of projects(); track p.id) { <ix-select-item [value]="p.id" [label]="p.name" /> }
+        </ix-select>
+      }
+      <ix-select label="Show" [value]="filter()" (valueChange)="setFilter($event)">
+        @for (f of filters; track f.value) { <ix-select-item [value]="f.value" [label]="f.label" /> }
+      </ix-select>
+    </div>
   </header>
 
-  <!-- Approval notice — proposals are never auto-applied -->
-  <div class="notice">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/>
-      <line x1="12" y1="8" x2="12.01" y2="8"/>
-    </svg>
-    <span>
-      AI-generated proposals are never saved to your models until you accept them.
-      Review each change before approving.
-    </span>
-  </div>
+  <ix-message-bar type="information" [persistent]="true">
+    AI proposals are never saved to your project until you accept them. Review each one first.
+  </ix-message-bar>
 
-  <div class="toolbar">
-    <div class="chips">
-      @for (f of ['pending', 'accepted', 'rejected', 'all']; track f) {
-        <button class="chip" [class.chip--active]="filter() === f"
-                (click)="setFilter($any(f))">{{ f }}</button>
-      }
-    </div>
-  </div>
+  @if (error(); as err) {
+    <ix-message-bar type="danger" [persistent]="true">{{ err }} Reload the page to try again.</ix-message-bar>
+  }
 
-  @if (filtered().length === 0) {
-    <div class="empty">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2a7 7 0 0 0-7 7c0 2.4 1.2 4.1 2.3 5.3.6.7.7 1 .7 1.7v1a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-1c0-.7.1-1 .7-1.7C17.8 13.1 19 11.4 19 9a7 7 0 0 0-7-7z"/>
-        <line x1="10" y1="22" x2="14" y2="22"/>
-      </svg>
-      <p>No proposals in this view.</p>
-    </div>
+  @if (loading()) {
+    <p class="typography-body-sm props__loading" role="status">
+      <ix-spinner size="sm" aria-hidden="true" /> Loading proposals…
+    </p>
+  } @else if (!projects().length) {
+    <ix-empty-state header="No projects yet" description="Create a project, then ask the AI assistant for proposals." />
+  } @else if (!shown().length) {
+    <ix-empty-state header="No proposals in this view"
+                    description="Ask the AI assistant in the model editor for a model, states, test cases or a description." />
   } @else {
-    <div class="prop-list">
-      @for (p of filtered(); track p.id) {
-        <article class="prop" [class.prop--open]="p.expanded">
-          <header class="prop__head" role="button" tabindex="0" [attr.aria-expanded]="p.expanded"
-                  (click)="toggle(p.id)" (keydown.enter)="toggle(p.id)">
-            <span class="prop__chevron" [class.prop__chevron--open]="p.expanded">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                   stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
-            </span>
-            <span class="prop__kind">{{ kindLabel(p.kind) }}</span>
-            <div class="prop__title-group">
-              <span class="prop__summary">{{ p.summary }}</span>
-              <span class="prop__meta">{{ p.target }} · {{ p.createdAt }}</span>
-            </div>
-            <span class="badge badge--{{ p.status }}">{{ p.status }}</span>
-          </header>
-
-          @if (p.expanded) {
-            <div class="prop__body">
-              <p class="prop__body-label">
-                @if (p.status === 'pending') { Will be added if accepted }
-                @else { Proposed content }
-              </p>
-              <ul class="prop__items">
-                @for (item of p.items; track $index) {
-                  <li>{{ item }}</li>
-                }
-              </ul>
-
-              @if (p.status === 'pending') {
-                <div class="prop__actions">
-                  <button class="btn btn--danger" (click)="reject(p.id)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                    Reject
-                  </button>
-                  <button class="btn btn--primary" (click)="accept(p.id)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                    Accept &amp; Apply
-                  </button>
+    <ul class="props__list">
+      @for (p of shown(); track p.id) {
+        <li>
+          <ix-card class="prop" [attr.aria-labelledby]="'prop-' + p.id">
+            <ix-card-content>
+              <div class="prop__body">
+                <div class="prop__head">
+                  <ix-pill [variant]="statusVariant(p.status)" [outline]="p.status !== 'pending'">
+                    {{ statusLabel(p.status) }}
+                  </ix-pill>
+                  <span class="typography-body-sm prop__kind">{{ kindLabel[p.kind] }}</span>
+                  <span class="typography-body-sm prop__meta">{{ targetOf()(p) }} · {{ p.createdAt.slice(0, 10) }}</span>
                 </div>
-              }
-            </div>
-          }
-        </article>
+                <h2 [id]="'prop-' + p.id" class="typography-h5">{{ summary(p) }}</h2>
+                @if (p.rationale) {
+                  <p class="typography-body-paragraph">{{ p.rationale }}</p>
+                }
+                <details class="prop__details">
+                  <summary class="typography-body-sm">
+                    {{ p.status === 'pending' ? 'What accepting adds' : 'What was proposed' }}
+                  </summary>
+                  <ul class="typography-body prop__items">
+                    @for (item of details(p); track $index) { <li>{{ item }}</li> }
+                  </ul>
+                </details>
+                @if (p.status === 'pending') {
+                  <div class="prop__actions">
+                    <ix-button variant="secondary" [disabled]="busyId() === p.id" (click)="reject(p)">Reject</ix-button>
+                    <ix-button variant="primary" [loading]="busyId() === p.id" (click)="accept(p)">Accept</ix-button>
+                  </div>
+                }
+              </div>
+            </ix-card-content>
+          </ix-card>
+        </li>
       }
-    </div>
+    </ul>
   }
 </section>

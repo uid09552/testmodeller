@@ -32,7 +32,23 @@ import { GRID, HELP_ROWS, readingOrder, ShortcutId, SHORTCUTS } from '../../stat
 /** Shortcuts that change the model, off in present mode. */
 const EDIT_SHORTCUTS = new Set<ShortcutId>([
   'undo', 'redo', 'group', 'delete', 'rename', 'move-left', 'move-right', 'move-up', 'move-down',
+  'context-menu',
 ]);
+
+/** What a screen reader hears after a menu action (the canvas has no other text for it). */
+const ACTION_ANNOUNCEMENT: Record<string, string> = {
+  'add-state': 'State added', 'add-initial': 'Initial state added', 'add-final': 'Final state added',
+  'add-transition': 'Drawing a transition: choose the target state', 'add-test': 'Test case added',
+  'delete-node': 'State deleted', 'delete-edge': 'Transition deleted', 'duplicate-node': 'State duplicated',
+  'rename-node': 'Renaming the state', 'rename-edge': 'Renaming the transition',
+  'set-initial': 'Set as initial state', 'set-regular': 'Set as normal state', 'set-final': 'Set as final state',
+  'reverse-edge': 'Transition reversed', 'straighten': 'Transition straightened',
+  'routing-curved': 'Curved routing', 'routing-orthogonal': 'Right-angle routing',
+  'add-bend-point': 'Bend point added', 'reset-label': 'Label position reset', 'reset-view': 'View reset',
+  'ungroup': 'Group removed', 'group-delete-all': 'Group and its states deleted',
+  'group-collapse': 'Group collapsed', 'group-expand': 'Group expanded', 'group-fit': 'Group fitted',
+  'group-select-members': 'Group members selected', 'group-recolor': 'Group colour changed',
+};
 import { Guide, snapPosition } from '../../state/snapping';
 
 /** Shapes offered in the quick bar as drag sources. */
@@ -438,13 +454,59 @@ export class CanvasComponent {
   }
 
   // ── Context menu ──────────────────────────────────────────────────────
+  /** Text for the live region; a screen reader reads it when it changes. */
+  readonly announcement = signal('');
+  /** Where focus goes back to when a keyboard-opened menu closes. */
+  private menuReturnFocus: HTMLElement | null = null;
+
   openContextMenu(e: MouseEvent, type: 'canvas' | 'node' | 'edge' | 'group', targetId: string | null = null): void {
     e.preventDefault();
     e.stopPropagation();
+    this.menuReturnFocus = null;
+    this.openMenuAt(e.clientX, e.clientY, type, targetId);
+  }
+
+  /**
+   * Shift+F10 or the ContextMenu key (WCAG 2.1.1): the menu of the selected
+   * state or transition, or of the canvas, with focus on its first item.
+   */
+  openMenuFromKeyboard(): void {
+    const node = this.store.selectedNode();
+    const edge = node ? null : this.store.selectedEdge();
+    const [type, id] = node ? ['node' as const, node.id] : edge ? ['edge' as const, edge.id] : ['canvas' as const, null];
+    const r = this.svgEl().nativeElement.getBoundingClientRect();
+    this.menuReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    this.openMenuAt(r.left + r.width / 3, r.top + r.height / 3, type, id);
+    setTimeout(() => this.focusMenuItem(0));
+  }
+
+  /** Arrow keys, Home and End move between items; Escape and Tab close the menu. */
+  onMenuKeyDown(e: KeyboardEvent): void {
+    const items = this.menuItems();
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    switch (e.key) {
+      case 'ArrowDown': e.preventDefault(); this.focusMenuItem((at + 1) % items.length); break;
+      case 'ArrowUp': e.preventDefault(); this.focusMenuItem((at - 1 + items.length) % items.length); break;
+      case 'Home': e.preventDefault(); this.focusMenuItem(0); break;
+      case 'End': e.preventDefault(); this.focusMenuItem(items.length - 1); break;
+      case 'Escape': case 'Tab': e.preventDefault(); e.stopPropagation(); this.closeContextMenu(); break;
+    }
+  }
+
+  private menuItems(): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>('.ctx-menu [role="menuitem"]:not([disabled])')];
+  }
+
+  private focusMenuItem(i: number): void {
+    this.menuItems()[i]?.focus();
+  }
+
+  private openMenuAt(clientX: number, clientY: number, type: 'canvas' | 'node' | 'edge' | 'group', targetId: string | null): void {
     // Every entry changes the model; present mode has none.
     if (this.readonly()) return;
     const svg = this.svgEl().nativeElement;
-    const pt = toCanvas(e, svg, this.zoom(), this.panX(), this.panY());
+    const pt = toCanvas({ clientX, clientY } as MouseEvent, svg, this.zoom(), this.panX(), this.panY());
+    const e = { clientX, clientY };
     // The menu is position:fixed, so clamp against the viewport. Menu is
     // ~224px wide; height varies by type (node menu is the tallest at ~310px).
     const menuH = type === 'node' ? 310 : type === 'edge' ? 330 : type === 'group' ? 230 : 200;
@@ -460,7 +522,10 @@ export class CanvasComponent {
   }
 
   closeContextMenu(): void {
+    const reopenFocus = this.contextMenu() ? this.menuReturnFocus : null;
     this.contextMenu.set(null);
+    this.menuReturnFocus = null;
+    reopenFocus?.focus();
     this.cdr.markForCheck();
   }
 
@@ -468,6 +533,7 @@ export class CanvasComponent {
     const m = this.contextMenu();
     this.closeContextMenu();
     if (!m) return;
+    this.announcement.set(ACTION_ANNOUNCEMENT[action] ?? (action.startsWith('shape-') ? 'Shape changed' : 'Done'));
     if (action.startsWith('shape-')) {
       this.applyShape(action.slice('shape-'.length) as NodeShape, m.targetId!);
       return;
@@ -673,6 +739,7 @@ export class CanvasComponent {
         this.marquee.set(null); this.closeContextMenu(); this.helpOpen.set(false);
         this.store.clearHighlight();
         break;
+      case 'context-menu': e.preventDefault(); this.openMenuFromKeyboard(); break;
       case 'zoom-fit': e.preventDefault(); this.zoomToFit(); break;
       case 'zoom-selection': e.preventDefault(); this.zoomToSelection(); break;
       case 'zoom-in': e.preventDefault(); this.zoomIn(); break;

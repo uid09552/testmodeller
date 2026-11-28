@@ -8,7 +8,7 @@ export type ShortcutId =
   | 'undo' | 'redo' | 'select-all' | 'group' | 'tool-select' | 'tool-pan' | 'delete' | 'escape'
   | 'zoom-fit' | 'zoom-selection' | 'zoom-in' | 'zoom-out' | 'search'
   | 'next-state' | 'prev-state' | 'next-transition' | 'rename'
-  | 'move-left' | 'move-right' | 'move-up' | 'move-down' | 'help';
+  | 'move-left' | 'move-right' | 'move-up' | 'move-down' | 'help' | 'context-menu';
 
 export interface Shortcut {
   id: ShortcutId;
@@ -46,6 +46,8 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'next-transition', keys: 'Ctrl+Tab', label: 'Next transition', focus: true,
     match: e => e.ctrlKey && e.key === 'Tab' },
   { id: 'rename', keys: 'F2', label: 'Rename the selected state or edit a note', focus: true, match: e => e.key === 'F2' },
+  { id: 'context-menu', keys: 'Shift+F10', label: 'Open the menu of the selection (or of the canvas)', focus: true,
+    match: e => (e.shiftKey && e.key === 'F10') || e.key === 'ContextMenu' },
   { id: 'move-left', keys: 'Arrows', label: 'Move the selection one grid step (Shift: ten)', focus: true,
     match: arrow('ArrowLeft') },
   { id: 'move-right', keys: '', label: '', focus: true, match: arrow('ArrowRight') },

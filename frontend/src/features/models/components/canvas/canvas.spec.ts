@@ -1029,3 +1029,79 @@ describe('CanvasComponent simulation marks', () => {
     expect(root.querySelectorAll('.edge-group--sim-blocked').length).toBe(1);
   });
 });
+
+/** WCAG 2.1.1: the context menu works without a mouse (issue #26). */
+describe('CanvasComponent context menu from the keyboard', () => {
+  let store: ModelEditorStore;
+  let fixture: ReturnType<typeof TestBed.createComponent<CanvasComponent>>;
+  let root: HTMLElement;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    await TestBed.configureTestingModule({
+      imports: [CanvasComponent],
+      providers: [ModelEditorStore],
+    }).compileComponents();
+    fixture = TestBed.createComponent(CanvasComponent);
+    store = TestBed.inject(ModelEditorStore);
+    fixture.detectChanges();
+    root = fixture.nativeElement;
+    document.body.appendChild(root);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    root.remove();
+  });
+
+  function openWithShiftF10(): void {
+    const wrap = root.querySelector<HTMLElement>('.canvas-wrap')!;
+    wrap.focus();
+    wrap.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true }));
+    fixture.detectChanges();
+    vi.runAllTimers();
+  }
+
+  it('opens the menu of the selected state with focus on its first item', () => {
+    const node = store.addNode('regular', 0, 0);
+    store.select(node.id, 'node');
+    fixture.detectChanges();
+    openWithShiftF10();
+    expect(fixture.componentInstance.contextMenu()).toMatchObject({ type: 'node', targetId: node.id });
+    const first = root.querySelector<HTMLElement>('.ctx-menu [role="menuitem"]')!;
+    expect(document.activeElement).toBe(first);
+  });
+
+  it('moves with the arrow keys, runs an item with Enter (click) and announces it', () => {
+    const node = store.addNode('regular', 0, 0);
+    store.select(node.id, 'node');
+    fixture.detectChanges();
+    openWithShiftF10();
+    const items = [...root.querySelectorAll<HTMLElement>('.ctx-menu [role="menuitem"]')];
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(items[1]);
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    expect(document.activeElement).toBe(items[items.length - 1]);
+
+    const del = items.find(b => b.textContent?.includes('Delete'))!;
+    del.click(); // Enter on a button is a click.
+    fixture.detectChanges();
+    expect(store.nodes().length).toBe(0);
+    expect(fixture.componentInstance.contextMenu()).toBeNull();
+    expect(root.querySelector('[aria-live="polite"]')!.textContent).toContain('State deleted');
+  });
+
+  it('closes on Escape and gives focus back to the canvas', () => {
+    openWithShiftF10();
+    expect(fixture.componentInstance.contextMenu()?.type).toBe('canvas');
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.contextMenu()).toBeNull();
+    expect(document.activeElement).toBe(root.querySelector('.canvas-wrap'));
+  });
+
+  it('has one application role, not one nested in another', () => {
+    expect(root.querySelectorAll('[role="application"]').length).toBe(1);
+    expect(root.querySelector('svg.canvas-svg')!.getAttribute('role')).toBeNull();
+  });
+});
